@@ -1,0 +1,37 @@
+{
+  "name": "edgefit",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "база:проверить": "node --env-file=.env.local scripts/check-database.mjs",
+    "база:заполнить": "node --env-file=.env.local scripts/fill-database.mjs",
+    "база:импорт-из-csv": "node --env-file=.env.local scripts/import-from-csv.mjs",
+    "import:stores": "node --env-file=.env.local scripts/import-from-stores.mjs"
+  },
+  "dependencies": {
+    "csv-parse": "^6.2.1",
+    "fflate": "^0.8.2",
+    "next": "16.2.2",
+    "postgres": "^3.4.9",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.2",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vitest": "^4.1.2"
+  }
+}
