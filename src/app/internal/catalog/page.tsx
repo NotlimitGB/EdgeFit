@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { InternalAuthBar } from "@/components/internal/internal-auth-bar";
 import { CatalogEditor } from "@/components/internal/catalog-editor";
 import { SimplePage } from "@/components/site/simple-page";
-import { базаНастроена } from "@/lib/database/config";
 import { getCatalogProductsForInternalEditor } from "@/lib/internal/catalog-admin";
 
 export const metadata: Metadata = {
@@ -15,12 +14,14 @@ export const metadata: Metadata = {
   },
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function InternalCatalogPage() {
-  if (!базаНастроена()) {
+  if (!process.env.DATABASE_URL?.trim()) {
     return (
       <SimplePage
         title="База данных не настроена"
-        text="Добавьте DATABASE_URL в .env.local, затем перезапустите проект. После этого здесь откроется внутренняя админ-страница каталога."
+        text="Добавьте DATABASE_URL в окружение проекта, затем перезапустите приложение. После этого здесь откроется внутренняя админ-страница каталога."
       />
     );
   }

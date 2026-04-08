@@ -12,23 +12,27 @@ import {
   skillLevelLabels,
   widthTypeLabels,
 } from "@/lib/content";
+import { getAllProducts, getProductBySlug, getRelatedProducts } from "@/lib/products";
 import { buildStoreRedirectHref } from "@/lib/store-redirect";
 import { formatRecommendedWeightRange } from "@/lib/weight-range";
-import {
-  получитьВсеМодели,
-  получитьМодельПоСлагу,
-  получитьПохожиеМодели,
-} from "@/lib/products";
 
 interface BoardPageProps {
   params: Promise<{ slug: string }>;
 }
 
-export async function generateStaticParams() {
-  const модели = await получитьВсеМодели();
+export const revalidate = 3600;
 
-  return модели.map((модель) => ({
-    slug: модель.slug,
+export async function generateStaticParams() {
+  // При живой базе не строим сотни карточек на билде.
+  // Страницы моделей будут собираться по запросу и кешироваться.
+  if (process.env.DATABASE_URL?.trim()) {
+    return [];
+  }
+
+  const models = await getAllProducts();
+
+  return models.map((model) => ({
+    slug: model.slug,
   }));
 }
 
@@ -36,7 +40,7 @@ export async function generateMetadata({
   params,
 }: BoardPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const board = await получитьМодельПоСлагу(slug);
+  const board = await getProductBySlug(slug);
 
   if (!board) {
     return {
@@ -52,13 +56,13 @@ export async function generateMetadata({
 
 export default async function BoardPage({ params }: BoardPageProps) {
   const { slug } = await params;
-  const board = await получитьМодельПоСлагу(slug);
+  const board = await getProductBySlug(slug);
 
   if (!board) {
     notFound();
   }
 
-  const похожиеМодели = await получитьПохожиеМодели(slug);
+  const relatedBoards = await getRelatedProducts(slug);
   const sourceCheckedAtLabel = formatCatalogCheckedDate(board.sourceCheckedAt);
 
   return (
@@ -194,7 +198,7 @@ export default async function BoardPage({ params }: BoardPageProps) {
           </h2>
         </div>
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {похожиеМодели.map((relatedBoard) => (
+          {relatedBoards.map((relatedBoard) => (
             <BoardCard
               key={relatedBoard.id}
               product={relatedBoard}
