@@ -2,7 +2,7 @@
 
 import Script from "next/script";
 import { useEffect, useRef } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 
 interface YandexMetrikaProps {
   counterId: number;
@@ -10,9 +10,7 @@ interface YandexMetrikaProps {
 
 export function YandexMetrika({ counterId }: YandexMetrikaProps) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const isFirstHit = useRef(true);
-  const query = searchParams.toString();
 
   useEffect(() => {
     const ym = (window as Window & {
@@ -28,9 +26,9 @@ export function YandexMetrika({ counterId }: YandexMetrikaProps) {
       return;
     }
 
-    const nextPath = query ? `${pathname}?${query}` : pathname;
+    const nextPath = `${pathname}${window.location.search}`;
     ym(counterId, "hit", nextPath);
-  }, [counterId, pathname, query]);
+  }, [counterId, pathname]);
 
   return (
     <>
