@@ -14,6 +14,7 @@ import {
   normalizeWhitespace,
   parseFloatNumber,
   parseFlexNumber,
+  parseSeasonLabel,
   parseSizeCm,
   slugifyBoard,
   stripHtml,
@@ -23,6 +24,66 @@ import {
 const TRIAL_BASE_URL = "https://trial-sport.ru";
 const TRIAL_SECTION_URL =
   `${TRIAL_BASE_URL}/gds.php?s=51526&c1=1070639&c2=1078224&gpp=100`;
+
+function isReliableTrialSize(sizeCm, waistWidthMm) {
+  if (!Number.isFinite(sizeCm) || !Number.isFinite(waistWidthMm)) {
+    return false;
+  }
+
+  if (sizeCm >= 100) {
+    return true;
+  }
+
+  return waistWidthMm < 235;
+}
+
+function isWideTrialModel(modelName) {
+  return /\bwide\b|\bw\b/iu.test(String(modelName ?? ""));
+}
+
+function isMidWideTrialModel(modelName) {
+  return /mid[-\s]?wide/iu.test(String(modelName ?? ""));
+}
+
+function isKidsTrialModel(modelName) {
+  return /kids?|junior|mini|youth|yuniorsk|yunior/iu.test(String(modelName ?? ""));
+}
+
+function isReliableTrialPageSize(sizeCm, modelName) {
+  if (!Number.isFinite(sizeCm)) {
+    return false;
+  }
+
+  if (sizeCm >= 100) {
+    return true;
+  }
+
+  return isKidsTrialModel(modelName) && sizeCm >= 70;
+}
+
+function estimateTrialWaistWidthMm(sizeCm, specSizes, modelName) {
+  const exactSpecSize = specSizes.find((size) => size.sizeCm === sizeCm);
+  if (exactSpecSize?.waistWidthMm) {
+    return exactSpecSize.waistWidthMm;
+  }
+
+  const closestSpecSize = specSizes
+    .filter((size) => Number.isFinite(size.sizeCm) && Number.isFinite(size.waistWidthMm))
+    .sort(
+      (left, right) =>
+        Math.abs(left.sizeCm - sizeCm) - Math.abs(right.sizeCm - sizeCm),
+    )[0];
+
+  if (isWideTrialModel(modelName)) {
+    return Math.max(264, closestSpecSize?.waistWidthMm ?? 264);
+  }
+
+  if (isMidWideTrialModel(modelName)) {
+    return Math.max(257, closestSpecSize?.waistWidthMm ?? 257);
+  }
+
+  return closestSpecSize?.waistWidthMm ?? 250;
+}
 
 function decodeXml(value) {
   return String(value ?? "")
@@ -90,11 +151,15 @@ function buildTrialSpecMap(workbookBytes) {
   let currentGroup = null;
 
   for (const row of rows.slice(1)) {
-    if (normalizeWhitespace(row.A)) {
+    const modelName = normalizeWhitespace(row.A);
+    const shape = normalizeWhitespace(row.B);
+    const purpose = normalizeWhitespace(row.C);
+
+    if (modelName && (shape || purpose || normalizeWhitespace(row.K))) {
       currentGroup = {
-        modelName: normalizeWhitespace(row.A),
-        shape: normalizeWhitespace(row.B),
-        purpose: normalizeWhitespace(row.C),
+        modelName,
+        shape,
+        purpose,
         flex: parseFlexNumber(row.K),
         sizes: [],
       };
@@ -102,15 +167,20 @@ function buildTrialSpecMap(workbookBytes) {
       specMap.set(normalizeBoardKey(currentGroup.modelName), currentGroup);
     }
 
-    if (!currentGroup || !normalizeWhitespace(row.D)) {
+    const sizeLabel = normalizeWhitespace(row.D || row.A);
+
+    if (
+      !currentGroup ||
+      !sizeLabel ||
+      (sizeLabel === currentGroup.modelName && !normalizeWhitespace(row.D))
+    ) {
       continue;
     }
 
-    const sizeLabel = normalizeWhitespace(row.D);
     const sizeCm = parseSizeCm(sizeLabel);
     const waistWidthMm = Math.round(parseFloatNumber(row.H) ?? Number.NaN);
 
-    if (!Number.isFinite(sizeCm) || !Number.isFinite(waistWidthMm)) {
+    if (!isReliableTrialSize(sizeCm, waistWidthMm)) {
       continue;
     }
 
@@ -143,6 +213,21 @@ function findTrialSpecGroup(specMap, modelName) {
 }
 
 function extractTrialProductUrls(htmlText) {
+  const availableProductUrls = Array.from(
+    new Set(
+      Array.from(
+        htmlText.matchAll(
+          /class="available"[\s\S]*?<a href="(\/goods\/51526\/\d+\.html)"/giu,
+        ),
+        (match) => toAbsoluteUrl(TRIAL_BASE_URL, match[1]),
+      ),
+    ),
+  );
+
+  if (availableProductUrls.length > 0) {
+    return availableProductUrls;
+  }
+
   return Array.from(
     new Set(
       Array.from(
@@ -164,7 +249,7 @@ function extractTrialPageCount(htmlText) {
 
 function extractTrialJsonArray(htmlText, variableName) {
   const pattern = new RegExp(
-    `(?:const|let|var)\\s+${variableName}\\s*=\\s*(\\[[\\s\\S]*?\\]);`,
+    `(?:const|let|var)\\s+${variableName}\\s*=\\s*(\\[[\\s\\S]*?\\])\\s*;?\\s*<\\/script>`,
     "u",
   );
   const match = htmlText.match(pattern);
@@ -221,6 +306,16 @@ function extractTrialModelName(htmlText, brand) {
   );
 }
 
+function extractTrialSeasonLabel(htmlText) {
+  const h1Match = htmlText.match(/<h1[^>]*>\s*([^<]+)\s*<\/h1>/iu);
+  const titleMatch = htmlText.match(/<title>([^<]+)<\/title>/iu);
+  return (
+    parseSeasonLabel(stripHtml(h1Match?.[1] ?? "")) ??
+    parseSeasonLabel(stripHtml(titleMatch?.[1] ?? "")) ??
+    null
+  );
+}
+
 function extractTrialPrice(htmlText) {
   const jsonMatch = htmlText.match(/"price":\s*(\d+)/u);
   if (jsonMatch) {
@@ -235,13 +330,19 @@ function extractTrialPrice(htmlText) {
   return 0;
 }
 
-function extractTrialImageUrl(htmlText) {
-  const bigMatch = htmlText.match(/"big":\s*"([^"]+)"/u);
-  if (bigMatch) {
-    return toAbsoluteUrl(TRIAL_BASE_URL, decodeHtml(bigMatch[1].replace(/\\\//gu, "/")));
-  }
-
-  return "";
+function extractTrialImageUrls(htmlText) {
+  return Array.from(
+    new Set(
+      Array.from(htmlText.matchAll(/"big":\s*"([^"]+)"/gu), (match) =>
+        toAbsoluteUrl(
+          TRIAL_BASE_URL,
+          decodeHtml(match[1].replace(/\\\//gu, "/")),
+        ),
+      )
+        .map((url) => String(url ?? "").trim())
+        .filter(Boolean),
+    ),
+  );
 }
 
 function extractTrialSpecUrl(htmlText) {
@@ -249,37 +350,87 @@ function extractTrialSpecUrl(htmlText) {
   return match ? toAbsoluteUrl(TRIAL_BASE_URL, match[0]) : "";
 }
 
-function mergeTrialSizes(specGroup, icspEntries) {
-  const sizeMap = new Map(
-    (specGroup?.sizes ?? []).map((size) => [normalizeSizeKey(size.sizeLabel), size]),
-  );
-  const sizesFromPage = Array.from(
-    new Set(
-      icspEntries
-        .map((entry) => normalizeWhitespace(entry.size || entry.sizecolor || ""))
-        .filter(Boolean),
-    ),
-  );
+function isTrialEntryAvailable(entry) {
+  if (!entry) {
+    return false;
+  }
 
-  const merged = [];
+  if (entry.nalim === true) {
+    return true;
+  }
 
-  for (const sizeLabel of sizesFromPage) {
-    const specSize = sizeMap.get(normalizeSizeKey(sizeLabel));
-    if (!specSize) {
+  if (typeof entry.nal === "string" && entry.nal.toLowerCase() === "store") {
+    return true;
+  }
+
+  if (Number(entry.im_cols_avail ?? 0) - Number(entry.im_cols_reserved ?? 0) > 0) {
+    return true;
+  }
+
+  if (Array.isArray(entry.stores) && entry.stores.length > 0) {
+    return true;
+  }
+
+  return false;
+}
+
+function buildTrialPageSizes(specGroup, icspEntries, modelName) {
+  const availableEntries = icspEntries.filter(isTrialEntryAvailable);
+  const normalizedAvailableSizeKeys = new Set(
+    availableEntries
+      .map((entry) => normalizeWhitespace(entry.size || entry.sizecolor || ""))
+      .filter(Boolean)
+      .map((sizeLabel) => normalizeSizeKey(sizeLabel)),
+  );
+  const specSizes = specGroup?.sizes ?? [];
+  const specSizeByKey = new Map(
+    specSizes.map((size) => [normalizeSizeKey(size.sizeLabel), size]),
+  );
+  const pageSizeByKey = new Map();
+
+  for (const entry of icspEntries) {
+    const sizeLabel = normalizeWhitespace(entry.size || entry.sizecolor || "");
+    const sizeCm = parseSizeCm(sizeLabel);
+
+    if (!sizeLabel || !isReliableTrialPageSize(sizeCm, modelName)) {
       continue;
     }
 
-    merged.push({
+    const key = normalizeSizeKey(sizeLabel);
+    const specSize = specSizeByKey.get(key);
+    const waistWidthMm =
+      specSize?.waistWidthMm ?? estimateTrialWaistWidthMm(sizeCm, specSizes, modelName);
+
+    pageSizeByKey.set(key, {
       ...specSize,
+      sizeCm,
       sizeLabel,
+      waistWidthMm,
+      recommendedWeightMin: specSize?.recommendedWeightMin ?? 0,
+      recommendedWeightMax: specSize?.recommendedWeightMax ?? null,
+      widthType: classifyWidthType(waistWidthMm),
+      isAvailable: normalizedAvailableSizeKeys.has(key),
     });
   }
 
-  if (merged.length > 0) {
-    return merged.sort((left, right) => left.sizeCm - right.sizeCm);
+  return Array.from(pageSizeByKey.values()).sort(
+    (left, right) => left.sizeCm - right.sizeCm,
+  );
+}
+
+function mergeTrialSizes(specGroup, icspEntries, modelName) {
+  const pageSizes = buildTrialPageSizes(specGroup, icspEntries, modelName);
+
+  if (pageSizes.length > 0) {
+    return pageSizes;
   }
 
-  return (specGroup?.sizes ?? []).sort((left, right) => left.sizeCm - right.sizeCm);
+  return (specGroup?.sizes ?? [])
+    .map((size) => ({
+      ...size,
+      isAvailable: true,
+    }))
+    .sort((left, right) => left.sizeCm - right.sizeCm);
 }
 
 function buildTrialProduct(productUrl, htmlText, specMap, checkedAt) {
@@ -296,9 +447,10 @@ function buildTrialProduct(productUrl, htmlText, specMap, checkedAt) {
   }
 
   const icspEntries = extractTrialJsonArray(htmlText, "icspJS");
-  const sizes = mergeTrialSizes(specGroup, icspEntries);
+  const availableEntries = icspEntries.filter(isTrialEntryAvailable);
+  const sizes = mergeTrialSizes(specGroup, icspEntries, modelName);
 
-  if (sizes.length === 0) {
+  if (sizes.length === 0 || availableEntries.length === 0) {
     return null;
   }
 
@@ -306,6 +458,8 @@ function buildTrialProduct(productUrl, htmlText, specMap, checkedAt) {
   const ridingStyle = mapRidingStyle(specGroup.purpose);
   const shapeType = mapShapeType(specGroup.shape);
   const descriptionText = extractTrialDescription(htmlText, brand);
+  const imageUrls = extractTrialImageUrls(htmlText);
+  const seasonLabel = extractTrialSeasonLabel(htmlText);
   const boardLine = mapBoardLineFromText(descriptionText);
   const skillLevel = mapSkillLevel({
     levelText: "",
@@ -315,13 +469,15 @@ function buildTrialProduct(productUrl, htmlText, specMap, checkedAt) {
     slug: slugifyBoard(`${brand} ${modelName}`),
     brand,
     modelName,
+    seasonLabel,
     descriptionShort: "",
     descriptionFull: "",
     ridingStyle,
     skillLevel,
     flex,
     priceFrom: extractTrialPrice(htmlText),
-    imageUrl: extractTrialImageUrl(htmlText),
+    imageUrl: imageUrls[0] || "",
+    galleryImages: imageUrls.slice(1),
     affiliateUrl: productUrl,
     isActive: true,
     boardLine,

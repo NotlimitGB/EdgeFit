@@ -40,6 +40,7 @@ interface ProductSizeDraft {
   recommendedWeightMin: string;
   recommendedWeightMax: string;
   widthType: WidthType;
+  isAvailable: boolean;
 }
 
 interface ProductDraft {
@@ -91,6 +92,7 @@ function createEmptySize(): ProductSizeDraft {
     recommendedWeightMin: "",
     recommendedWeightMax: "",
     widthType: "regular",
+    isAvailable: true,
   };
 }
 
@@ -153,6 +155,7 @@ function productToDraft(product: Product): ProductDraft {
       recommendedWeightMax:
         size.recommendedWeightMax == null ? "" : String(size.recommendedWeightMax),
       widthType: size.widthType,
+      isAvailable: size.isAvailable !== false,
     })),
   };
 }
@@ -207,6 +210,7 @@ function draftToPayload(draft: ProductDraft) {
           ? Number(size.recommendedWeightMax)
           : null,
       widthType: size.widthType,
+      isAvailable: size.isAvailable,
     })),
   };
 }
@@ -768,7 +772,7 @@ export function CatalogEditor({ initialProducts }: CatalogEditorProps) {
                   key={size.draftId}
                   className="rounded-[1.3rem] border border-white/70 bg-white p-4"
                 >
-                  <div className="grid gap-4 xl:grid-cols-[0.95fr_0.95fr_1fr_1fr_1fr_1fr_auto]">
+                  <div className="grid gap-4 xl:grid-cols-[0.95fr_0.95fr_1fr_1fr_1fr_1fr_0.95fr_auto]">
                     <NumberField
                       label="Длина, см"
                       value={size.sizeCm}
@@ -808,6 +812,11 @@ export function CatalogEditor({ initialProducts }: CatalogEditorProps) {
                         value: option,
                         label: widthTypeLabels[option],
                       }))}
+                    />
+                    <CheckboxField
+                      label="В наличии"
+                      checked={size.isAvailable}
+                      onChange={(value) => updateSize(index, "isAvailable", value)}
                     />
                     <div className="flex items-end">
                       <button
@@ -921,6 +930,30 @@ function TextareaField({
       {hint ? (
         <span className="mt-2 block text-sm text-[var(--color-muted)]">{hint}</span>
       ) : null}
+    </label>
+  );
+}
+
+function CheckboxField({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <label className="flex h-full items-end">
+      <span className="flex w-full items-center justify-between rounded-[1.2rem] border border-[var(--color-border)] bg-white px-4 py-3">
+        <span className="text-sm font-semibold">{label}</span>
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(event) => onChange(event.target.checked)}
+          className="h-5 w-5 accent-[var(--color-pine)]"
+        />
+      </span>
     </label>
   );
 }

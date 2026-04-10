@@ -59,19 +59,50 @@ npm run база:заполнить
 npm run база:импорт-из-csv
 ```
 
-5. Или загружай каталог через браузер на внутренней странице:
+5. Или обнови живой каталог из магазинов и сразу проверь качество данных:
+
+```bash
+npm run catalog:refresh
+```
+
+Эта команда сначала запускает импорт из Траектории и Триал-Спорта, а потом делает аудит:
+проверяет битые размеры вроде `58`/`88`, пустые цены, отсутствие картинок, наличие доступных размеров и ссылки на магазины.
+
+Если нужно только проверить уже загруженную базу без нового парса магазинов:
+
+```bash
+npm run audit:catalog
+```
+
+Если нужно импортировать только один источник, можно временно задать `STORE_IMPORT_SOURCE`.
+
+Git Bash:
+
+```bash
+STORE_IMPORT_SOURCE=trial npm run import:stores
+STORE_IMPORT_SOURCE=traektoria npm run import:stores
+```
+
+PowerShell:
+
+```powershell
+$env:STORE_IMPORT_SOURCE="trial"; npm run import:stores; Remove-Item Env:STORE_IMPORT_SOURCE
+$env:STORE_IMPORT_SOURCE="traektoria"; npm run import:stores; Remove-Item Env:STORE_IMPORT_SOURCE
+```
+
+6. Или загружай каталог через браузер на внутренней странице:
 
 ```text
 /internal/import
 ```
 
-6. Или редактируй модели прямо из базы на внутренней странице:
+7. Или редактируй модели прямо из базы на внутренней странице:
 
 ```text
 /internal/catalog
 ```
 
-7. Внутренние страницы теперь защищены паролем. Сначала открой:
+8. Внутренние страницы теперь защищены паролем. Сначала открой:
 
 ```text
 /internal/login

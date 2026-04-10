@@ -14,7 +14,7 @@ import {
   widthTypeDescriptions,
   widthTypeLabels,
 } from "@/lib/content";
-import { получитьДемоМодели } from "@/lib/demo-products";
+import boardsSeed from "@/data/seed/boards.seed.json";
 import {
   buildTerrainPriorityExplanation,
   getRecommendationShapeProfile,
@@ -34,7 +34,25 @@ import type {
   WidthType,
 } from "@/types/domain";
 
-export const ВЕРСИЯ_АЛГОРИТМА = "v1.3.0";
+export const ALGORITHM_VERSION = "v1.4.0";
+
+function getDemoProducts() {
+  return (boardsSeed as Product[])
+    .filter((product) => product.isActive)
+    .map((product) => ({
+      ...product,
+      shapeType: product.shapeType ?? null,
+      dataStatus: product.dataStatus ?? "draft",
+      sourceName: product.sourceName?.trim() || null,
+      sourceUrl: product.sourceUrl?.trim() || null,
+      sourceCheckedAt: product.sourceCheckedAt || null,
+      sizes: product.sizes.map((size) => ({
+        ...size,
+        sizeLabel: size.sizeLabel?.trim() || null,
+        isAvailable: size.isAvailable !== false,
+      })),
+    }));
+}
 
 const WEIGHT_LENGTH_RULES = [
   { min: 35, max: 44.99, range: { min: 138, max: 142 } },
@@ -48,6 +66,10 @@ const WEIGHT_LENGTH_RULES = [
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+function roundScore(value: number) {
+  return Math.round(value);
 }
 
 function getWeightLengthRange(weightKg: number) {
@@ -199,49 +221,404 @@ function getBoardLineCompatibility(
 
 function getStyleCompatibility(
   boardStyle: Product["ridingStyle"],
-  userStyle: QuizInput["ridingStyle"],
+  input: QuizInput,
 ) {
-  if (boardStyle === userStyle) {
+  if (boardStyle === input.ridingStyle) {
     return 18;
   }
 
-  if (boardStyle === "all-mountain" || userStyle === "all-mountain") {
-    return 9;
+  if (input.ridingStyle === "all-mountain") {
+    if (
+      input.terrainPriority === "switch-freestyle" &&
+      boardStyle === "park"
+    ) {
+      return 4;
+    }
+
+    if (
+      (input.terrainPriority === "soft-snow" ||
+        input.terrainPriority === "groomers-carving") &&
+      boardStyle === "freeride"
+    ) {
+      return 3;
+    }
+
+    return -8;
   }
 
-  return -10;
+  if (boardStyle === "all-mountain") {
+    return 8;
+  }
+
+  return -12;
+}
+
+function getPreferredBoardStyles(input: QuizInput) {
+  if (input.ridingStyle === "all-mountain") {
+    switch (input.terrainPriority) {
+      case "switch-freestyle":
+        return ["all-mountain", "park"] satisfies Product["ridingStyle"][];
+      case "groomers-carving":
+      case "soft-snow":
+        return ["all-mountain", "freeride"] satisfies Product["ridingStyle"][];
+      default:
+        return ["all-mountain"] satisfies Product["ridingStyle"][];
+    }
+  }
+
+  if (input.ridingStyle === "park") {
+    return ["park", "all-mountain"] satisfies Product["ridingStyle"][];
+  }
+
+  return ["freeride", "all-mountain"] satisfies Product["ridingStyle"][];
+}
+
+function getStyleFocusedBoards(boards: Product[], input: QuizInput) {
+  const preferredStyles = new Set(getPreferredBoardStyles(input));
+  const focusedBoards = boards.filter((board) =>
+    preferredStyles.has(board.ridingStyle),
+  );
+
+  return focusedBoards.length >= 3 ? focusedBoards : boards;
+}
+
+function getLengthTarget(
+  lengthRange: { min: number; max: number },
+  input: QuizInput,
+) {
+  let target = (lengthRange.min + lengthRange.max) / 2;
+
+  if (input.ridingStyle === "park") {
+    target -= 0.5;
+  }
+
+  if (input.ridingStyle === "freeride") {
+    target += 0.75;
+  }
+
+  switch (input.terrainPriority) {
+    case "switch-freestyle":
+      target -= 0.5;
+      break;
+    case "groomers-carving":
+      target += 0.25;
+      break;
+    case "soft-snow":
+      target += 0.75;
+      break;
+    default:
+      break;
+  }
+
+  if (input.aggressiveness === "relaxed") {
+    target -= 0.25;
+  }
+
+  if (input.aggressiveness === "aggressive") {
+    target += 0.25;
+  }
+
+  return clamp(target, lengthRange.min, lengthRange.max);
+}
+
+function getLengthCompatibility(
+  sizeCm: number,
+  lengthRange: { min: number; max: number },
+  input: QuizInput,
+) {
+  const target = getLengthTarget(lengthRange, input);
+  const halfRange = Math.max((lengthRange.max - lengthRange.min) / 2, 1.5);
+  const insideRange =
+    sizeCm >= lengthRange.min && sizeCm <= lengthRange.max;
+
+  if (insideRange) {
+    const distance = Math.abs(sizeCm - target);
+    const closeness = clamp(1 - distance / (halfRange + 0.75), 0, 1);
+    const score = roundScore(20 + closeness * 16);
+
+    if (distance <= 0.75) {
+      return {
+        score,
+        reason:
+          "Размер попадает не просто в диапазон, а близко к идеальной длине под ваш сценарий.",
+        target,
+      };
+    }
+
+    if (sizeCm < target) {
+      return {
+        score,
+        reason:
+          "Размер остаётся внутри диапазона и даёт чуть более живое, манёвренное ощущение.",
+        target,
+      };
+    }
+
+    return {
+      score,
+      reason:
+        "Размер остаётся внутри диапазона и даёт чуть больше запаса по стабильности.",
+      target,
+    };
+  }
+
+  const distanceToRange = Math.min(
+    Math.abs(sizeCm - lengthRange.min),
+    Math.abs(sizeCm - lengthRange.max),
+  );
+
+  if (distanceToRange <= 2.5) {
+    return {
+      score: roundScore(10 - distanceToRange * 2),
+      reason:
+        "Размер рядом с целевым диапазоном и может подойти, если вам нужен небольшой сдвиг по ощущениям.",
+      target,
+    };
+  }
+
+  return {
+    score: -14,
+    reason: null,
+    target,
+  };
+}
+
+function getWeightCompatibility(size: ProductSize, weightKg: number) {
+  const weightMax = getRecommendedWeightMaxValue(size);
+  const hasWeightData =
+    size.recommendedWeightMin > 0 || size.recommendedWeightMax != null;
+
+  if (!hasWeightData) {
+    return {
+      score: -4,
+      reason: null,
+    };
+  }
+
+  if (weightKg >= size.recommendedWeightMin && weightKg <= weightMax) {
+    const idealWeight =
+      size.recommendedWeightMax == null
+        ? size.recommendedWeightMin + 8
+        : (size.recommendedWeightMin + size.recommendedWeightMax) / 2;
+    const tolerance =
+      size.recommendedWeightMax == null
+        ? 12
+        : Math.max((size.recommendedWeightMax - size.recommendedWeightMin) / 2, 8);
+    const distance = Math.abs(weightKg - idealWeight);
+    const closeness = clamp(1 - distance / tolerance, 0, 1);
+
+    return {
+      score: roundScore(14 + closeness * 10),
+      reason:
+        "Вес попадает в рабочий диапазон именно этого размера, поэтому доска не должна ощущаться случайной.",
+    };
+  }
+
+  if (
+    weightKg >= size.recommendedWeightMin - 5 &&
+    weightKg <= weightMax + 5
+  ) {
+    return {
+      score: 6,
+      reason: null,
+    };
+  }
+
+  return {
+    score: -8,
+    reason: null,
+  };
+}
+
+function getFlexPreferenceRange(input: QuizInput) {
+  let min = 4;
+  let max = 6;
+
+  switch (input.skillLevel) {
+    case "beginner":
+      min -= 2;
+      max -= 1;
+      break;
+    case "advanced":
+      min += 1;
+      max += 2;
+      break;
+    default:
+      break;
+  }
+
+  if (
+    input.ridingStyle === "park" ||
+    input.terrainPriority === "switch-freestyle"
+  ) {
+    min -= 1;
+    max -= 1;
+  }
+
+  if (
+    input.ridingStyle === "freeride" ||
+    input.terrainPriority === "groomers-carving" ||
+    input.terrainPriority === "soft-snow"
+  ) {
+    min += 1;
+    max += 1;
+  }
+
+  if (input.aggressiveness === "relaxed") {
+    min -= 1;
+    max -= 1;
+  }
+
+  if (input.aggressiveness === "aggressive") {
+    min += 1;
+    max += 1;
+  }
+
+  min = clamp(min, 1, 9);
+  max = clamp(max, min + 1, 10);
+
+  return { min, max };
+}
+
+function getFlexCompatibility(flex: number, input: QuizInput) {
+  const preferredRange = getFlexPreferenceRange(input);
+  const target = (preferredRange.min + preferredRange.max) / 2;
+
+  if (flex >= preferredRange.min && flex <= preferredRange.max) {
+    const tolerance = Math.max((preferredRange.max - preferredRange.min) / 2, 1);
+    const distance = Math.abs(flex - target);
+    const closeness = clamp(1 - distance / tolerance, 0, 1);
+
+    return {
+      score: roundScore(12 + closeness * 6),
+      reason:
+        "Жёсткость доски ближе к тому диапазону, который логичен под ваш темп и сценарий катания.",
+      preferredRange,
+    };
+  }
+
+  const distanceToRange = Math.min(
+    Math.abs(flex - preferredRange.min),
+    Math.abs(flex - preferredRange.max),
+  );
+
+  if (distanceToRange <= 1) {
+    return {
+      score: 8,
+      reason: null,
+      preferredRange,
+    };
+  }
+
+  if (distanceToRange <= 2) {
+    return {
+      score: 2,
+      reason: null,
+      preferredRange,
+    };
+  }
+
+  return {
+    score: -8,
+    reason: null,
+    preferredRange,
+  };
+}
+
+function getPreferredOverWidth(input: QuizInput) {
+  let preferredOverWidth = 4;
+
+  if (
+    input.ridingStyle === "park" ||
+    input.terrainPriority === "switch-freestyle"
+  ) {
+    preferredOverWidth -= 1.5;
+  }
+
+  if (input.aggressiveness === "relaxed") {
+    preferredOverWidth -= 0.5;
+  }
+
+  if (
+    input.ridingStyle === "freeride" ||
+    input.terrainPriority === "soft-snow" ||
+    input.terrainPriority === "groomers-carving"
+  ) {
+    preferredOverWidth += 1.5;
+  }
+
+  if (input.aggressiveness === "aggressive") {
+    preferredOverWidth += 0.5;
+  }
+
+  return clamp(preferredOverWidth, 2, 7);
+}
+
+function getWidthCompatibility(
+  widthDelta: number,
+  input: QuizInput,
+) {
+  const preferredOverWidth = getPreferredOverWidth(input);
+
+  if (widthDelta >= 0 && widthDelta <= preferredOverWidth) {
+    const closeness = clamp(1 - widthDelta / Math.max(preferredOverWidth, 1), 0, 1);
+    return {
+      score: roundScore(12 + closeness * 8),
+      reason:
+        "Ширины хватает под ботинок без лишнего ухода в слишком широкую платформу.",
+    };
+  }
+
+  if (widthDelta > preferredOverWidth && widthDelta <= preferredOverWidth + 4) {
+    return {
+      score: roundScore(6 - (widthDelta - preferredOverWidth) * 1.5),
+      reason:
+        "Ширина безопасная, но эта доска уже чуть шире оптимума под ваш сценарий.",
+    };
+  }
+
+  if (widthDelta >= -3) {
+    return {
+      score: 3,
+      reason: null,
+    };
+  }
+
+  return {
+    score: -24,
+    reason: "Ширина может быть пограничной для вашего ботинка и требует осторожности.",
+  };
 }
 
 function getRecommendationRole(
   sizeCm: number,
-  min: number,
-  max: number,
+  lengthTarget: number,
   widthDelta: number,
 ): { role: RecommendationRole; fitLabel: string } {
-  if (widthDelta >= 4) {
+  if (widthDelta >= 6) {
     return {
       role: "width-safe",
-      fitLabel: "больше запаса по ширине",
+      fitLabel: "запас по ширине",
     };
   }
 
-  if (sizeCm <= min + 1) {
+  if (sizeCm <= lengthTarget - 0.75) {
     return {
       role: "playful",
-      fitLabel: "более игривый вариант",
+      fitLabel: "более игривый",
     };
   }
 
-  if (sizeCm >= max - 1) {
+  if (sizeCm >= lengthTarget + 0.75) {
     return {
       role: "stable",
-      fitLabel: "более стабильный вариант",
+      fitLabel: "более стабильный",
     };
   }
 
   return {
     role: "best-overall",
-    fitLabel: "лучший общий вариант",
+    fitLabel: "лучший общий",
   };
 }
 
@@ -252,14 +629,14 @@ function getRecommendationConfidence(
   confidence: RecommendationConfidence;
   confidenceLabel: string;
 } {
-  if (score >= 72 && isCatalogReadyFlag) {
+  if (score >= 78 && isCatalogReadyFlag) {
     return {
       confidence: "high",
       confidenceLabel: "Высокая уверенность в совпадении.",
     };
   }
 
-  if (score >= 58) {
+  if (score >= 64) {
     return {
       confidence: "medium",
       confidenceLabel: "Хорошее совпадение по ключевым параметрам.",
@@ -283,45 +660,22 @@ function scoreCandidate(
   let score = 0;
   const reasons: string[] = [];
   const widthDelta = size.waistWidthMm - targetWaistWidthMm;
-  const weightMax = getRecommendedWeightMaxValue(size);
-  const hasWeightData =
-    size.recommendedWeightMin > 0 || size.recommendedWeightMax != null;
   const catalogReady = isReadyForCatalog(product);
   const verifiedProduct = isVerifiedProduct(product);
 
-  if (size.sizeCm >= lengthRange.min && size.sizeCm <= lengthRange.max) {
-    score += 28;
-    reasons.push("Размер попадает в ваш рабочий диапазон длины.");
-  } else if (
-    size.sizeCm >= lengthRange.min - 2 &&
-    size.sizeCm <= lengthRange.max + 2
-  ) {
-    score += 12;
-    reasons.push("Размер рядом с целевым диапазоном и может подойти под стиль.");
-  } else {
-    score -= 12;
+  const lengthCompatibility = getLengthCompatibility(size.sizeCm, lengthRange, input);
+  score += lengthCompatibility.score;
+  if (lengthCompatibility.reason) {
+    reasons.push(lengthCompatibility.reason);
   }
 
-  if (hasWeightData) {
-    if (
-      input.weightKg >= size.recommendedWeightMin &&
-      input.weightKg <= weightMax
-    ) {
-      score += 22;
-      reasons.push("Вес попадает в диапазон, на который рассчитан этот размер.");
-    } else if (
-      input.weightKg >= size.recommendedWeightMin - 5 &&
-      input.weightKg <= weightMax + 5
-    ) {
-      score += 8;
-    } else {
-      score -= 8;
-    }
-  } else {
-    score -= 4;
+  const weightCompatibility = getWeightCompatibility(size, input.weightKg);
+  score += weightCompatibility.score;
+  if (weightCompatibility.reason) {
+    reasons.push(weightCompatibility.reason);
   }
 
-  const styleScore = getStyleCompatibility(product.ridingStyle, input.ridingStyle);
+  const styleScore = getStyleCompatibility(product.ridingStyle, input);
   score += styleScore;
   if (styleScore > 0) {
     reasons.push("Характер доски совпадает с вашим стилем катания.");
@@ -336,30 +690,21 @@ function scoreCandidate(
   const skillScore = getSkillCompatibility(product.skillLevel, input.skillLevel);
   score += skillScore;
   if (skillScore > 0) {
-    reasons.push("Жесткость и характер доски подходят вашему уровню.");
+    reasons.push("Уровень доски не выбивается из вашего текущего уровня катания.");
+  }
+
+  const flexCompatibility = getFlexCompatibility(product.flex, input);
+  score += flexCompatibility.score;
+  if (flexCompatibility.reason) {
+    reasons.push(flexCompatibility.reason);
   }
 
   score += getBoardLineCompatibility(product, input.boardLinePreference);
 
-  if (widthDelta >= 0) {
-    score += 18;
-    reasons.push("Ширины хватает под ваш размер ботинка.");
-  } else if (widthDelta >= -3) {
-    score += 6;
-  } else {
-    score -= 24;
-    reasons.push("Ширина может быть пограничной для вашего ботинка.");
-  }
-
-  if (product.ridingStyle === "park" && input.aggressiveness === "relaxed") {
-    score += 4;
-  }
-
-  if (
-    product.ridingStyle === "freeride" &&
-    input.aggressiveness === "aggressive"
-  ) {
-    score += 4;
+  const widthCompatibility = getWidthCompatibility(widthDelta, input);
+  score += widthCompatibility.score;
+  if (widthCompatibility.reason) {
+    reasons.push(widthCompatibility.reason);
   }
 
   if (catalogReady) {
@@ -374,8 +719,7 @@ function scoreCandidate(
 
   const role = getRecommendationRole(
     size.sizeCm,
-    lengthRange.min,
-    lengthRange.max,
+    lengthCompatibility.target,
     widthDelta,
   );
   const confidence = getRecommendationConfidence(score, catalogReady);
@@ -401,11 +745,15 @@ function getCandidates(
   shapeProfile: ReturnType<typeof getRecommendationShapeProfile>,
 ) {
   const bestPerBoard = boards.flatMap((product) => {
-    if (product.sizes.length === 0) {
+    const availableSizes = product.sizes.filter(
+      (size) => size.isAvailable !== false,
+    );
+
+    if (availableSizes.length === 0) {
       return [];
     }
 
-    const matches = product.sizes.map((size) =>
+    const matches = availableSizes.map((size) =>
       scoreCandidate(
         product,
         size,
@@ -423,7 +771,7 @@ function getCandidates(
 
   const sortedBoards = bestPerBoard.sort((left, right) => right.score - left.score);
   let recommendedBoards = sortedBoards
-    .filter((match) => match.score >= 52)
+    .filter((match) => match.score >= 56)
     .slice(0, 4);
 
   if (recommendedBoards.length < 3) {
@@ -435,7 +783,9 @@ function getCandidates(
   );
 
   const avoidBoards = sortedBoards
-    .filter((match) => !recommendedKeys.has(`${match.product.id}-${match.size.sizeCm}`))
+    .filter(
+      (match) => !recommendedKeys.has(`${match.product.id}-${match.size.sizeCm}`),
+    )
     .sort((left, right) => left.score - right.score)
     .slice(0, 3);
 
@@ -454,12 +804,16 @@ function buildExplanation(
   targetWaistWidthMm: number,
   bootDragRisk: BootDragRisk,
 ) {
+  const lengthTarget = getLengthTarget(lengthRange, input);
+  const flexRange = getFlexPreferenceRange(input);
+
   return [
     `Вес ${input.weightKg} кг даёт базовый диапазон ${weightRange.min}-${weightRange.max} см. Дальше мы мягко подправили его под рост ${input.heightCm} см, стиль ${ridingStyleLabels[input.ridingStyle]} и ваш ${aggressivenessLabels[input.aggressiveness]} темп катания.`,
-    `Итоговый диапазон ${lengthRange.min}-${lengthRange.max} см подходит под сценарий "${ridingStyleLabels[input.ridingStyle]}": он не будет слишком коротким для стабильности и не станет лишне требовательным.`,
+    `Итоговый диапазон ${lengthRange.min}-${lengthRange.max} см остаётся рабочей зоной, но внутри неё сервис дополнительно ищет размер ближе к идеальной точке около ${lengthTarget.toFixed(1)} см, а не просто любую доску "в пределах".`,
     buildTerrainPriorityExplanation(input.terrainPriority),
-    `Размер ботинка EU ${input.bootSizeEu} и ${stanceLabels[input.stanceType]} выводят вас в категорию ${widthTypeLabels[recommendedWidthType]}. Мы ориентируемся на целевую талию около ${targetWaistWidthMm} мм. ${widthTypeDescriptions[recommendedWidthType]}`,
+    `Размер ботинка EU ${input.bootSizeEu} и ${stanceLabels[input.stanceType]} выводят вас в категорию ${widthTypeLabels[recommendedWidthType]}. Мы ориентируемся на целевую талию около ${targetWaistWidthMm} мм и отдельно штрафуем варианты, которые становятся заметно шире нужного. ${widthTypeDescriptions[recommendedWidthType]}`,
     `${shapeProfile.headline} Базовый ориентир здесь — ${boardShapeLabels[shapeProfile.primary]}. ${shapeProfile.description}`,
+    `По жёсткости доски сейчас логичнее смотреть в диапазон ${flexRange.min}-${flexRange.max} из 10: это помогает не тянуть слишком дубовую модель в relaxed/park-сценарий и не опускаться слишком мягко в aggressive/freeride.`,
     `Риск boot drag сейчас оценивается как ${bootDragRiskLabels[bootDragRisk]}. Это не абсолютный приговор, а понятная подсказка: при выборе доски уже видно, где ширина безопасна, а где лучше не рисковать.`,
     `В подборе мы дополнительно учитываем линию ${boardLineLabels[input.boardLinePreference]} и уровень ${skillLevelLabels[input.skillLevel]}, а в выдаче выше ставим проверенные карточки с живыми ссылками, чтобы рекомендации выглядели надёжнее.`,
   ];
@@ -467,16 +821,19 @@ function buildExplanation(
 
 export function getRecommendation(
   input: QuizInput,
-  boards: Product[] = получитьДемоМодели(),
+  boards: Product[] = getDemoProducts(),
 ): RecommendationResult {
   const activeBoards = boards.filter(
-    (board) => board.isActive && board.sizes.length > 0,
+    (board) =>
+      board.isActive &&
+      board.sizes.some((size) => size.isAvailable !== false),
   );
   const verifiedBoards = activeBoards.filter(
     (board) => board.dataStatus === "verified",
   );
-  const candidateBoards =
+  const baseCandidateBoards =
     verifiedBoards.length >= 3 ? verifiedBoards : activeBoards;
+  const candidateBoards = getStyleFocusedBoards(baseCandidateBoards, input);
   const weightRange = getWeightLengthRange(input.weightKg);
   const heightAdjustment = getHeightAdjustment(input.heightCm);
   const styleAdjustment = getStyleAdjustment(input.ridingStyle);
@@ -531,7 +888,7 @@ export function getRecommendation(
   );
 
   return {
-    algorithmVersion: ВЕРСИЯ_АЛГОРИТМА,
+    algorithmVersion: ALGORITHM_VERSION,
     input,
     lengthRange,
     recommendedWidthType: widthRecommendation.recommendedWidthType,

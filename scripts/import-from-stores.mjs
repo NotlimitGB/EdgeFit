@@ -2,7 +2,11 @@ import postgres from "postgres";
 import http from "node:http";
 import https from "node:https";
 import { upsertCatalogProducts } from "./lib/upsert-boards.mjs";
-import { mergeImportedProducts } from "./lib/store-import/common.mjs";
+import {
+  mergeImportedProducts,
+  normalizeBoardKey,
+  normalizeWhitespace,
+} from "./lib/store-import/common.mjs";
 import { importTraektoriaProducts } from "./lib/store-import/traektoria.mjs";
 import { importTrialSportProducts } from "./lib/store-import/trial-sport.mjs";
 
@@ -23,12 +27,76 @@ const sql = postgres(databaseUrl, {
   max: 1,
 });
 
+let productColumnSupport = null;
+
+function normalizeGalleryImages(value) {
+  const rawImages =
+    typeof value === "string"
+      ? (() => {
+          try {
+            const parsed = JSON.parse(value);
+            return Array.isArray(parsed) ? parsed : [];
+          } catch {
+            return [];
+          }
+        })()
+      : Array.isArray(value)
+        ? value
+        : [];
+
+  return rawImages
+    .map((image) => String(image ?? "").trim())
+    .filter(Boolean);
+}
+
 function hasImportLimit() {
   return Number.isFinite(importLimit) && importLimit > 0;
 }
 
 function isPlaceholderAffiliateLink(url) {
   return /example\.(com|org|net)/iu.test(String(url ?? ""));
+}
+
+function isPreferredStoreLink(url) {
+  try {
+    const hostname = new URL(String(url ?? "")).hostname.toLowerCase();
+    return [
+      "trial-sport.ru",
+      "www.trial-sport.ru",
+      "traektoria.ru",
+      "www.traektoria.ru",
+    ].includes(hostname);
+  } catch {
+    return false;
+  }
+}
+
+function buildTrialSportSearchLink(product) {
+  const searchParams = new URLSearchParams({
+    q: normalizeWhitespace(`${product.brand} ${product.modelName}`),
+  });
+
+  return `https://trial-sport.ru/search/?${searchParams.toString()}`;
+}
+
+function isLocalCatalogPlaceholderImage(url) {
+  return String(url ?? "").trim().startsWith("/boards/");
+}
+
+function hasCuratedVerifiedMedia(product) {
+  return [product.imageUrl, ...(product.galleryImages ?? [])]
+    .map((image) => String(image ?? "").trim())
+    .filter(Boolean)
+    .some((image) => !isLocalCatalogPlaceholderImage(image));
+}
+
+function getComparableProductKey(brand, modelName) {
+  const normalizedModelName = normalizeWhitespace(modelName)
+    .replace(/\b2(?:[.\- ]?0)\b/giu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+
+  return normalizeBoardKey(`${brand} ${normalizedModelName}`);
 }
 
 async function wait(milliseconds) {
@@ -138,13 +206,70 @@ async function fetchArrayBuffer(url) {
   );
 }
 
+async function getProductColumnSupport() {
+  if (productColumnSupport) {
+    return productColumnSupport;
+  }
+
+  const rows = await sql`
+    select table_name, column_name
+    from information_schema.columns
+    where table_schema = 'public'
+      and (
+        (
+          table_name = 'products'
+          and column_name in ('season_label', 'gallery_images')
+        )
+        or (
+          table_name = 'product_sizes'
+          and column_name in ('size_label', 'is_available')
+        )
+      )
+  `;
+
+  const productColumns = new Set(
+    rows
+      .filter((row) => row.table_name === "products")
+      .map((row) => row.column_name),
+  );
+  const sizeColumns = new Set(
+    rows
+      .filter((row) => row.table_name === "product_sizes")
+      .map((row) => row.column_name),
+  );
+
+  productColumnSupport = {
+    hasSeasonLabel: productColumns.has("season_label"),
+    hasGalleryImages: productColumns.has("gallery_images"),
+    hasSizeLabel: sizeColumns.has("size_label"),
+    hasSizeAvailable: sizeColumns.has("is_available"),
+  };
+
+  return productColumnSupport;
+}
+
 async function loadExistingCatalog() {
+  const { hasSeasonLabel, hasGalleryImages, hasSizeLabel, hasSizeAvailable } = await getProductColumnSupport();
+  const seasonLabelSelect = hasSeasonLabel
+    ? sql.unsafe("p.season_label")
+    : sql.unsafe("null::text");
+  const galleryImagesSelect = hasGalleryImages
+    ? sql.unsafe("p.gallery_images")
+    : sql.unsafe("'[]'::jsonb");
+  const sizeLabelSelect = hasSizeLabel
+    ? sql.unsafe("ps.size_label")
+    : sql.unsafe("null::text");
+  const sizeAvailableSelect = hasSizeAvailable
+    ? sql.unsafe("ps.is_available")
+    : sql.unsafe("true");
+
   const rows = await sql`
     select
       p.id::text as "id",
       p.slug as "slug",
       p.brand as "brand",
       p.model_name as "modelName",
+      ${seasonLabelSelect} as "seasonLabel",
       p.description_short as "descriptionShort",
       p.description_full as "descriptionFull",
       p.riding_style as "ridingStyle",
@@ -152,6 +277,7 @@ async function loadExistingCatalog() {
       p.flex as "flex",
       p.price_from as "priceFrom",
       p.image_url as "imageUrl",
+      ${galleryImagesSelect} as "galleryImages",
       p.affiliate_url as "affiliateUrl",
       p.is_active as "isActive",
       p.board_line as "boardLine",
@@ -166,11 +292,12 @@ async function loadExistingCatalog() {
         json_agg(
           json_build_object(
             'sizeCm', ps.size_cm::float8,
-            'sizeLabel', ps.size_label,
+            'sizeLabel', ${sizeLabelSelect},
             'waistWidthMm', ps.waist_width_mm,
             'recommendedWeightMin', ps.recommended_weight_min,
             'recommendedWeightMax', ps.recommended_weight_max,
-            'widthType', ps.width_type
+            'widthType', ps.width_type,
+            'isAvailable', ${sizeAvailableSelect}
           )
           order by ps.size_cm
         ) filter (where ps.id is not null),
@@ -188,6 +315,7 @@ async function loadExistingCatalog() {
         ...row,
         flex: Number(row.flex),
         priceFrom: Number(row.priceFrom),
+        galleryImages: normalizeGalleryImages(row.galleryImages),
         scenarios: Array.isArray(row.scenarios) ? row.scenarios : [],
         notIdealFor: Array.isArray(row.notIdealFor) ? row.notIdealFor : [],
         sizes: Array.isArray(row.sizes)
@@ -201,6 +329,7 @@ async function loadExistingCatalog() {
                   ? null
                   : Number(size.recommendedWeightMax),
               widthType: size.widthType,
+              isAvailable: size.isAvailable !== false,
             }))
           : [],
       },
@@ -213,28 +342,76 @@ function mergeWithExistingProduct(existingProduct, importedProduct) {
     return importedProduct;
   }
 
-  if (existingProduct.dataStatus === "verified") {
-    const shouldReplaceAffiliate =
-      isPlaceholderAffiliateLink(existingProduct.affiliateUrl) ||
-      (importedProduct.priceFrom > 0 &&
-        (existingProduct.priceFrom <= 0 ||
-          importedProduct.priceFrom < existingProduct.priceFrom));
-
-    return {
-      ...existingProduct,
-      priceFrom:
-        importedProduct.priceFrom > 0
-          ? importedProduct.priceFrom
-          : existingProduct.priceFrom,
-      affiliateUrl: shouldReplaceAffiliate
-        ? importedProduct.affiliateUrl
-        : existingProduct.affiliateUrl,
-      imageUrl: existingProduct.imageUrl || importedProduct.imageUrl,
-      isActive: existingProduct.isActive || importedProduct.isActive,
-    };
+  if (existingProduct.dataStatus !== "verified") {
+    return importedProduct;
   }
 
-  return mergeImportedProducts(existingProduct, importedProduct);
+  const mergedGalleryImages = Array.from(
+    new Set(
+      [
+        existingProduct.imageUrl,
+        ...(existingProduct.galleryImages ?? []),
+        importedProduct.imageUrl,
+        ...(importedProduct.galleryImages ?? []),
+      ]
+        .map((image) => String(image ?? "").trim())
+        .filter(Boolean),
+    ),
+  );
+
+  const keepVerifiedMedia = hasCuratedVerifiedMedia(existingProduct);
+  const shouldUseImportedStoreLink =
+    Boolean(importedProduct.affiliateUrl?.trim()) &&
+    importedProduct.isActive &&
+    !isPlaceholderAffiliateLink(importedProduct.affiliateUrl);
+
+  return {
+    ...existingProduct,
+    sizes:
+      Array.isArray(importedProduct.sizes) && importedProduct.sizes.length > 0
+        ? importedProduct.sizes
+        : existingProduct.sizes,
+    priceFrom:
+      importedProduct.priceFrom > 0
+        ? importedProduct.priceFrom
+        : existingProduct.priceFrom,
+    affiliateUrl: shouldUseImportedStoreLink
+      ? importedProduct.affiliateUrl
+      : isPreferredStoreLink(existingProduct.affiliateUrl)
+        ? existingProduct.affiliateUrl
+        : buildTrialSportSearchLink(existingProduct),
+    imageUrl: keepVerifiedMedia
+      ? existingProduct.imageUrl
+      : mergedGalleryImages[0] || existingProduct.imageUrl || importedProduct.imageUrl,
+    galleryImages: keepVerifiedMedia
+      ? existingProduct.galleryImages ?? []
+      : mergedGalleryImages.slice(1),
+    seasonLabel:
+      existingProduct.seasonLabel?.trim() ||
+      importedProduct.seasonLabel?.trim() ||
+      null,
+    isActive: importedProduct.isActive,
+  };
+}
+
+function isManagedStoreProduct(product) {
+  return product.sourceName === "Траектория" || product.sourceName === "Триал-Спорт";
+}
+
+function shouldSyncStoreProduct(product, currentSourceFilter) {
+  if (currentSourceFilter === "all") {
+    return isManagedStoreProduct(product);
+  }
+
+  if (currentSourceFilter === "traektoria") {
+    return product.sourceName === "РўСЂР°РµРєС‚РѕСЂРёСЏ";
+  }
+
+  if (currentSourceFilter === "trial" || currentSourceFilter === "trial-sport") {
+    return product.sourceName === "РўСЂРёР°Р»-РЎРїРѕСЂС‚";
+  }
+
+  return false;
 }
 
 function summarizeWarnings(warnings) {
@@ -253,8 +430,34 @@ function summarizeWarnings(warnings) {
   }
 }
 
-try {
+async function cleanupBrokenTrialSportSizes(sqlClient) {
+  const [result] = await sqlClient`
+    with removed as (
+      delete from product_sizes ps
+      using products p
+      where p.id = ps.product_id
+        and p.affiliate_url like 'https://trial-sport.ru/%'
+        and ps.size_cm < 100
+        and ps.waist_width_mm >= 235
+      returning ps.id
+    )
+    select count(*)::int as count from removed
+  `;
+
+  return result?.count ?? 0;
+}
+
+async function main() {
+  await sql`set statement_timeout = 0`;
   const existingCatalog = await loadExistingCatalog();
+  const existingComparableVerifiedProducts = new Map(
+    Array.from(existingCatalog.values())
+      .filter((product) => product.dataStatus === "verified")
+      .map((product) => [
+        getComparableProductKey(product.brand, product.modelName),
+        product,
+      ]),
+  );
   const importedProducts = [];
   const warnings = [];
 
@@ -287,10 +490,31 @@ try {
   const mergedImportedProducts = new Map();
 
   for (const importedProduct of importedProducts) {
-    const current = mergedImportedProducts.get(importedProduct.slug);
+    const comparableProductKey = getComparableProductKey(
+      importedProduct.brand,
+      importedProduct.modelName,
+    );
+    const exactExistingProduct = existingCatalog.get(importedProduct.slug);
+    const comparableVerifiedProduct =
+      existingComparableVerifiedProducts.get(comparableProductKey);
+    const mergeTargetProduct =
+      comparableVerifiedProduct?.dataStatus === "verified"
+        ? comparableVerifiedProduct
+        : exactExistingProduct;
+    const mergedSlug = mergeTargetProduct?.slug ?? importedProduct.slug;
+    const normalizedImportedProduct =
+      mergedSlug === importedProduct.slug
+        ? importedProduct
+        : {
+            ...importedProduct,
+            slug: mergedSlug,
+          };
+    const current = mergedImportedProducts.get(mergedSlug);
     mergedImportedProducts.set(
-      importedProduct.slug,
-      current ? mergeImportedProducts(current, importedProduct) : importedProduct,
+      mergedSlug,
+      current
+        ? mergeImportedProducts(current, normalizedImportedProduct)
+        : normalizedImportedProduct,
     );
   }
 
@@ -298,12 +522,25 @@ try {
     .map((product) => mergeWithExistingProduct(existingCatalog.get(product.slug), product))
     .filter((product) => product.sizes.length > 0);
 
-  const finalProducts = preparedProducts;
+  const staleStoreProducts = Array.from(existingCatalog.values())
+    .filter(
+      (product) =>
+        shouldSyncStoreProduct(product, sourceFilter) &&
+        !mergedImportedProducts.has(product.slug),
+    )
+    .map((product) => ({
+      ...product,
+      isActive: false,
+    }));
+
+  const finalProducts = [...preparedProducts, ...staleStoreProducts];
 
   const summary = await upsertCatalogProducts(sql, finalProducts);
+  const cleanedBrokenTrialSizes = await cleanupBrokenTrialSportSizes(sql);
 
   console.log(`Готово. Импортировано моделей: ${summary.importedModels}`);
   console.log(`Импортировано размеров: ${summary.importedSizes}`);
+  console.log(`Удалено сломанных trial-размеров: ${cleanedBrokenTrialSizes}`);
   console.log(`Уникальных карточек после объединения: ${finalProducts.length}`);
   console.log(
     `Активных карточек после импорта: ${finalProducts.filter((product) => product.isActive).length}`,
@@ -313,6 +550,10 @@ try {
   );
 
   summarizeWarnings(warnings);
+}
+
+try {
+  await main();
 } finally {
   await sql.end({ timeout: 1 });
 }

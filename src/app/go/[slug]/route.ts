@@ -4,6 +4,7 @@ import { z } from "zod";
 import { saveAnalyticsEvent } from "@/lib/analytics/server";
 import { getProductBySlug } from "@/lib/products";
 import { SESSION_COOKIE_NAME } from "@/lib/session-id";
+import { resolveProductStoreUrl } from "@/lib/store-redirect";
 
 const outboundClickQuerySchema = z.object({
   from: z.string().trim().max(120).optional(),
@@ -40,8 +41,9 @@ export async function GET(
 ) {
   const { slug } = await params;
   const product = await getProductBySlug(slug);
+  const destinationUrl = product ? resolveProductStoreUrl(product) : null;
 
-  if (!product?.affiliateUrl) {
+  if (!product || !destinationUrl) {
     return NextResponse.redirect(getFallbackRedirectUrl(request));
   }
 
@@ -57,7 +59,7 @@ export async function GET(
       pagePath: await getPagePathFromRequest(payload.data.from),
       payload: {
         board_slug: product.slug,
-        destination_url: product.affiliateUrl,
+        destination_url: destinationUrl,
         source: payload.data.from ?? "unknown",
         placement: payload.data.placement ?? null,
         size_cm: payload.data.sizeCm ?? null,
@@ -67,5 +69,5 @@ export async function GET(
     });
   }
 
-  return NextResponse.redirect(product.affiliateUrl);
+  return NextResponse.redirect(destinationUrl);
 }

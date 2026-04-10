@@ -12,7 +12,10 @@
     "база:проверить": "node --env-file=.env.local scripts/check-database.mjs",
     "база:заполнить": "node --env-file=.env.local scripts/fill-database.mjs",
     "база:импорт-из-csv": "node --env-file=.env.local scripts/import-from-csv.mjs",
-    "import:stores": "node --env-file=.env.local scripts/import-from-stores.mjs"
+    "normalize:gallery": "node --env-file=.env.local scripts/normalize-gallery-images.mjs",
+    "import:stores": "node --env-file=.env.local scripts/import-from-stores.mjs",
+    "audit:catalog": "node --env-file=.env.local scripts/audit-catalog.mjs",
+    "catalog:refresh": "npm run import:stores && npm run audit:catalog"
   },
   "dependencies": {
     "csv-parse": "^6.2.1",

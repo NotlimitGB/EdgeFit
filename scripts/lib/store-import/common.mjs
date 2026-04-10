@@ -91,6 +91,78 @@ export function normalizeBoardKey(value) {
   return slugifyBoard(value).replace(/-/gu, "");
 }
 
+function normalizeSeasonYear(value) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+
+  if (parsed >= 2000 && parsed <= 2100) {
+    return parsed;
+  }
+
+  if (parsed >= 20 && parsed <= 40) {
+    return 2000 + parsed;
+  }
+
+  return null;
+}
+
+export function parseSeasonLabel(value) {
+  const normalized = normalizeWhitespace(value);
+  if (!normalized) {
+    return null;
+  }
+
+  const fullRangeMatch = normalized.match(/\b(20\d{2})\s*[/-]\s*(20\d{2})\b/u);
+  if (fullRangeMatch) {
+    return `${fullRangeMatch[1]}/${fullRangeMatch[2]}`;
+  }
+
+  const mixedRangeMatch = normalized.match(/\b(20\d{2})\s*[/-]\s*(\d{2})\b/u);
+  if (mixedRangeMatch) {
+    const endYear = normalizeSeasonYear(mixedRangeMatch[2]);
+    if (endYear) {
+      return `${mixedRangeMatch[1]}/${endYear}`;
+    }
+  }
+
+  const shortRangeMatch = normalized.match(/\b(\d{2})\s*[/-]\s*(\d{2})\b/u);
+  if (shortRangeMatch) {
+    const startYear = normalizeSeasonYear(shortRangeMatch[1]);
+    const endYear = normalizeSeasonYear(shortRangeMatch[2]);
+    if (startYear && endYear && endYear >= startYear) {
+      return `${startYear}/${endYear}`;
+    }
+  }
+
+  const yearMatch = normalized.match(/\b(20\d{2})\b/u);
+  if (yearMatch) {
+    return yearMatch[1];
+  }
+
+  return null;
+}
+
+export function getSeasonRank(seasonLabel) {
+  const normalized = normalizeWhitespace(seasonLabel);
+  if (!normalized) {
+    return null;
+  }
+
+  const rangeMatch = normalized.match(/\b(20\d{2})\/(20\d{2})\b/u);
+  if (rangeMatch) {
+    return Number.parseInt(rangeMatch[2], 10) * 10000 + Number.parseInt(rangeMatch[1], 10);
+  }
+
+  const yearMatch = normalized.match(/\b(20\d{2})\b/u);
+  if (yearMatch) {
+    return Number.parseInt(yearMatch[1], 10);
+  }
+
+  return null;
+}
+
 export function toAbsoluteUrl(baseUrl, maybeRelativeUrl) {
   if (!maybeRelativeUrl) {
     return "";
@@ -321,7 +393,11 @@ export function parseSizeCm(sizeLabel) {
 }
 
 export function normalizeSizeKey(sizeLabel) {
-  return normalizeWhitespace(sizeLabel).toLowerCase().replace(/\s+/gu, "");
+  return normalizeWhitespace(sizeLabel)
+    .toLowerCase()
+    .replace(/см/gu, "cm")
+    .replace(/\s+/gu, "")
+    .replace(/cm$/gu, "");
 }
 
 export function summarizeSizeLabels(sizes) {
@@ -455,27 +531,73 @@ export function getProductCompletenessScore(product) {
 }
 
 export function mergeImportedProducts(left, right) {
+  const leftSeasonRank = getSeasonRank(left.seasonLabel);
+  const rightSeasonRank = getSeasonRank(right.seasonLabel);
   const leftScore = getProductCompletenessScore(left);
   const rightScore = getProductCompletenessScore(right);
-  const base = rightScore > leftScore ? right : left;
+  const seasonsDiffer =
+    leftSeasonRank != null &&
+    rightSeasonRank != null &&
+    leftSeasonRank !== rightSeasonRank;
+
+  let base = rightScore > leftScore ? right : left;
+  if (seasonsDiffer) {
+    base = rightSeasonRank > leftSeasonRank ? right : left;
+  }
+
   const secondary = base === left ? right : left;
+  const resolvedSizes =
+    Array.isArray(base.sizes) && base.sizes.length > 0
+      ? base.sizes
+      : Array.isArray(secondary.sizes)
+        ? secondary.sizes
+        : [];
 
-  const positivePrices = [left.priceFrom, right.priceFrom].filter(
-    (price) => Number.isFinite(price) && price > 0,
+  const relevantPriceCandidates = [left, right]
+    .filter(
+      (product) =>
+        (!seasonsDiffer || product.seasonLabel?.trim() === base.seasonLabel?.trim()) &&
+        Number.isFinite(product.priceFrom) &&
+        product.priceFrom > 0,
+    )
+    .map((product) => product.priceFrom);
+  const positivePrices =
+    relevantPriceCandidates.length > 0
+      ? relevantPriceCandidates
+      : [left.priceFrom, right.priceFrom].filter(
+          (price) => Number.isFinite(price) && price > 0,
+        );
+
+  const sameSeasonActiveOffers = [left, right].filter(
+    (product) =>
+      product.isActive &&
+      (!seasonsDiffer || product.seasonLabel?.trim() === base.seasonLabel?.trim()),
   );
-
+  const fallbackActiveOffers = [left, right].filter((product) => product.isActive);
   const activeOffer =
-    [left, right]
-      .filter((product) => product.isActive)
+    (sameSeasonActiveOffers.length > 0 ? sameSeasonActiveOffers : fallbackActiveOffers)
       .sort((a, b) => (a.priceFrom || Number.MAX_SAFE_INTEGER) - (b.priceFrom || Number.MAX_SAFE_INTEGER))[0] ??
     base;
 
+  const baseMedia = [base.imageUrl, ...(base.galleryImages ?? [])]
+    .map((image) => String(image ?? "").trim())
+    .filter(Boolean);
+  const secondaryMedia = seasonsDiffer
+    ? []
+    : [secondary.imageUrl, ...(secondary.galleryImages ?? [])]
+        .map((image) => String(image ?? "").trim())
+        .filter(Boolean);
+  const mergedGalleryImages = Array.from(new Set([...baseMedia, ...secondaryMedia]));
+
   return {
     ...base,
+    seasonLabel: base.seasonLabel?.trim() || secondary.seasonLabel?.trim() || null,
+    sizes: resolvedSizes,
     priceFrom:
       positivePrices.length > 0 ? Math.min(...positivePrices) : base.priceFrom,
     affiliateUrl: activeOffer.affiliateUrl || base.affiliateUrl,
     isActive: left.isActive || right.isActive,
-    imageUrl: base.imageUrl || secondary.imageUrl,
+    imageUrl: mergedGalleryImages[0] || base.imageUrl || secondary.imageUrl,
+    galleryImages: mergedGalleryImages.slice(1),
   };
 }

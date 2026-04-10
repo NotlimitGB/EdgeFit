@@ -9,6 +9,7 @@ import {
   mapSkillLevel,
   normalizeWhitespace,
   parseFlexNumber,
+  parseSeasonLabel,
   parseSizeCm,
   parseWeightRange,
   slugifyBoard,
@@ -119,6 +120,61 @@ function getFlexFromTraektoriaProduct(model, descriptions, filterMap) {
   return parseFlexNumber(filterMap.get("FLEX"));
 }
 
+function extractTraektoriaImageUrls(model) {
+  const urls = Array.from(
+    new Set(
+      (Array.isArray(model?.photo_list) ? model.photo_list : [])
+        .map((photo) =>
+          toAbsoluteUrl(
+            TRAEKTORIA_BASE_URL,
+            photo?.url_resize || photo?.url || "",
+          ),
+        )
+        .map((url) => String(url ?? "").trim())
+        .filter(Boolean),
+    ),
+  );
+
+  return urls;
+}
+
+function getTraektoriaAvailableSkus(model) {
+  return (Array.isArray(model?.sku_list) ? model.sku_list : [])
+    .flatMap((skuGroup) => skuGroup?.sizes ?? [])
+    .filter((sku) => {
+      if (sku?.is_available === true) {
+        return true;
+      }
+
+      if (Number.isFinite(sku?.quantity) && Number(sku.quantity) > 0) {
+        return true;
+      }
+
+      if (Array.isArray(sku?.shops_available) && sku.shops_available.length > 0) {
+        return true;
+      }
+
+      if (Array.isArray(sku?.stores_available) && sku.stores_available.length > 0) {
+        return true;
+      }
+
+      return false;
+    });
+}
+
+function mapTraektoriaSizesAvailability(sizes, availableSkus) {
+  const availableLabels = new Set(
+    availableSkus
+      .map((sku) => normalizeWhitespace(sku?.size_title || sku?.color_title || ""))
+      .filter(Boolean),
+  );
+
+  return sizes.map((size) => ({
+    ...size,
+    isAvailable: availableLabels.has(normalizeWhitespace(size.sizeLabel)),
+  }));
+}
+
 function buildTraektoriaProduct(productUrl, productPayload, checkedAt) {
   const content = productPayload?.data?.MAIN?.content;
   const model = content?.model;
@@ -133,14 +189,22 @@ function buildTraektoriaProduct(productUrl, productPayload, checkedAt) {
   }
 
   const filterMap = getTraektoriaFilterMap(content.filter_options);
-  const sizes = parseTraektoriaSizeTable(content.grid_size_html);
+  const availableSkus = getTraektoriaAvailableSkus(model);
+  const sizes = mapTraektoriaSizesAvailability(
+    parseTraektoriaSizeTable(content.grid_size_html),
+    availableSkus,
+  );
 
-  if (sizes.length === 0) {
+  if (sizes.length === 0 || !sizes.some((size) => size.isAvailable)) {
     return null;
   }
 
   const brand = normalizeWhitespace(model.brand?.name || props.name.split(" ")[0]);
   const modelName = normalizeWhitespace(props.model_name || props.name.replace(brand, ""));
+  const seasonLabel =
+    parseSeasonLabel(props.name) ??
+    parseSeasonLabel(props.model_name) ??
+    null;
   const slug = slugifyBoard(`${brand} ${modelName}`);
   const shapeType = mapShapeType(filterMap.get("SHAPE"));
   const flex = getFlexFromTraektoriaProduct(model, content.descriptions, filterMap);
@@ -151,8 +215,7 @@ function buildTraektoriaProduct(productUrl, productPayload, checkedAt) {
     flex,
   });
   const selectedSku = content.selected_sku ?? {};
-  const skuPrices = model.sku_list
-    .flatMap((skuGroup) => skuGroup.sizes ?? [])
+  const skuPrices = availableSkus
     .map((sku) => sku.retail_price || sku.base_price)
     .filter((price) => Number.isFinite(price) && price > 0);
   const priceFrom =
@@ -160,24 +223,23 @@ function buildTraektoriaProduct(productUrl, productPayload, checkedAt) {
       ? Math.min(...skuPrices)
       : selectedSku.retail_price || selectedSku.base_price || 0;
 
-  const imageUrl = toAbsoluteUrl(
-    TRAEKTORIA_BASE_URL,
-    model.photo_list?.[0]?.url_resize || model.photo_list?.[0]?.url || "",
-  );
+  const imageUrls = extractTraektoriaImageUrls(model);
 
   const product = {
     slug,
     brand,
     modelName,
+    seasonLabel,
     descriptionShort: "",
     descriptionFull: "",
     ridingStyle,
     skillLevel,
     flex,
     priceFrom,
-    imageUrl,
+    imageUrl: imageUrls[0] || "",
+    galleryImages: imageUrls.slice(1),
     affiliateUrl: productUrl,
-    isActive: true,
+    isActive: availableSkus.length > 0,
     boardLine,
     shapeType,
     dataStatus: "draft",

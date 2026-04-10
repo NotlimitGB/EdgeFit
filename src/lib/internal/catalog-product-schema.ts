@@ -41,6 +41,7 @@ const productSizeSchema = z.object({
     ])
     .default(null),
   widthType: widthTypeSchema,
+  isAvailable: z.boolean().default(true),
 });
 
 export const catalogProductSchema = z

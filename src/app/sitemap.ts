@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { получитьВсеМодели } from "@/lib/products";
+import { getAllProductSlugs } from "@/lib/products";
 import { getSeoLandingPath, seoLandingPages } from "@/lib/seo-pages";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
@@ -15,7 +15,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...seoLandingPages.map((page) => getSeoLandingPath(page.slug)),
   ];
 
-  const модели = await получитьВсеМодели();
+  const slugs = await getAllProductSlugs();
 
   return [
     ...routes.map((route) => ({
@@ -23,8 +23,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: route === "" ? ("weekly" as const) : ("monthly" as const),
       priority: route === "" ? 1 : 0.7,
     })),
-    ...модели.map((модель) => ({
-      url: `https://edgefit.example/boards/${модель.slug}`,
+    ...slugs.map((slug) => ({
+      url: `https://edgefit.example/boards/${slug}`,
       changeFrequency: "monthly" as const,
       priority: 0.8,
     })),

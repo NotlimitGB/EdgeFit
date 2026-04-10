@@ -16,6 +16,7 @@ interface ProductRow {
   flex: number;
   priceFrom: number;
   imageUrl: string;
+  galleryImages?: string[];
   affiliateUrl: string;
   isActive: boolean;
   boardLine: Product["boardLine"];
@@ -29,6 +30,26 @@ interface ProductRow {
   sizes: ProductSize[];
 }
 
+function normalizeGalleryImages(value: unknown) {
+  const rawImages =
+    typeof value === "string"
+      ? (() => {
+          try {
+            const parsed = JSON.parse(value);
+            return Array.isArray(parsed) ? parsed : [];
+          } catch {
+            return [];
+          }
+        })()
+      : Array.isArray(value)
+        ? value
+        : [];
+
+  return rawImages
+    .map((image) => String(image ?? "").trim())
+    .filter(Boolean);
+}
+
 function normalizeSize(size: ProductSize): ProductSize {
   return {
     sizeCm: Number(size.sizeCm),
@@ -38,6 +59,7 @@ function normalizeSize(size: ProductSize): ProductSize {
     recommendedWeightMax:
       size.recommendedWeightMax == null ? null : Number(size.recommendedWeightMax),
     widthType: size.widthType,
+    isAvailable: size.isAvailable !== false,
   };
 }
 
@@ -51,6 +73,7 @@ function normalizeProduct(product: ProductRow): Product {
     sourceName: product.sourceName?.trim() || null,
     sourceUrl: product.sourceUrl?.trim() || null,
     sourceCheckedAt: product.sourceCheckedAt || null,
+    galleryImages: normalizeGalleryImages(product.galleryImages),
     scenarios: Array.isArray(product.scenarios) ? product.scenarios : [],
     notIdealFor: Array.isArray(product.notIdealFor) ? product.notIdealFor : [],
     sizes: Array.isArray(product.sizes) ? product.sizes.map(normalizeSize) : [],
@@ -60,6 +83,9 @@ function normalizeProduct(product: ProductRow): Product {
 export async function getCatalogProductsForInternalEditor() {
   const sql = получитьКлиентБазы();
   const columnSupport = await getProductColumnSupport(sql);
+  const galleryImagesSelect = columnSupport.galleryImages
+    ? sql.unsafe("p.gallery_images")
+    : sql.unsafe("'[]'::jsonb");
   const shapeTypeSelect = columnSupport.shapeType
     ? sql.unsafe("p.shape_type")
     : sql.unsafe("null::text");
@@ -78,6 +104,9 @@ export async function getCatalogProductsForInternalEditor() {
   const sizeLabelSelect = columnSupport.sizeLabel
     ? sql.unsafe("ps.size_label")
     : sql.unsafe("null::text");
+  const sizeAvailableSelect = columnSupport.sizeAvailable
+    ? sql.unsafe("ps.is_available")
+    : sql.unsafe("true");
 
   const rows = await sql<ProductRow[]>`
     select
@@ -92,6 +121,7 @@ export async function getCatalogProductsForInternalEditor() {
       p.flex as "flex",
       p.price_from as "priceFrom",
       p.image_url as "imageUrl",
+      ${galleryImagesSelect} as "galleryImages",
       p.affiliate_url as "affiliateUrl",
       p.is_active as "isActive",
       p.board_line as "boardLine",
@@ -110,7 +140,8 @@ export async function getCatalogProductsForInternalEditor() {
             'waistWidthMm', ps.waist_width_mm,
             'recommendedWeightMin', ps.recommended_weight_min,
             'recommendedWeightMax', ps.recommended_weight_max,
-            'widthType', ps.width_type
+            'widthType', ps.width_type,
+            'isAvailable', ${sizeAvailableSelect}
           )
           order by ps.size_cm
         ) filter (where ps.id is not null),

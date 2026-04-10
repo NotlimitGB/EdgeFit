@@ -10,6 +10,10 @@ import {
   skillLevelLabels,
   widthTypeLabels,
 } from "@/lib/content";
+import {
+  getAvailabilityHeadline,
+  getAvailabilitySizePreview,
+} from "@/lib/product-availability";
 import { buildStoreRedirectHrefForSize } from "@/lib/store-redirect";
 import { formatRecommendedWeightRange } from "@/lib/weight-range";
 import type { Product, ProductSize, WidthType } from "@/types/domain";
@@ -62,22 +66,6 @@ function getSkillHint(skillLevel: Product["skillLevel"]) {
   }
 }
 
-function getCatalogSizeSummary(product: Product) {
-  const labels = product.sizes
-    .map((currentSize) => getBoardSizeLabel(currentSize))
-    .filter(Boolean);
-
-  if (labels.length === 0) {
-    return "Размеры уточняются";
-  }
-
-  if (labels.length <= 4) {
-    return labels.join(", ");
-  }
-
-  return `${labels.slice(0, 4).join(", ")} + ещё ${labels.length - 4}`;
-}
-
 function buildCatalogCardDescription(product: Product) {
   const lineLabel = getBoardLineCardLabel(product.boardLine);
   const shapeLabel = product.shapeType
@@ -100,7 +88,8 @@ export function BoardCard({
   shopAnalyticsPayload,
 }: BoardCardProps) {
   const primaryWidthType = size?.widthType ?? getPrimaryWidthType(product);
-  const catalogSizeSummary = getCatalogSizeSummary(product);
+  const availabilityHeadline = getAvailabilityHeadline(product);
+  const availabilitySizePreview = getAvailabilitySizePreview(product);
   const sizeLabel = size ? getBoardSizeLabel(size) : null;
   const descriptionText = compact
     ? product.descriptionShort
@@ -160,7 +149,7 @@ export function BoardCard({
         className={`w-full rounded-[1.2rem] border border-white/55 bg-[linear-gradient(145deg,rgba(32,89,119,0.96),rgba(74,136,170,0.74))] p-5 text-white ${
           compact
             ? "mb-4 flex min-h-[18.75rem] flex-col pb-6 sm:h-[18.75rem]"
-            : "mb-5 flex min-h-[16.75rem] flex-col pb-5"
+            : "mb-5 flex h-[21.5rem] flex-col pb-5"
         }`}
       >
         <div
@@ -187,8 +176,8 @@ export function BoardCard({
             <span
               className={`inline-flex shrink-0 rounded-full bg-white/16 px-3 py-2 text-xs font-semibold text-white ${
                 compact
-                  ? "min-h-[3rem] w-fit max-w-full items-center justify-center self-start text-center leading-4 sm:w-[12.5rem]"
-                  : "min-h-[2.75rem] w-fit items-center justify-center self-start text-center leading-4 sm:w-[7.25rem]"
+                  ? "max-w-full items-center justify-center self-start text-center leading-5 whitespace-normal sm:max-w-[13.5rem]"
+                  : "max-w-full items-center justify-center self-start text-center leading-5 whitespace-normal sm:max-w-[8.5rem]"
               }`}
             >
               {eyebrow}
@@ -215,11 +204,11 @@ export function BoardCard({
             </div>
           </div>
         ) : (
-          <div className="grid flex-1 auto-rows-fr grid-cols-2 gap-x-5 gap-y-3 text-sm text-white/84">
+          <div className="grid h-full flex-1 grid-cols-2 grid-rows-2 gap-x-5 gap-y-3 text-sm text-white/84">
             {catalogMetrics.map((metric) => (
-              <div key={metric.label} className="min-h-[3.75rem]">
+              <div key={metric.label} className="min-h-0">
                 <p className="text-white/58">{metric.label}</p>
-                <p className="mt-1 font-semibold leading-6">
+                <p className="mt-1 line-clamp-3 min-h-[4.5rem] font-semibold leading-6">
                   {metric.value}
                 </p>
               </div>
@@ -250,10 +239,13 @@ export function BoardCard({
           </div>
           <div className="rounded-[1.1rem] border border-[var(--color-border)] bg-[var(--color-paper-soft)] px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-muted)]">
-              Размеры
+              В наличии
             </p>
-            <p className="mt-2 text-sm font-semibold leading-6 text-[var(--color-ink)]">
-              {catalogSizeSummary}
+            <p className="mt-2 text-base font-bold text-[var(--color-ink)]">
+              {availabilityHeadline}
+            </p>
+            <p className="mt-1 text-sm leading-6 text-[var(--color-muted)]">
+              {availabilitySizePreview}
             </p>
           </div>
         </div>

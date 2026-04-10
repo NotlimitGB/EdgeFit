@@ -89,6 +89,7 @@ create table if not exists products (
   slug text not null unique,
   brand text not null,
   model_name text not null,
+  season_label text,
   description_short text not null,
   description_full text not null,
   riding_style riding_style_type not null,
@@ -96,6 +97,7 @@ create table if not exists products (
   flex smallint not null check (flex between 1 and 10),
   price_from integer not null,
   image_url text not null,
+  gallery_images jsonb not null default '[]'::jsonb,
   affiliate_url text not null,
   is_active boolean not null default true,
   board_line board_line_type not null default 'unisex',
@@ -109,6 +111,12 @@ create table if not exists products (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table products
+  add column if not exists season_label text;
+
+alter table products
+  add column if not exists gallery_images jsonb not null default '[]'::jsonb;
 
 alter table products
   add column if not exists shape_type board_shape_type;
@@ -133,11 +141,15 @@ create table if not exists product_sizes (
   waist_width_mm integer not null,
   recommended_weight_min integer not null,
   recommended_weight_max integer,
-  width_type width_type not null
+  width_type width_type not null,
+  is_available boolean not null default true
 );
 
 alter table product_sizes
   add column if not exists size_label text;
+
+alter table product_sizes
+  add column if not exists is_available boolean not null default true;
 
 alter table product_sizes
   alter column recommended_weight_max drop not null;

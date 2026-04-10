@@ -160,6 +160,10 @@ export function buildCatalogProducts(modelRows, sizeRows) {
         context,
       ),
       widthType,
+      isAvailable:
+        row.is_available == null || String(row.is_available).trim() === ""
+          ? true
+          : toBoolean(row.is_available),
     };
 
     const sizes = sizesBySlug.get(slug) ?? [];

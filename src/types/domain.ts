@@ -54,6 +54,7 @@ export interface ProductSize {
   recommendedWeightMin: number;
   recommendedWeightMax: number | null;
   widthType: WidthType;
+  isAvailable: boolean;
 }
 
 export interface Product {
@@ -61,6 +62,7 @@ export interface Product {
   slug: string;
   brand: string;
   modelName: string;
+  seasonLabel?: string | null;
   descriptionShort: string;
   descriptionFull: string;
   ridingStyle: RidingStyle;
@@ -68,6 +70,7 @@ export interface Product {
   flex: number;
   priceFrom: number;
   imageUrl: string;
+  galleryImages?: string[];
   affiliateUrl: string;
   isActive: boolean;
   boardLine: "men" | "women" | "unisex";

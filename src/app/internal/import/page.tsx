@@ -12,6 +12,8 @@ export const metadata: Metadata = {
   },
 };
 
+export const dynamic = "force-dynamic";
+
 export default function InternalImportPage() {
   return (
     <div className="container-shell py-12 sm:py-16">

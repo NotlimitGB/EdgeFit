@@ -12,6 +12,7 @@ function normalizeDemoProduct(product: Product): Product {
     sizes: product.sizes.map((size) => ({
       ...size,
       sizeLabel: size.sizeLabel?.trim() || null,
+      isAvailable: size.isAvailable !== false,
     })),
   };
 }
