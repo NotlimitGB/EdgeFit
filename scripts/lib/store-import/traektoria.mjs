@@ -21,6 +21,7 @@ const TRAEKTORIA_BASE_URL = "https://www.traektoria.ru";
 const TRAEKTORIA_SECTION_API_URL =
   `${TRAEKTORIA_BASE_URL}/slim/pages/section/snowboard/boards/?SITE_ID=lid`;
 const EXTRA_PRODUCT_URLS = [
+  `${TRAEKTORIA_BASE_URL}/product/1890639_snoubord-jones-dream-weaver/`,
   `${TRAEKTORIA_BASE_URL}/product/1890653_snoubord-jones-mountain-twin/`,
 ];
 

@@ -170,21 +170,44 @@ async function main() {
     limit 50
   `;
 
+  const [productsWithPlaceholderImageCount] = await sql`
+    select count(*)::int as count
+    from products p
+    where p.is_active = true
+      and (
+        p.image_url like '/boards/%'
+        or p.gallery_images::text like '%/boards/%'
+      )
+  `;
+  const productsWithPlaceholderImage = await sql`
+    select p.slug, p.brand, p.model_name, p.source_name, p.image_url, p.affiliate_url
+    from products p
+    where p.is_active = true
+      and (
+        p.image_url like '/boards/%'
+        or p.gallery_images::text like '%/boards/%'
+      )
+    order by p.brand, p.model_name
+    limit 50
+  `;
+
   const [productsWithNonStoreLinkCount] = await sql`
     select count(*)::int as count
     from products p
     where p.is_active = true
-      and p.affiliate_url not like 'https://trial-sport.ru/%'
-      and p.affiliate_url not like 'https://www.traektoria.ru/%'
-      and p.affiliate_url not like 'https://traektoria.ru/%'
+      and p.affiliate_url not like 'https://trial-sport.ru/goods/%'
+      and p.affiliate_url not like 'https://www.trial-sport.ru/goods/%'
+      and p.affiliate_url not like 'https://www.traektoria.ru/product/%'
+      and p.affiliate_url not like 'https://traektoria.ru/product/%'
   `;
   const productsWithNonStoreLink = await sql`
     select p.slug, p.brand, p.model_name, p.source_name, p.affiliate_url
     from products p
     where p.is_active = true
-      and p.affiliate_url not like 'https://trial-sport.ru/%'
-      and p.affiliate_url not like 'https://www.traektoria.ru/%'
-      and p.affiliate_url not like 'https://traektoria.ru/%'
+      and p.affiliate_url not like 'https://trial-sport.ru/goods/%'
+      and p.affiliate_url not like 'https://www.trial-sport.ru/goods/%'
+      and p.affiliate_url not like 'https://www.traektoria.ru/product/%'
+      and p.affiliate_url not like 'https://traektoria.ru/product/%'
     order by p.brand, p.model_name
     limit 50
   `;
@@ -220,8 +243,14 @@ async function main() {
       count: productsWithMissingImageCount.count,
       rows: productsWithMissingImage,
     }),
+    productsWithPlaceholderImage: buildCheck({
+      title: "Active products do not use local seed placeholder images",
+      severity: "warning",
+      count: productsWithPlaceholderImageCount.count,
+      rows: productsWithPlaceholderImage,
+    }),
     productsWithNonStoreLink: buildCheck({
-      title: "Active products point directly to Trial Sport or Traektoria",
+      title: "Active products point directly to product pages in Trial Sport or Traektoria",
       severity: "warning",
       count: productsWithNonStoreLinkCount.count,
       rows: productsWithNonStoreLink,

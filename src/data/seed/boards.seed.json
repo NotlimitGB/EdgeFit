@@ -16,7 +16,7 @@
     "sourceName": "Официальная страница Jones Mountain Twin 2026",
     "sourceUrl": "https://www.jonessnowboards.com/products/men-mountain-twin-snowboard-2026",
     "sourceCheckedAt": "2026-04-07",
-    "isActive": true,
+    "isActive": false,
     "boardLine": "unisex",
     "shapeType": "directional-twin",
     "scenarios": [
@@ -203,7 +203,7 @@
     "sourceName": "Официальная страница Salomon Assassin",
     "sourceUrl": "https://www.salomon.com/en-us/product/assassin-li8535",
     "sourceCheckedAt": "2026-04-07",
-    "isActive": true,
+    "isActive": false,
     "boardLine": "unisex",
     "shapeType": "directional-twin",
     "scenarios": [
@@ -348,7 +348,7 @@
     "sourceName": "Официальная страница Jones Dream Weaver 2.0 2026",
     "sourceUrl": "https://www.jonessnowboards.com/products/women-dream-weaver-2-0-snowboard-2026",
     "sourceCheckedAt": "2026-04-07",
-    "isActive": true,
+    "isActive": false,
     "boardLine": "women",
     "shapeType": "tapered-directional",
     "scenarios": [
