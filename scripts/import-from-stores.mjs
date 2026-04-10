@@ -346,23 +346,31 @@ function mergeWithExistingProduct(existingProduct, importedProduct) {
     return importedProduct;
   }
 
+  const importedMedia = [
+    importedProduct.imageUrl,
+    ...(importedProduct.galleryImages ?? []),
+  ]
+    .map((image) => String(image ?? "").trim())
+    .filter(Boolean);
+  const rawExistingMedia = [
+    existingProduct.imageUrl,
+    ...(existingProduct.galleryImages ?? []),
+  ]
+    .map((image) => String(image ?? "").trim())
+    .filter(Boolean);
+  const existingHasCuratedMedia = rawExistingMedia.some(
+    (image) => !isLocalCatalogPlaceholderImage(image),
+  );
+  const existingMedia = rawExistingMedia.filter(
+    (image) => !existingHasCuratedMedia || !isLocalCatalogPlaceholderImage(image),
+  );
   const mergedGalleryImages = Array.from(
-    new Set(
-      [
-        existingProduct.imageUrl,
-        ...(existingProduct.galleryImages ?? []),
-        importedProduct.imageUrl,
-        ...(importedProduct.galleryImages ?? []),
-      ]
-        .map((image) => String(image ?? "").trim())
-        .filter(Boolean),
-    ),
+    new Set([...importedMedia, ...existingMedia]),
   );
 
   const keepVerifiedMedia = hasCuratedVerifiedMedia(existingProduct);
-  const shouldUseImportedStoreLink =
+  const hasImportedStoreLink =
     Boolean(importedProduct.affiliateUrl?.trim()) &&
-    importedProduct.isActive &&
     !isPlaceholderAffiliateLink(importedProduct.affiliateUrl);
 
   return {
@@ -375,16 +383,16 @@ function mergeWithExistingProduct(existingProduct, importedProduct) {
       importedProduct.priceFrom > 0
         ? importedProduct.priceFrom
         : existingProduct.priceFrom,
-    affiliateUrl: shouldUseImportedStoreLink
+    affiliateUrl: hasImportedStoreLink
       ? importedProduct.affiliateUrl
       : isPreferredStoreLink(existingProduct.affiliateUrl)
         ? existingProduct.affiliateUrl
         : buildTrialSportSearchLink(existingProduct),
     imageUrl: keepVerifiedMedia
-      ? existingProduct.imageUrl
+      ? existingMedia[0] || existingProduct.imageUrl
       : mergedGalleryImages[0] || existingProduct.imageUrl || importedProduct.imageUrl,
     galleryImages: keepVerifiedMedia
-      ? existingProduct.galleryImages ?? []
+      ? existingMedia.slice(1)
       : mergedGalleryImages.slice(1),
     seasonLabel:
       existingProduct.seasonLabel?.trim() ||

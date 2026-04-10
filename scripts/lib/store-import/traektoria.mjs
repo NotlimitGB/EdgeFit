@@ -20,6 +20,9 @@ import {
 const TRAEKTORIA_BASE_URL = "https://www.traektoria.ru";
 const TRAEKTORIA_SECTION_API_URL =
   `${TRAEKTORIA_BASE_URL}/slim/pages/section/snowboard/boards/?SITE_ID=lid`;
+const EXTRA_PRODUCT_URLS = [
+  `${TRAEKTORIA_BASE_URL}/product/1890653_snoubord-jones-mountain-twin/`,
+];
 
 function extractProductId(productUrl) {
   const match = productUrl.match(/\/product\/(\d+)_/u);
@@ -195,7 +198,7 @@ function buildTraektoriaProduct(productUrl, productPayload, checkedAt) {
     availableSkus,
   );
 
-  if (sizes.length === 0 || !sizes.some((size) => size.isAvailable)) {
+  if (sizes.length === 0) {
     return null;
   }
 
@@ -222,6 +225,7 @@ function buildTraektoriaProduct(productUrl, productPayload, checkedAt) {
     skuPrices.length > 0
       ? Math.min(...skuPrices)
       : selectedSku.retail_price || selectedSku.base_price || 0;
+  const hasAvailableSizes = sizes.some((size) => size.isAvailable);
 
   const imageUrls = extractTraektoriaImageUrls(model);
 
@@ -239,7 +243,7 @@ function buildTraektoriaProduct(productUrl, productPayload, checkedAt) {
     imageUrl: imageUrls[0] || "",
     galleryImages: imageUrls.slice(1),
     affiliateUrl: productUrl,
-    isActive: availableSkus.length > 0,
+    isActive: hasAvailableSizes,
     boardLine,
     shapeType,
     dataStatus: "draft",
@@ -282,6 +286,10 @@ export async function importTraektoriaProducts({
       .filter(Boolean)
       .map((url) => toAbsoluteUrl(TRAEKTORIA_BASE_URL, url.split("?")[0])),
   );
+
+  for (const productUrl of EXTRA_PRODUCT_URLS) {
+    productUrls.add(productUrl);
+  }
 
   for (let page = 2; page <= pageCount; page += 1) {
     const pagePayload = await fetchJson(
