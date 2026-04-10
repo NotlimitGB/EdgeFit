@@ -1,6 +1,6 @@
 import { getOrCreateSessionId } from "@/lib/session-id";
 import {
-  getYandexGoalName,
+  getYandexGoalNames,
   type AnalyticsEventName,
 } from "@/lib/analytics/events";
 
@@ -55,18 +55,17 @@ function sendYandexGoal(eventName: AnalyticsEventName, payload: AnalyticsPayload
     return;
   }
 
-  const goalName = getYandexGoalName(eventName);
+  const goalNames = getYandexGoalNames(eventName, payload);
 
-  if (!goalName) {
+  if (goalNames.length === 0) {
     return;
   }
 
-  ym(
-    yandexMetrikaId,
-    "reachGoal",
-    goalName,
-    normalizeYandexParams(payload),
-  );
+  const params = normalizeYandexParams(payload);
+
+  for (const goalName of goalNames) {
+    ym(yandexMetrikaId, "reachGoal", goalName, params);
+  }
 }
 
 function buildBody(

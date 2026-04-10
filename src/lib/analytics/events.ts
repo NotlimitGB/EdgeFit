@@ -14,6 +14,8 @@ export const analyticsEvents = {
 export type AnalyticsEventName =
   (typeof analyticsEvents)[keyof typeof analyticsEvents];
 
+type AnalyticsPayload = Record<string, unknown>;
+
 export const yandexGoalNames: Partial<Record<AnalyticsEventName, string>> = {
   [analyticsEvents.quizStarted]: "edgefit_quiz_started",
   [analyticsEvents.quizStepCompleted]: "edgefit_quiz_step_completed",
@@ -24,6 +26,28 @@ export const yandexGoalNames: Partial<Record<AnalyticsEventName, string>> = {
   [analyticsEvents.recalculationStarted]: "edgefit_recalculation_started",
 };
 
-export function getYandexGoalName(eventName: AnalyticsEventName) {
-  return yandexGoalNames[eventName] ?? null;
+function getScopedYandexGoalNames(
+  eventName: AnalyticsEventName,
+  payload: AnalyticsPayload,
+) {
+  if (
+    eventName === analyticsEvents.productClicked &&
+    payload.placement === "board-page"
+  ) {
+    return ["edgefit_product_clicked_board_page"];
+  }
+
+  return [];
+}
+
+export function getYandexGoalNames(
+  eventName: AnalyticsEventName,
+  payload: AnalyticsPayload = {},
+) {
+  const goalNames = [
+    yandexGoalNames[eventName],
+    ...getScopedYandexGoalNames(eventName, payload),
+  ].filter((goalName): goalName is string => Boolean(goalName));
+
+  return Array.from(new Set(goalNames));
 }
