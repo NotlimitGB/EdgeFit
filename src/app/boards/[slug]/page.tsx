@@ -37,6 +37,8 @@ type BoardPageProduct = NonNullable<
 export const revalidate = 3600;
 
 export async function generateStaticParams() {
+  // При живой базе не строим сотни карточек на билде.
+  // Страницы моделей будут собираться по запросу и кешироваться.
   if (process.env.DATABASE_URL?.trim()) {
     return [];
   }

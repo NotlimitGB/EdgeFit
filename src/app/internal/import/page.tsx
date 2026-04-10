@@ -5,7 +5,7 @@ import { CatalogImportForm } from "@/components/internal/catalog-import-form";
 export const metadata: Metadata = {
   title: "Внутренняя загрузка каталога",
   description:
-    "Внутренняя страница EdgeFit для загрузки моделей и размеров сноубордов из CSV в базу данных.",
+    "Внутренняя страница EdgeFit для загрузки моделей и размеров сноубордов в базу данных.",
   robots: {
     index: false,
     follow: false,
