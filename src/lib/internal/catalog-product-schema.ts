@@ -11,6 +11,13 @@ const shapeTypeSchema = z.enum([
   "directional",
   "tapered-directional",
 ]);
+const camberProfileSchema = z.enum([
+  "camber",
+  "rocker",
+  "flat",
+  "hybrid-camber",
+  "hybrid-rocker",
+]);
 const productDataStatusSchema = z.enum(["draft", "verified"]);
 
 const productSizeSchema = z.object({
@@ -85,6 +92,7 @@ export const catalogProductSchema = z
     isActive: z.boolean(),
     boardLine: boardLineSchema,
     shapeType: z.union([shapeTypeSchema, z.null()]).default(null),
+    camberProfile: z.union([camberProfileSchema, z.null()]).default(null),
     dataStatus: productDataStatusSchema.default("draft"),
     sourceName: z
       .string()

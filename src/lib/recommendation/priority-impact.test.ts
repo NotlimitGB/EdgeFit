@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getRecommendation } from "@/lib/recommendation/engine";
-import { demoInput, demoRecommendation } from "@/lib/recommendation/demo";
+import { demoBoards, demoInput, demoRecommendation } from "@/lib/recommendation/demo";
 import { buildRecommendationPriorityImpact } from "./priority-impact";
 
 describe("buildRecommendationPriorityImpact", () => {
@@ -20,7 +20,7 @@ describe("buildRecommendationPriorityImpact", () => {
       ...demoInput,
       terrainPriority: "switch-freestyle",
       ridingStyle: "park",
-    });
+    }, demoBoards);
     const impact = buildRecommendationPriorityImpact(recommendation);
 
     expect(impact.headline).toContain("живое катание");
@@ -34,7 +34,7 @@ describe("buildRecommendationPriorityImpact", () => {
       terrainPriority: "soft-snow",
       ridingStyle: "freeride",
       aggressiveness: "aggressive",
-    });
+    }, demoBoards);
     const impact = buildRecommendationPriorityImpact(recommendation);
 
     expect(impact.cards[0]?.value).toBe("длиннее с запасом");

@@ -3,6 +3,7 @@ import type {
   BoardLinePreference,
   BoardShape,
   BootDragRisk,
+  CamberProfile,
   ProductDataStatus,
   RidingStyle,
   SkillLevel,
@@ -65,6 +66,14 @@ export const boardShapeLabels: Record<BoardShape, string> = {
   "directional-twin": "направленный твин",
   directional: "направленная",
   "tapered-directional": "направленная с тейпером",
+};
+
+export const camberProfileLabels: Record<CamberProfile, string> = {
+  camber: "camber",
+  rocker: "rocker",
+  flat: "flat",
+  "hybrid-camber": "гибридный camber",
+  "hybrid-rocker": "гибридный rocker",
 };
 
 export const terrainPriorityLabels: Record<TerrainPriority, string> = {

@@ -19,6 +19,13 @@ export type BoardShape =
   | "directional"
   | "tapered-directional";
 
+export type CamberProfile =
+  | "camber"
+  | "rocker"
+  | "flat"
+  | "hybrid-camber"
+  | "hybrid-rocker";
+
 export type TerrainPriority =
   | "balanced"
   | "switch-freestyle"
@@ -75,6 +82,7 @@ export interface Product {
   isActive: boolean;
   boardLine: "men" | "women" | "unisex";
   shapeType: BoardShape | null;
+  camberProfile?: CamberProfile | null;
   dataStatus: ProductDataStatus;
   sourceName: string | null;
   sourceUrl: string | null;

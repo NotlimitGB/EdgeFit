@@ -65,6 +65,13 @@ end $$;
 
 do $$
 begin
+  create type camber_profile_type as enum ('camber', 'rocker', 'flat', 'hybrid-camber', 'hybrid-rocker');
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
   create type aggressiveness_type as enum ('relaxed', 'balanced', 'aggressive');
 exception
   when duplicate_object then null;
@@ -102,6 +109,7 @@ create table if not exists products (
   is_active boolean not null default true,
   board_line board_line_type not null default 'unisex',
   shape_type board_shape_type,
+  camber_profile camber_profile_type,
   data_status product_data_status_type not null default 'draft',
   source_name text,
   source_url text,
@@ -120,6 +128,9 @@ alter table products
 
 alter table products
   add column if not exists shape_type board_shape_type;
+
+alter table products
+  add column if not exists camber_profile camber_profile_type;
 
 alter table products
   add column if not exists data_status product_data_status_type not null default 'draft';

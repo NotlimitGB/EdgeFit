@@ -6,6 +6,34 @@ export function hasCatalogSource(product: Product) {
   return Boolean(product.sourceName?.trim() && product.sourceUrl?.trim());
 }
 
+export function isStoreSpecificationSource(url: string | null | undefined) {
+  const value = url?.trim();
+
+  if (!value) {
+    return false;
+  }
+
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return (
+      hostname === "trial-sport.ru" ||
+      hostname === "www.trial-sport.ru" ||
+      hostname === "traektoria.ru" ||
+      hostname === "www.traektoria.ru"
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function hasTrustedFlex(product: Product) {
+  return (
+    product.dataStatus === "verified" &&
+    hasCatalogSource(product) &&
+    !isStoreSpecificationSource(product.sourceUrl)
+  );
+}
+
 export function hasPlaceholderAffiliateLink(product: Product) {
   return placeholderShopPattern.test(product.affiliateUrl);
 }

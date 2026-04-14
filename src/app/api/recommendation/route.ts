@@ -8,6 +8,17 @@ export async function POST(request: Request) {
   try {
     const payload = quizSubmissionSchema.parse(await request.json());
     const модели = await получитьВсеМодели();
+
+    if (модели.length === 0) {
+      return NextResponse.json(
+        {
+          message:
+            "Каталог сейчас недоступен. Проверьте подключение к базе данных и наличие товаров.",
+        },
+        { status: 503 },
+      );
+    }
+
     const recommendation = getRecommendation(payload, модели);
 
     await сохранитьРезультатКвиза({

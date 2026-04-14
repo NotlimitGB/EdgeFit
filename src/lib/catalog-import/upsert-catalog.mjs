@@ -12,7 +12,7 @@ async function getProductColumnSupport(sql) {
       and (
         (
           table_name = 'products'
-          and column_name in ('season_label', 'gallery_images', 'shape_type', 'data_status', 'source_name', 'source_url', 'source_checked_at')
+          and column_name in ('season_label', 'gallery_images', 'shape_type', 'camber_profile', 'data_status', 'source_name', 'source_url', 'source_checked_at')
         )
         or (
           table_name = 'product_sizes'
@@ -36,6 +36,7 @@ async function getProductColumnSupport(sql) {
     hasSeasonLabel: productColumns.has("season_label"),
     hasGalleryImages: productColumns.has("gallery_images"),
     hasShapeType: productColumns.has("shape_type"),
+    hasCamberProfile: productColumns.has("camber_profile"),
     hasExtendedColumns:
       productColumns.has("data_status") &&
       productColumns.has("source_name") &&
@@ -53,12 +54,13 @@ async function saveCatalogProductInTransaction(transaction, product) {
     ? product.galleryImages.map((image) => String(image ?? "").trim()).filter(Boolean)
     : null;
   const shapeType = product.shapeType ?? null;
+  const camberProfile = product.camberProfile ?? null;
   const seasonLabel = product.seasonLabel?.trim() || null;
   const dataStatus = product.dataStatus ?? "draft";
   const sourceName = product.sourceName?.trim() || null;
   const sourceUrl = product.sourceUrl?.trim() || null;
   const sourceCheckedAt = product.sourceCheckedAt?.trim() || null;
-  const { hasSeasonLabel, hasGalleryImages, hasShapeType, hasExtendedColumns, hasSizeLabel, hasSizeAvailable } = await getProductColumnSupport(
+  const { hasSeasonLabel, hasGalleryImages, hasShapeType, hasCamberProfile, hasExtendedColumns, hasSizeLabel, hasSizeAvailable } = await getProductColumnSupport(
     transaction,
   );
 
@@ -383,6 +385,14 @@ async function saveCatalogProductInTransaction(transaction, product) {
     `;
   }
 
+  if (hasCamberProfile) {
+    await transaction`
+      update products
+      set camber_profile = ${camberProfile}
+      where id = ${savedProduct.id}
+    `;
+  }
+
   await transaction`delete from product_sizes where product_id = ${savedProduct.id}`;
 
   for (const size of product.sizes) {
@@ -484,6 +494,7 @@ async function saveCatalogProductInTransaction(transaction, product) {
     id: savedProduct.id,
     seasonLabel,
     shapeType,
+    camberProfile,
     dataStatus,
     sourceName,
     sourceUrl,

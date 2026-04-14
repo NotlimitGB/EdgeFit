@@ -2,7 +2,6 @@ import "server-only";
 import type { Sql } from "postgres";
 import { cache } from "react";
 import { getBoardSizeLabel } from "@/lib/board-size";
-import { получитьДемоМодели } from "@/lib/demo-products";
 import { получитьКлиентБазы } from "@/lib/database/client";
 import { базаНастроена } from "@/lib/database/config";
 import { getProductColumnSupport } from "@/lib/database/product-column-support";
@@ -26,6 +25,7 @@ interface ProductRow {
   isActive: boolean;
   boardLine: Product["boardLine"];
   shapeType: Product["shapeType"];
+  camberProfile: Product["camberProfile"];
   dataStatus: Product["dataStatus"];
   sourceName: string | null;
   sourceUrl: string | null;
@@ -87,6 +87,7 @@ function normalizeProduct(product: ProductRow): Product {
     priceFrom: Number(product.priceFrom),
     seasonLabel: product.seasonLabel?.trim() || null,
     shapeType: product.shapeType ?? null,
+    camberProfile: product.camberProfile ?? null,
     dataStatus: product.dataStatus ?? "draft",
     sourceName: product.sourceName?.trim() || null,
     sourceUrl: product.sourceUrl?.trim() || null,
@@ -112,6 +113,9 @@ async function getSelectFragments(sql: Sql) {
       : sql.unsafe("'[]'::jsonb"),
     shapeTypeSelect: columnSupport.shapeType
       ? sql.unsafe("p.shape_type")
+      : sql.unsafe("null::text"),
+    camberProfileSelect: columnSupport.camberProfile
+      ? sql.unsafe("p.camber_profile")
       : sql.unsafe("null::text"),
     dataStatusSelect: columnSupport.dataStatus
       ? sql.unsafe("p.data_status")
@@ -150,6 +154,7 @@ async function runProductQuery(
   const {
     seasonLabelSelect,
     shapeTypeSelect,
+    camberProfileSelect,
     galleryImagesSelect,
     dataStatusSelect,
     sourceNameSelect,
@@ -179,6 +184,7 @@ async function runProductQuery(
         p.is_active as "isActive",
         p.board_line as "boardLine",
         ${shapeTypeSelect} as "shapeType",
+        ${camberProfileSelect} as "camberProfile",
         ${dataStatusSelect} as "dataStatus",
         ${sourceNameSelect} as "sourceName",
         ${sourceUrlSelect} as "sourceUrl",
@@ -231,6 +237,7 @@ async function runProductQuery(
         p.is_active as "isActive",
         p.board_line as "boardLine",
         ${shapeTypeSelect} as "shapeType",
+        ${camberProfileSelect} as "camberProfile",
         ${dataStatusSelect} as "dataStatus",
         ${sourceNameSelect} as "sourceName",
         ${sourceUrlSelect} as "sourceUrl",
@@ -291,6 +298,7 @@ async function runProductQuery(
       p.is_active as "isActive",
       p.board_line as "boardLine",
       ${shapeTypeSelect} as "shapeType",
+      ${camberProfileSelect} as "camberProfile",
       ${dataStatusSelect} as "dataStatus",
       ${sourceNameSelect} as "sourceName",
       ${sourceUrlSelect} as "sourceUrl",
@@ -366,7 +374,7 @@ const loadRelatedProductsFromDatabase = cache(
 
 export const получитьВсеМодели = cache(async () => {
   if (!базаНастроена()) {
-    return получитьДемоМодели();
+    return [];
   }
 
   return loadAllProductsFromDatabase();
@@ -374,7 +382,7 @@ export const получитьВсеМодели = cache(async () => {
 
 export const получитьМодельПоСлагу = cache(async (слаг: string) => {
   if (!базаНастроена()) {
-    return получитьДемоМодели().find((model) => model.slug === слаг);
+    return undefined;
   }
 
   return loadProductBySlugFromDatabase(слаг);
@@ -389,14 +397,7 @@ export const получитьПохожиеМодели = cache(
     }
 
     if (!базаНастроена()) {
-      return получитьДемоМодели()
-        .filter(
-          (model) =>
-            model.slug !== слаг &&
-            (model.ridingStyle === currentProduct.ridingStyle ||
-              model.boardLine === currentProduct.boardLine),
-        )
-        .slice(0, лимит);
+      return [];
     }
 
     return loadRelatedProductsFromDatabase(
@@ -410,7 +411,7 @@ export const получитьПохожиеМодели = cache(
 
 export const getAllProductSlugs = cache(async () => {
   if (!базаНастроена()) {
-    return получитьДемоМодели().map((model) => model.slug);
+    return [];
   }
 
   return loadAllProductSlugsFromDatabase();

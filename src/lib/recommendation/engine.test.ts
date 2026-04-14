@@ -58,9 +58,37 @@ function createProduct(
   };
 }
 
+const defaultBoards = [
+  createProduct({
+    slug: "default-all-mountain",
+    modelName: "Default All Mountain",
+  }),
+  createProduct(
+    {
+      slug: "default-park",
+      modelName: "Default Park",
+      ridingStyle: "park",
+      boardLine: "unisex",
+      shapeType: "twin",
+      flex: 5,
+    },
+    { sizeCm: 153, waistWidthMm: 250, widthType: "regular" },
+  ),
+  createProduct(
+    {
+      slug: "default-freeride",
+      modelName: "Default Freeride",
+      ridingStyle: "freeride",
+      shapeType: "directional",
+      flex: 7,
+    },
+    { sizeCm: 156, waistWidthMm: 258, widthType: "mid-wide" },
+  ),
+];
+
 describe("getRecommendation", () => {
   it("returns stable all-mountain length range for base input", () => {
-    const result = getRecommendation(baseInput);
+    const result = getRecommendation(baseInput, defaultBoards);
 
     expect(result.lengthRange).toEqual({ min: 152, max: 156 });
     expect(result.recommendedBoards.length).toBeGreaterThanOrEqual(3);
@@ -70,7 +98,7 @@ describe("getRecommendation", () => {
     const result = getRecommendation({
       ...baseInput,
       bootSizeEu: 44,
-    });
+    }, defaultBoards);
 
     expect(result.recommendedWidthType).toBe("mid-wide");
     expect(result.targetWaistWidthMm).toBeGreaterThanOrEqual(257);
@@ -80,7 +108,7 @@ describe("getRecommendation", () => {
     const result = getRecommendation({
       ...baseInput,
       bootSizeEu: 46,
-    });
+    }, defaultBoards);
 
     expect(result.recommendedWidthType).toBe("wide");
     expect(result.bootDragRisk).not.toBe("low");
@@ -90,11 +118,11 @@ describe("getRecommendation", () => {
     const park = getRecommendation({
       ...baseInput,
       ridingStyle: "park",
-    });
+    }, defaultBoards);
     const freeride = getRecommendation({
       ...baseInput,
       ridingStyle: "freeride",
-    });
+    }, defaultBoards);
 
     expect(park.lengthRange.max).toBeLessThan(freeride.lengthRange.max);
     expect(park.lengthRange.min).toBeLessThan(freeride.lengthRange.min);
@@ -105,29 +133,29 @@ describe("getRecommendation", () => {
       ...baseInput,
       bootSizeEu: 44.5,
       stanceType: "standard",
-    });
+    }, defaultBoards);
     const duck = getRecommendation({
       ...baseInput,
       bootSizeEu: 44.5,
       stanceType: "duck",
-    });
+    }, defaultBoards);
 
     expect(duck.targetWaistWidthMm).toBeLessThan(standard.targetWaistWidthMm);
   });
 
   it("returns a shape profile for the current scenario", () => {
-    const result = getRecommendation(baseInput);
+    const result = getRecommendation(baseInput, defaultBoards);
 
     expect(result.shapeProfile.primary).toBe("directional-twin");
     expect(result.shapeProfile.headline.length).toBeGreaterThan(0);
   });
 
   it("slightly lengthens the range for soft snow priority", () => {
-    const balanced = getRecommendation(baseInput);
+    const balanced = getRecommendation(baseInput, defaultBoards);
     const softSnow = getRecommendation({
       ...baseInput,
       terrainPriority: "soft-snow",
-    });
+    }, defaultBoards);
 
     expect(softSnow.lengthRange.max).toBeGreaterThanOrEqual(
       balanced.lengthRange.max,
@@ -289,6 +317,39 @@ describe("getRecommendation", () => {
     );
   });
 
+  it("does not push a soft all-mountain board to the top for an aggressive advanced rider", () => {
+    const softBoard = createProduct({
+      slug: "soft-aggressive-all-mountain",
+      modelName: "Soft Aggressive All Mountain",
+      ridingStyle: "all-mountain",
+      shapeType: "directional-twin",
+      flex: 4,
+    });
+
+    const supportiveBoard = createProduct({
+      slug: "supportive-aggressive-all-mountain",
+      modelName: "Supportive Aggressive All Mountain",
+      ridingStyle: "all-mountain",
+      shapeType: "directional-twin",
+      flex: 7,
+    });
+
+    const result = getRecommendation(
+      {
+        ...baseInput,
+        skillLevel: "advanced",
+        ridingStyle: "all-mountain",
+        terrainPriority: "balanced",
+        aggressiveness: "aggressive",
+      },
+      [softBoard, supportiveBoard],
+    );
+
+    expect(result.recommendedBoards[0]?.product.slug).toBe(
+      "supportive-aggressive-all-mountain",
+    );
+  });
+
   it("prefers a softer park board for a relaxed rider", () => {
     const softBoard = createProduct({
       slug: "soft-park-board",
@@ -376,5 +437,259 @@ describe("getRecommendation", () => {
         (match) => match.product.ridingStyle === "all-mountain",
       ),
     ).toBe(true);
+  });
+
+  it("keeps style relevance even when only mismatched boards are verified", () => {
+    const verifiedParkOne = createProduct({
+      slug: "verified-park-one",
+      modelName: "Verified Park One",
+      ridingStyle: "park",
+      shapeType: "twin",
+      boardLine: "unisex",
+    });
+
+    const verifiedParkTwo = createProduct(
+      {
+        slug: "verified-park-two",
+        modelName: "Verified Park Two",
+        ridingStyle: "park",
+        shapeType: "twin",
+        boardLine: "unisex",
+      },
+      { sizeCm: 155 },
+    );
+
+    const verifiedFreeride = createProduct({
+      slug: "verified-freeride",
+      modelName: "Verified Freeride",
+      ridingStyle: "freeride",
+      shapeType: "directional",
+      flex: 7,
+    });
+
+    const draftAllMountainOne = createProduct({
+      slug: "draft-all-mountain-one",
+      modelName: "Draft All Mountain One",
+      ridingStyle: "all-mountain",
+      dataStatus: "draft",
+      sourceName: null,
+      sourceUrl: null,
+      sourceCheckedAt: null,
+      affiliateUrl: "https://store.test/draft-all-mountain-one",
+    });
+
+    const draftAllMountainTwo = createProduct(
+      {
+        slug: "draft-all-mountain-two",
+        modelName: "Draft All Mountain Two",
+        ridingStyle: "all-mountain",
+        dataStatus: "draft",
+        sourceName: null,
+        sourceUrl: null,
+        sourceCheckedAt: null,
+        affiliateUrl: "https://store.test/draft-all-mountain-two",
+      },
+      { sizeCm: 155 },
+    );
+
+    const draftAllMountainThree = createProduct(
+      {
+        slug: "draft-all-mountain-three",
+        modelName: "Draft All Mountain Three",
+        ridingStyle: "all-mountain",
+        dataStatus: "draft",
+        sourceName: null,
+        sourceUrl: null,
+        sourceCheckedAt: null,
+        affiliateUrl: "https://store.test/draft-all-mountain-three",
+      },
+      { sizeCm: 153 },
+    );
+
+    const result = getRecommendation(baseInput, [
+      verifiedParkOne,
+      verifiedParkTwo,
+      verifiedFreeride,
+      draftAllMountainOne,
+      draftAllMountainTwo,
+      draftAllMountainThree,
+    ]);
+
+    expect(
+      result.recommendedBoards.every(
+        (match) => match.product.ridingStyle === "all-mountain",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not overtrust draft flex values against a verified board", () => {
+    const verifiedBoard = createProduct({
+      slug: "verified-flex-board",
+      modelName: "Verified Flex Board",
+      flex: 6,
+      ridingStyle: "freeride",
+      shapeType: "directional",
+    });
+
+    const draftBoard = createProduct({
+      slug: "draft-flex-board",
+      modelName: "Draft Flex Board",
+      flex: 8,
+      ridingStyle: "freeride",
+      shapeType: "directional",
+      dataStatus: "draft",
+      sourceName: null,
+      sourceUrl: null,
+      sourceCheckedAt: null,
+      affiliateUrl: "https://store.test/draft-flex-board",
+    });
+
+    const result = getRecommendation(
+      {
+        ...baseInput,
+        skillLevel: "advanced",
+        ridingStyle: "freeride",
+        terrainPriority: "groomers-carving",
+        aggressiveness: "aggressive",
+      },
+      [draftBoard, verifiedBoard],
+    );
+
+    expect(result.recommendedBoards[0]?.product.slug).toBe("verified-flex-board");
+  });
+
+  it("penalizes a too-demanding board more strongly for a beginner rider", () => {
+    const beginnerFriendly = createProduct({
+      slug: "beginner-friendly",
+      modelName: "Beginner Friendly",
+      skillLevel: "beginner",
+      flex: 4,
+      ridingStyle: "all-mountain",
+      shapeType: "directional-twin",
+    });
+
+    const demandingBoard = createProduct({
+      slug: "demanding-board",
+      modelName: "Demanding Board",
+      skillLevel: "advanced",
+      flex: 7,
+      ridingStyle: "all-mountain",
+      shapeType: "directional",
+    });
+
+    const result = getRecommendation(
+      {
+        ...baseInput,
+        skillLevel: "beginner",
+        aggressiveness: "relaxed",
+      },
+      [demandingBoard, beginnerFriendly],
+    );
+
+    expect(result.recommendedBoards[0]?.product.slug).toBe("beginner-friendly");
+  });
+
+  it("prefers a calmer camber profile for a beginner all-mountain scenario", () => {
+    const flatBoard = createProduct({
+      slug: "flat-board",
+      modelName: "Flat Board",
+      camberProfile: "flat",
+    });
+
+    const camberBoard = createProduct({
+      slug: "camber-board",
+      modelName: "Camber Board",
+      camberProfile: "camber",
+    });
+
+    const result = getRecommendation(
+      {
+        ...baseInput,
+        skillLevel: "beginner",
+        aggressiveness: "relaxed",
+      },
+      [camberBoard, flatBoard],
+    );
+
+    expect(result.recommendedBoards[0]?.product.slug).toBe("flat-board");
+  });
+
+  it("prefers camber under an aggressive carving-focused scenario", () => {
+    const camberBoard = createProduct({
+      slug: "carve-camber",
+      modelName: "Carve Camber",
+      ridingStyle: "freeride",
+      shapeType: "directional",
+      flex: 7,
+      camberProfile: "camber",
+    });
+
+    const rockerBoard = createProduct({
+      slug: "carve-rocker",
+      modelName: "Carve Rocker",
+      ridingStyle: "freeride",
+      shapeType: "directional",
+      flex: 7,
+      camberProfile: "rocker",
+    });
+
+    const result = getRecommendation(
+      {
+        ...baseInput,
+        skillLevel: "advanced",
+        ridingStyle: "freeride",
+        terrainPriority: "groomers-carving",
+        aggressiveness: "aggressive",
+      },
+      [rockerBoard, camberBoard],
+    );
+
+    expect(result.recommendedBoards[0]?.product.slug).toBe("carve-camber");
+  });
+
+  it("keeps a well-sized board above a verified but badly sized option", () => {
+    const reliableBadFit = createProduct(
+      {
+        slug: "reliable-bad-fit",
+        modelName: "Reliable Bad Fit",
+        dataStatus: "verified",
+        sourceName: "Official source",
+        sourceUrl: "https://brand.test/reliable-bad-fit",
+        flex: 6,
+      },
+      {
+        sizeCm: 160,
+        waistWidthMm: 246,
+        recommendedWeightMin: 88,
+        recommendedWeightMax: 105,
+        widthType: "regular",
+      },
+    );
+
+    const draftGoodFit = createProduct(
+      {
+        slug: "draft-good-fit",
+        modelName: "Draft Good Fit",
+        dataStatus: "draft",
+        sourceName: null,
+        sourceUrl: null,
+        sourceCheckedAt: null,
+        affiliateUrl: "https://store.test/draft-good-fit",
+      },
+      {
+        sizeCm: 154,
+        waistWidthMm: 252,
+        recommendedWeightMin: 65,
+        recommendedWeightMax: 80,
+        widthType: "regular",
+      },
+    );
+
+    const result = getRecommendation(baseInput, [
+      reliableBadFit,
+      draftGoodFit,
+    ]);
+
+    expect(result.recommendedBoards[0]?.product.slug).toBe("draft-good-fit");
   });
 });

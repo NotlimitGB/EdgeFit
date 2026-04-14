@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useDeferredValue, useMemo, useState } from "react";
 import {
   boardShapeLabels,
+  camberProfileLabels,
   formatMoney,
   productDataStatusLabels,
   ridingStyleLabels,
@@ -17,6 +18,7 @@ import {
 import type {
   Product,
   BoardShape,
+  CamberProfile,
   ProductDataStatus,
   RidingStyle,
   SkillLevel,
@@ -59,6 +61,7 @@ interface ProductDraft {
   isActive: boolean;
   boardLine: "men" | "women" | "unisex";
   shapeType: BoardShape | "";
+  camberProfile: CamberProfile | "";
   dataStatus: ProductDataStatus;
   sourceName: string;
   sourceUrl: string;
@@ -113,6 +116,7 @@ function createEmptyDraft(): ProductDraft {
     isActive: true,
     boardLine: "unisex",
     shapeType: "",
+    camberProfile: "",
     dataStatus: "draft",
     sourceName: "",
     sourceUrl: "",
@@ -140,6 +144,7 @@ function productToDraft(product: Product): ProductDraft {
     isActive: product.isActive,
     boardLine: product.boardLine,
     shapeType: product.shapeType ?? "",
+    camberProfile: product.camberProfile ?? "",
     dataStatus: product.dataStatus,
     sourceName: product.sourceName ?? "",
     sourceUrl: product.sourceUrl ?? "",
@@ -194,6 +199,7 @@ function draftToPayload(draft: ProductDraft) {
     isActive: draft.isActive,
     boardLine: draft.boardLine,
     shapeType: draft.shapeType || null,
+    camberProfile: draft.camberProfile || null,
     dataStatus: draft.dataStatus,
     sourceName: draft.sourceName.trim(),
     sourceUrl: draft.sourceUrl.trim(),
@@ -270,6 +276,7 @@ export function CatalogEditor({ initialProducts }: CatalogEditorProps) {
       isActive: draft.isActive,
       boardLine: draft.boardLine,
       shapeType: draft.shapeType || null,
+      camberProfile: draft.camberProfile || null,
       dataStatus: draft.dataStatus,
       sourceName: draft.sourceName.trim() || null,
       sourceUrl: draft.sourceUrl.trim() || null,
@@ -497,6 +504,11 @@ export function CatalogEditor({ initialProducts }: CatalogEditorProps) {
                         ? boardShapeLabels[product.shapeType]
                         : "форма не указана"}
                     </span>
+                    <span>
+                      {product.camberProfile
+                        ? camberProfileLabels[product.camberProfile]
+                        : "прогиб не указан"}
+                    </span>
                     <span>Размеров: {product.sizes.length}</span>
                     <span>{formatMoney(product.priceFrom)}</span>
                     <span>
@@ -591,7 +603,7 @@ export function CatalogEditor({ initialProducts }: CatalogEditorProps) {
             />
           </div>
 
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-6">
             <SelectField
               label="Стиль катания"
               value={draft.ridingStyle}
@@ -638,6 +650,25 @@ export function CatalogEditor({ initialProducts }: CatalogEditorProps) {
                 {
                   value: "tapered-directional",
                   label: boardShapeLabels["tapered-directional"],
+                },
+              ]}
+            />
+            <SelectField
+              label="Прогиб"
+              value={draft.camberProfile}
+              onChange={(value) => updateDraft("camberProfile", value)}
+              options={[
+                { value: "", label: "Пока не указано" },
+                { value: "camber", label: camberProfileLabels.camber },
+                { value: "rocker", label: camberProfileLabels.rocker },
+                { value: "flat", label: camberProfileLabels.flat },
+                {
+                  value: "hybrid-camber",
+                  label: camberProfileLabels["hybrid-camber"],
+                },
+                {
+                  value: "hybrid-rocker",
+                  label: camberProfileLabels["hybrid-rocker"],
                 },
               ]}
             />

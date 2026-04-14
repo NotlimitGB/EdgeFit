@@ -5,6 +5,7 @@ interface ProductColumnSupport {
   seasonLabel: boolean;
   galleryImages: boolean;
   shapeType: boolean;
+  camberProfile: boolean;
   dataStatus: boolean;
   sourceName: boolean;
   sourceUrl: boolean;
@@ -27,7 +28,7 @@ export async function getProductColumnSupport(sql: Sql): Promise<ProductColumnSu
       and (
         (
           table_name = 'products'
-          and column_name in ('season_label', 'gallery_images', 'shape_type', 'data_status', 'source_name', 'source_url', 'source_checked_at')
+          and column_name in ('season_label', 'gallery_images', 'shape_type', 'camber_profile', 'data_status', 'source_name', 'source_url', 'source_checked_at')
         )
         or (
           table_name = 'product_sizes'
@@ -51,6 +52,7 @@ export async function getProductColumnSupport(sql: Sql): Promise<ProductColumnSu
     seasonLabel: productColumns.has("season_label"),
     galleryImages: productColumns.has("gallery_images"),
     shapeType: productColumns.has("shape_type"),
+    camberProfile: productColumns.has("camber_profile"),
     dataStatus: productColumns.has("data_status"),
     sourceName: productColumns.has("source_name"),
     sourceUrl: productColumns.has("source_url"),

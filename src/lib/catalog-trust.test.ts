@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { hasTrustedFlex } from "@/lib/catalog-readiness";
 import type { Product } from "@/types/domain";
 import { formatCatalogCheckedDate, getProductTrustDetails } from "./catalog-trust";
 
@@ -65,5 +66,23 @@ describe("catalog trust helpers", () => {
     expect(details.badgeLabel).toBe("Нужно перепроверить");
     expect(details.issueLabel).toBe("Модель ещё не отмечена как проверенная.");
     expect(details.badgeDescription).toContain("Модель ещё не отмечена");
+  });
+  it("trusts stiffness only for verified non-store sources", () => {
+    expect(hasTrustedFlex(baseProduct)).toBe(true);
+
+    expect(
+      hasTrustedFlex({
+        ...baseProduct,
+        sourceName: "Траектория",
+        sourceUrl: "https://www.traektoria.ru/product/test-board/",
+      }),
+    ).toBe(false);
+
+    expect(
+      hasTrustedFlex({
+        ...baseProduct,
+        dataStatus: "draft",
+      }),
+    ).toBe(false);
   });
 });

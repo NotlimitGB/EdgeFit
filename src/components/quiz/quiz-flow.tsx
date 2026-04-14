@@ -132,7 +132,13 @@ export function QuizFlow() {
       });
 
       if (!response.ok) {
-        throw new Error("Не удалось получить рекомендацию.");
+        const payload = (await response.json().catch(() => null)) as
+          | { message?: string }
+          | null;
+        throw new Error(
+          payload?.message ||
+            "Не удалось получить рекомендацию. Попробуйте ещё раз чуть позже.",
+        );
       }
 
       const recommendation = await response.json();
@@ -192,11 +198,12 @@ export function QuizFlow() {
           <div>
             <span className="eyebrow">Шаг {step + 1} из 3</span>
             <h1 className="heading-display mt-4 text-4xl font-bold sm:text-5xl">
-              Короткий квиз на 1-2 минуты
+              Короткий квиз без лишних вопросов
             </h1>
             <p className="mt-4 max-w-2xl text-pretty text-base leading-8 text-[var(--color-muted)] sm:text-lg">
-              Собираем только те данные, которые реально влияют на длину,
-              ширину и риск boot drag. Ничего лишнего.
+              Нужны только те данные, которые действительно влияют на длину,
+              ширину и риск зацепа ботинком. Без длинной анкеты и странных
+              вопросов ради галочки.
             </p>
           </div>
         </div>
@@ -244,17 +251,17 @@ export function QuizFlow() {
                 {
                   value: "men",
                   title: boardLineLabels.men,
-                  description: "Больше универсальных и широких моделей.",
+                  description: "Обычно здесь больше универсальных и широких моделей.",
                 },
                 {
                   value: "women",
                   title: boardLineLabels.women,
-                  description: "Ближе к женским линейкам и более узким талиям.",
+                  description: "Ближе к женским моделям и более узким талиям доски.",
                 },
                 {
                   value: "any",
                   title: boardLineLabels.any,
-                  description: "Сервис будет смотреть только на реальные параметры.",
+                  description: "Будем смотреть только на ваши реальные параметры, без жёсткой привязки к линейке.",
                 },
               ]}
               error={errors.boardLinePreference}
@@ -267,17 +274,17 @@ export function QuizFlow() {
                 {
                   value: "beginner",
                   title: "Начинающий",
-                  description: "Нужна более дружелюбная и предсказуемая доска.",
+                  description: "Лучше смотреть на более понятные и прощающие модели.",
                 },
                 {
                   value: "intermediate",
                   title: "Средний уровень",
-                  description: "Нужен баланс контроля, прогресса и стабильности.",
+                  description: "Нужен хороший баланс контроля, прогресса и стабильности.",
                 },
                 {
                   value: "advanced",
                   title: "Продвинутый",
-                  description: "Можно смотреть и на более требовательные модели.",
+                  description: "Можно смотреть на более жёсткие и требовательные модели.",
                 },
               ]}
               error={errors.skillLevel}
@@ -295,17 +302,17 @@ export function QuizFlow() {
                 {
                   value: "all-mountain",
                   title: "All-mountain",
-                  description: "Нужна универсальная длина без сильного перекоса.",
+                  description: "Нужна универсальная доска без сильного перекоса в одну сторону.",
                 },
                 {
                   value: "park",
                   title: "Park / freestyle",
-                  description: "Часто лучше чуть короче и живее.",
+                  description: "Часто лучше что-то покороче, живее и легче в перекантовке.",
                 },
                 {
                   value: "freeride",
                   title: "Freeride / powder",
-                  description: "Часто лучше чуть длиннее и стабильнее.",
+                  description: "Часто лучше чуть длиннее, спокойнее и стабильнее.",
                 },
               ]}
               error={errors.ridingStyle}
@@ -318,22 +325,22 @@ export function QuizFlow() {
                 {
                   value: "balanced",
                   title: terrainPriorityLabels.balanced,
-                  description: "Нужна одна доска без сильного перекоса в одну сторону.",
+                  description: "Хочется одну доску на разные сценарии без явного перекоса.",
                 },
                 {
                   value: "switch-freestyle",
                   title: terrainPriorityLabels["switch-freestyle"],
-                  description: "Хочется легче катать свич, делать side hits и не терять живость.",
+                  description: "Хочется легче катать свич, крутиться и сохранить более живое ощущение доски.",
                 },
                 {
                   value: "groomers-carving",
                   title: terrainPriorityLabels["groomers-carving"],
-                  description: "Важнее уверенность на трассе, дуга и спокойствие на скорости.",
+                  description: "Важнее уверенность на трассе, хорошая дуга и спокойствие на скорости.",
                 },
                 {
                   value: "soft-snow",
                   title: terrainPriorityLabels["soft-snow"],
-                  description: "Хочется больше запаса в мягком снегу и разбитом рельефе.",
+                  description: "Хочется больше запаса в мягком снегу, каше и разбитом рельефе.",
                 },
               ]}
               error={errors.terrainPriority}
@@ -346,17 +353,17 @@ export function QuizFlow() {
                 {
                   value: "relaxed",
                   title: "Спокойный",
-                  description: "Больше про комфорт и прощение ошибок.",
+                  description: "Важнее комфорт, контроль и прощение ошибок.",
                 },
                 {
                   value: "balanced",
                   title: "Сбалансированный",
-                  description: "Компромисс между стабильностью и манёвренностью.",
+                  description: "Нужен баланс между стабильностью и манёвренностью.",
                 },
                 {
                   value: "aggressive",
                   title: "Агрессивный",
-                  description: "Нужен запас по стабильности и скорости.",
+                  description: "Нужен больший запас по стабильности, скорости и поддержке.",
                 },
               ]}
               error={errors.aggressiveness}
@@ -369,17 +376,17 @@ export function QuizFlow() {
                 {
                   value: "standard",
                   title: "Стандартная",
-                  description: "Обычная направленная стойка без сильного разворота.",
+                  description: "Обычная стойка без сильного разворота носков наружу.",
                 },
                 {
                   value: "duck",
                   title: "Duck stance",
-                  description: "Часто даёт немного больше запаса против зацепа.",
+                  description: "Часто даёт немного больше запаса против зацепа ботинком.",
                 },
                 {
                   value: "unknown",
                   title: "Не знаю",
-                  description: "Сервис даст более осторожную оценку риска.",
+                  description: "Тогда просто дадим более осторожную оценку риска.",
                 },
               ]}
               error={errors.stanceType}
@@ -405,10 +412,10 @@ export function QuizFlow() {
 
           <div className="flex flex-col gap-3 sm:flex-row">
             <Link
-              href="/result"
+              href="/catalog"
               className="inline-flex items-center justify-center rounded-full border border-[var(--color-border)] bg-white px-5 py-3 text-sm font-bold text-[var(--color-pine)] hover:border-[var(--color-sky)]"
             >
-              Посмотреть демо-результат
+              Открыть каталог
             </Link>
             {step < stepFields.length - 1 ? (
               <button
@@ -438,11 +445,11 @@ export function QuizFlow() {
             Что учитываем
           </p>
           <ul className="mt-5 space-y-4 text-sm leading-7 text-[var(--color-muted)]">
-            <li>Вес задаёт базовую длину и сильнее влияет на подбор, чем рост.</li>
-            <li>Стиль катания смещает рекомендацию: park короче, freeride длиннее.</li>
-            <li>Приоритет катания помогает точнее выбрать форму доски и подачу.</li>
-            <li>Размер ботинка и стойка дают ширину и оценку риска boot drag.</li>
-            <li>Модели фильтруются по размерной сетке, уровню и характеру доски.</li>
+            <li>Вес сильнее влияет на длину доски, чем рост.</li>
+            <li>Стиль катания смещает рекомендацию: для park чаще короче, для freeride чаще длиннее.</li>
+            <li>Приоритет помогает точнее понять, какая форма доски вам ближе.</li>
+            <li>Размер ботинка и стойка влияют на ширину и риск зацепа.</li>
+            <li>Подходящие модели подбираются по размерной сетке, уровню и характеру доски.</li>
           </ul>
         </div>
 
@@ -451,8 +458,8 @@ export function QuizFlow() {
             Почему квиз короткий
           </p>
           <p className="mt-4 text-sm leading-7 text-[var(--color-muted)]">
-            На MVP мы не собираем всё подряд. Если параметр не влияет на длину,
-            ширину или риск зацепа ботинком, он не мешает сценарию.
+            Мы не собираем всё подряд. Если параметр не влияет на длину, ширину
+            или риск зацепа ботинком, значит он не должен мешать подбору.
           </p>
         </div>
       </aside>

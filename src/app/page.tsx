@@ -5,23 +5,23 @@ import { getSeoLandingPath, seoLandingPages } from "@/lib/seo-pages";
 const scenarios = [
   {
     title: "Для первого сноуборда",
-    text: "Помогаем не завалиться в слишком жёсткую, слишком длинную или слишком узкую доску.",
+    text: "Помогаем не ошибиться с первой доской и не уйти в слишком жёсткую, длинную или узкую модель.",
   },
   {
     title: "Для большого размера ботинка",
-    text: "Быстро отделяем реальные wide-варианты от моделей с пограничной шириной.",
+    text: "Быстро отделяем реальные wide-варианты от моделей, где ширина уже на грани.",
   },
   {
     title: "Для park и all-mountain",
-    text: "Смещаем длину в нужную сторону, а не просто выдаём одну усреднённую цифру.",
+    text: "Помогаем сместить длину в нужную сторону, а не выдаём одну усреднённую цифру на все случаи.",
   },
 ];
 
 const principles = [
-  "Подбор длины по весу с мягкой корректировкой по росту и стилю.",
-  "Рекомендация по ширине с учетом размера ботинка и стойки.",
-  "Проверка риска boot drag понятным языком.",
-  "Список конкретных моделей, а не сухой калькулятор без следующего шага.",
+  "Подбираем длину по весу, а затем аккуратно корректируем её по росту и стилю.",
+  "Подсказываем ширину с учётом ботинка и вашей стойки.",
+  "Показываем риск boot drag без лишней теории и путаницы.",
+  "Даём не только диапазон, но и конкретные модели, с которых стоит начать.",
 ];
 
 export default function Home() {
@@ -30,14 +30,14 @@ export default function Home() {
       <MountEvent eventName="home_viewed" />
       <section className="grid gap-8 xl:grid-cols-[1.05fr_0.95fr] xl:items-center">
         <div className="space-y-6">
-          <span className="eyebrow">Русскоязычный MVP</span>
+          <span className="eyebrow">Подбор сноуборда</span>
           <h1 className="heading-display max-w-4xl text-5xl font-bold text-balance sm:text-6xl lg:text-7xl">
-            Подбор сноуборда по параметрам тела, стилю и размеру ботинка
+            Помогаем подобрать сноуборд по росту, весу, ботинку и стилю катания
           </h1>
           <p className="max-w-3xl text-pretty text-lg leading-8 text-[var(--color-muted)] sm:text-xl">
-            EdgeFit помогает понять рабочую ростовку, нужна ли wide-версия и
-            какие модели реально подходят под ваши вводные. Без форумного шума и
-            случайных советов.
+            EdgeFit помогает понять, какая ростовка вам подходит, нужна ли более
+            широкая доска и на какие модели стоит смотреть в первую очередь.
+            Всё коротко, понятно и без случайных советов.
           </p>
 
           <div className="flex flex-col gap-3 sm:flex-row">
@@ -68,13 +68,13 @@ export default function Home() {
 
           <div className="relative space-y-4">
             <div className="rounded-[1.4rem] bg-[linear-gradient(150deg,rgba(18,52,63,1),rgba(32,89,119,0.92))] p-5 text-white shadow-[0_24px_50px_rgba(18,52,63,0.2)]">
-              <p className="text-sm font-semibold text-white/68">Результат MVP</p>
+              <p className="text-sm font-semibold text-white/68">Пример результата</p>
               <p className="mt-4 heading-display text-3xl font-bold">
                 154-157 см, mid-wide
               </p>
               <p className="mt-3 max-w-md text-sm leading-7 text-white/76">
-                Вес тянет к базовой all-mountain длине, а размер ботинка уже
-                просит дополнительный запас по ширине.
+                По весу вам подходит базовый all-mountain диапазон, а размер
+                ботинка подсказывает смотреть в сторону более широкой талии.
               </p>
             </div>
 
@@ -94,16 +94,15 @@ export default function Home() {
 
       <section className="mt-14 grid gap-5 lg:grid-cols-4">
         {[
-          "Подбор длины",
-          "Подбор ширины",
-          "Проверка boot drag",
-          "Рекомендации по моделям",
-        ].map((item) => (
-          <div key={item} className="panel p-5">
-            <p className="text-lg font-bold">{item}</p>
+          ["Подбор длины", "Не одна случайная цифра, а рабочий диапазон под ваши параметры."],
+          ["Подбор ширины", "Помогаем вовремя понять, когда обычная ширина уже не подходит."],
+          ["Проверка boot drag", "Показываем, есть ли риск цеплять ботинком снег в повороте."],
+          ["Рекомендации по моделям", "После расчёта сразу даём модели, которые действительно стоит посмотреть."],
+        ].map(([title, text]) => (
+          <div key={title} className="panel p-5">
+            <p className="text-lg font-bold">{title}</p>
             <p className="mt-3 text-sm leading-7 text-[var(--color-muted)]">
-              На первом релизе сервис решает ровно одну дорогую проблему: помочь
-              выбрать правильную доску без лишней перегрузки.
+              {text}
             </p>
           </div>
         ))}
@@ -119,9 +118,9 @@ export default function Home() {
 
         <div className="grid gap-4 sm:grid-cols-3">
           {[
-            ["1", "Заполняете квиз", "Только рост, вес, ботинок, уровень и стиль катания."],
-            ["2", "Получаете расчёт", "Показываем диапазон длины, ширину и риск зацепа."],
-            ["3", "Переходите к моделям", "Находите конкретные доски и идёте в магазин уже осознанно."],
+            ["1", "Заполняете квиз", "Нужны только рост, вес, ботинок, уровень и стиль катания."],
+            ["2", "Получаете расчёт", "Показываем диапазон длины, ширину и риск зацепа ботинком."],
+            ["3", "Смотрите модели", "Открываете подходящие доски и уже потом идёте в магазин."],
           ].map(([step, title, text]) => (
             <div key={step} className="panel p-5">
               <p className="heading-display text-4xl font-bold text-[var(--color-sky-deep)]">
@@ -166,9 +165,9 @@ export default function Home() {
       <section className="mt-16 panel overflow-hidden p-6 sm:p-8">
         <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr]">
           <div>
-            <span className="eyebrow">SEO-каркас MVP</span>
+            <span className="eyebrow">Полезные страницы</span>
             <h2 className="heading-display mt-4 text-4xl font-bold">
-              Уже готовы страницы под первые поисковые запросы
+              Уже готовы статьи под популярные поисковые запросы
             </h2>
           </div>
 

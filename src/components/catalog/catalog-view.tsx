@@ -24,13 +24,7 @@ interface CatalogViewProps {
   boards: Product[];
 }
 
-type SortKey =
-  | "featured"
-  | "price-asc"
-  | "price-desc"
-  | "beginners"
-  | "big-boots"
-  | "fresh";
+type SortKey = "default" | "price-asc" | "price-desc";
 
 const PAGE_SIZE = 24;
 
@@ -91,10 +85,6 @@ function compareByFeatured(left: Product, right: Product) {
   );
 }
 
-function hasNonRegularWidth(board: Product) {
-  return getFilterSizes(board).some((size) => size.widthType !== "regular");
-}
-
 export function CatalogView({ boards }: CatalogViewProps) {
   const [query, setQuery] = useState("");
   const [brand, setBrand] = useState("all");
@@ -103,8 +93,7 @@ export function CatalogView({ boards }: CatalogViewProps) {
   const [shape, setShape] = useState<"all" | BoardShape>("all");
   const [boardLine, setBoardLine] = useState<"all" | Product["boardLine"]>("all");
   const [width, setWidth] = useState<"all" | WidthType>("all");
-  const [onlyVerified, setOnlyVerified] = useState(false);
-  const [sort, setSort] = useState<SortKey>("featured");
+  const [sort, setSort] = useState<SortKey>("default");
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const deferredQuery = useDeferredValue(query);
 
@@ -149,7 +138,6 @@ export function CatalogView({ boards }: CatalogViewProps) {
 
         return getFilterSizes(board).some((size) => size.widthType === width);
       })
-      .filter((board) => (onlyVerified ? board.dataStatus === "verified" : true))
       .sort((left, right) => {
         if (sort === "price-asc") {
           return left.priceFrom - right.priceFrom;
@@ -157,41 +145,6 @@ export function CatalogView({ boards }: CatalogViewProps) {
 
         if (sort === "price-desc") {
           return right.priceFrom - left.priceFrom;
-        }
-
-        if (sort === "beginners") {
-          const skillRank: Record<SkillLevel, number> = {
-            beginner: 0,
-            intermediate: 1,
-            advanced: 2,
-          };
-
-          const rankDelta =
-            skillRank[left.skillLevel] - skillRank[right.skillLevel];
-
-          return rankDelta !== 0
-            ? rankDelta
-            : compareByFeatured(left, right);
-        }
-
-        if (sort === "big-boots") {
-          const widthDelta =
-            Number(hasNonRegularWidth(right)) - Number(hasNonRegularWidth(left));
-
-          return widthDelta !== 0
-            ? widthDelta
-            : compareByFeatured(left, right);
-        }
-
-        if (sort === "fresh") {
-          const freshnessDelta = String(right.sourceCheckedAt ?? "").localeCompare(
-            String(left.sourceCheckedAt ?? ""),
-            "ru",
-          );
-
-          return freshnessDelta !== 0
-            ? freshnessDelta
-            : compareByFeatured(left, right);
         }
 
         return compareByFeatured(left, right);
@@ -204,17 +157,11 @@ export function CatalogView({ boards }: CatalogViewProps) {
     shape,
     boardLine,
     width,
-    onlyVerified,
     sort,
     deferredQuery,
   ]);
 
   const visibleBoards = filteredBoards.slice(0, visibleCount);
-  const totalBrands = brandOptions.length - 1;
-  const verifiedCount = filteredBoards.filter(
-    (board) => board.dataStatus === "verified",
-  ).length;
-  const withWideOptionsCount = filteredBoards.filter(hasNonRegularWidth).length;
   const hasActiveFilters =
     query.trim().length > 0 ||
     brand !== "all" ||
@@ -223,8 +170,7 @@ export function CatalogView({ boards }: CatalogViewProps) {
     shape !== "all" ||
     boardLine !== "all" ||
     width !== "all" ||
-    onlyVerified ||
-    sort !== "featured";
+    sort !== "default";
 
   function resetFilters() {
     setQuery("");
@@ -234,8 +180,7 @@ export function CatalogView({ boards }: CatalogViewProps) {
     setShape("all");
     setBoardLine("all");
     setWidth("all");
-    setOnlyVerified(false);
-    setSort("featured");
+    setSort("default");
     resetVisibleCount();
   }
 
@@ -256,84 +201,81 @@ export function CatalogView({ boards }: CatalogViewProps) {
             />
           </label>
 
-            <SelectField
-              label="Бренд"
-              value={brand}
-              onChange={(value) => {
-                setBrand(value);
-                resetVisibleCount();
-              }}
-              options={brandOptions}
-            />
-            <SelectField
-              label="Стиль"
-              value={style}
-              onChange={(value) => {
-                setStyle(value);
-                resetVisibleCount();
-              }}
-              options={[
+          <SelectField
+            label="Бренд"
+            value={brand}
+            onChange={(value) => {
+              setBrand(value);
+              resetVisibleCount();
+            }}
+            options={brandOptions}
+          />
+          <SelectField
+            label="Стиль"
+            value={style}
+            onChange={(value) => {
+              setStyle(value);
+              resetVisibleCount();
+            }}
+            options={[
               { value: "all", label: "Все стили" },
               { value: "all-mountain", label: ridingStyleLabels["all-mountain"] },
               { value: "park", label: ridingStyleLabels.park },
               { value: "freeride", label: ridingStyleLabels.freeride },
             ]}
           />
-            <SelectField
-              label="Сортировка"
-              value={sort}
-              onChange={(value) => {
-                setSort(value);
-                resetVisibleCount();
-              }}
-              options={[
-              { value: "featured", label: "Сначала сильные карточки" },
-              { value: "fresh", label: "Сначала свежо проверенные" },
+          <SelectField
+            label="Сортировка"
+            value={sort}
+            onChange={(value) => {
+              setSort(value);
+              resetVisibleCount();
+            }}
+            options={[
+              { value: "default", label: "По умолчанию" },
               { value: "price-asc", label: "Сначала дешевле" },
               { value: "price-desc", label: "Сначала дороже" },
-              { value: "beginners", label: "Лучше для новичков" },
-              { value: "big-boots", label: "Для больших ботинок" },
             ]}
           />
         </div>
 
         <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <SelectField
-              label="Уровень"
-              value={skill}
-              onChange={(value) => {
-                setSkill(value);
-                resetVisibleCount();
-              }}
-              options={[
+          <SelectField
+            label="Уровень"
+            value={skill}
+            onChange={(value) => {
+              setSkill(value);
+              resetVisibleCount();
+            }}
+            options={[
               { value: "all", label: "Любой уровень" },
               { value: "beginner", label: skillLevelLabels.beginner },
               { value: "intermediate", label: skillLevelLabels.intermediate },
               { value: "advanced", label: skillLevelLabels.advanced },
             ]}
           />
-            <SelectField
-              label="Линейка"
-              value={boardLine}
-              onChange={(value) => {
-                setBoardLine(value);
-                resetVisibleCount();
-              }}
-              options={[
+          <SelectField
+            label="Линейка"
+            value={boardLine}
+            onChange={(value) => {
+              setBoardLine(value);
+              resetVisibleCount();
+            }}
+            options={[
               { value: "all", label: boardLineLabels.all },
               { value: "men", label: boardLineLabels.men },
               { value: "women", label: boardLineLabels.women },
               { value: "unisex", label: boardLineLabels.unisex },
             ]}
           />
-            <SelectField
-              label="Форма"
-              value={shape}
-              onChange={(value) => {
-                setShape(value);
-                resetVisibleCount();
-              }}
-              options={[
+          <SelectField
+            label="Форма"
+            value={shape}
+            onChange={(value) => {
+              setShape(value);
+              resetVisibleCount();
+            }}
+            options={[
               { value: "all", label: "Любая форма" },
               { value: "twin", label: boardShapeLabels.twin },
               { value: "asym-twin", label: boardShapeLabels["asym-twin"] },
@@ -348,25 +290,6 @@ export function CatalogView({ boards }: CatalogViewProps) {
               },
             ]}
           />
-          <label className="flex items-end">
-            <span className="flex w-full items-center justify-between rounded-2xl border border-[var(--color-border)] bg-white px-4 py-3">
-              <span>
-                <span className="block text-sm font-semibold">Только проверенные</span>
-                <span className="mt-1 block text-xs text-[var(--color-muted)]">
-                  Сначала более надёжные карточки
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                checked={onlyVerified}
-                onChange={(event) => {
-                  setOnlyVerified(event.target.checked);
-                  resetVisibleCount();
-                }}
-                className="h-5 w-5 accent-[var(--color-pine)]"
-              />
-            </span>
-          </label>
         </div>
 
         <div className="mt-5 flex flex-wrap gap-3">
@@ -400,29 +323,6 @@ export function CatalogView({ boards }: CatalogViewProps) {
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="В выдаче сейчас"
-          value={String(filteredBoards.length)}
-          note="после текущих фильтров"
-        />
-        <StatCard
-          label="Брендов"
-          value={String(totalBrands)}
-          note="в живом каталоге"
-        />
-        <StatCard
-          label="Проверенных"
-          value={String(verifiedCount)}
-          note="в текущей выдаче"
-        />
-        <StatCard
-          label="С wide / mid-wide"
-          value={String(withWideOptionsCount)}
-          note="есть запас по ширине"
-        />
-      </section>
-
       <section>
         <div className="mb-4 flex items-end justify-between gap-4">
           <div>
@@ -434,8 +334,8 @@ export function CatalogView({ boards }: CatalogViewProps) {
             </h2>
           </div>
           <p className="hidden max-w-md text-right text-sm leading-6 text-[var(--color-muted)] md:block">
-            Каталог теперь показывает только верхнюю часть выдачи и догружается по
-            кнопке, чтобы не пытаться сразу рендерить сотни карточек разом.
+            Можно отфильтровать каталог по бренду, стилю, форме и ширине, а из
+            сортировки оставить только базовый порядок и цену.
           </p>
         </div>
 
@@ -445,9 +345,9 @@ export function CatalogView({ boards }: CatalogViewProps) {
               Ничего не нашлось под текущие фильтры
             </p>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--color-muted)]">
-              Попробуй убрать часть ограничений или начать с поиска только по бренду
-              и стилю. Каталог сейчас большой, и слишком узкая комбинация фильтров
-              легко даёт пустой экран.
+              Попробуйте убрать часть ограничений или начать с поиска только по
+              бренду и стилю. Сейчас пустой экран обычно означает, что фильтры
+              стали слишком узкими.
             </p>
             <button
               type="button"
@@ -518,27 +418,5 @@ function SelectField<T extends string>({
         ))}
       </select>
     </label>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  note,
-}: {
-  label: string;
-  value: string;
-  note: string;
-}) {
-  return (
-    <div className="panel p-5">
-      <p className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--color-sky-deep)]">
-        {label}
-      </p>
-      <p className="heading-display mt-3 text-4xl font-bold text-[var(--color-ink)]">
-        {value}
-      </p>
-      <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">{note}</p>
-    </div>
   );
 }

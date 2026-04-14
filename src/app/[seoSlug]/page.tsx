@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { SeoLandingPageView } from "@/components/seo/landing-page";
 import { getSeoLandingPage, getSeoLandingPath, seoLandingPages } from "@/lib/seo-pages";
+import { getAbsoluteSiteUrl } from "@/lib/site-url";
 
 export async function generateStaticParams() {
   return seoLandingPages.map((page) => ({
@@ -32,7 +33,7 @@ export async function generateMetadata({
       description: page.description,
       type: "article",
       locale: "ru_RU",
-      url: `https://edgefit.example/${page.slug}`,
+      url: getAbsoluteSiteUrl(`/${page.slug}`),
     },
   };
 }

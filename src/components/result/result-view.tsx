@@ -19,7 +19,6 @@ import {
   widthTypeLabels,
 } from "@/lib/content";
 import { buildRecommendationDecisionGuide } from "@/lib/recommendation/decision-guide";
-import { demoRecommendation } from "@/lib/recommendation/demo";
 import { buildRecommendationPriorityImpact } from "@/lib/recommendation/priority-impact";
 import { buildRecommendationTrustSummary } from "@/lib/recommendation/trust-summary";
 import { getOrCreateSessionId } from "@/lib/session-id";
@@ -28,7 +27,7 @@ import type { RecommendationResult } from "@/types/domain";
 
 const RESULT_STORAGE_KEY = "edgefit.latest-recommendation";
 let cachedRawRecommendation: string | null | undefined;
-let cachedRecommendation: RecommendationResult = demoRecommendation;
+let cachedRecommendation: RecommendationResult | null = null;
 
 interface EmailLeadResponse {
   message: string;
@@ -40,7 +39,7 @@ function subscribe() {
 
 function getRecommendationSnapshot() {
   if (typeof window === "undefined") {
-    return demoRecommendation;
+    return null;
   }
 
   const rawRecommendation = window.sessionStorage.getItem(RESULT_STORAGE_KEY);
@@ -52,14 +51,14 @@ function getRecommendationSnapshot() {
   cachedRawRecommendation = rawRecommendation;
 
   if (!rawRecommendation) {
-    cachedRecommendation = demoRecommendation;
+    cachedRecommendation = null;
     return cachedRecommendation;
   }
 
   try {
     cachedRecommendation = JSON.parse(rawRecommendation) as RecommendationResult;
   } catch {
-    cachedRecommendation = demoRecommendation;
+    cachedRecommendation = null;
   }
 
   return cachedRecommendation;
@@ -101,7 +100,7 @@ export function ResultView() {
   const recommendation = useSyncExternalStore(
     subscribe,
     getRecommendationSnapshot,
-    () => demoRecommendation,
+    () => null,
   );
   const [email, setEmail] = useState("");
   const [consent, setConsent] = useState(false);
@@ -109,21 +108,23 @@ export function ResultView() {
   const [emailSuccess, setEmailSuccess] = useState("");
   const [isSubmittingEmail, setIsSubmittingEmail] = useState(false);
 
-  const trustSummary = buildRecommendationTrustSummary(recommendation);
-  const decisionGuideItems = buildRecommendationDecisionGuide(recommendation);
-  const priorityImpact = buildRecommendationPriorityImpact(recommendation);
-  const compactExplanation = getCompactExplanation(recommendation);
-  const topBoards = recommendation.recommendedBoards.slice(0, 3);
-  const comparisonBoards = recommendation.recommendedBoards.slice(0, 3);
-  const extraRecommendedBoards = recommendation.recommendedBoards.slice(3);
-
   useEffect(() => {
+    if (!recommendation) {
+      return;
+    }
+
     void trackEvent("result_viewed", buildResultPayload(recommendation));
   }, [recommendation]);
 
   useEffect(() => {
+    if (!recommendation) {
+      return;
+    }
+
+    const currentRecommendation = recommendation;
+
     function handlePageHide() {
-      void trackEvent("result_exited", buildResultPayload(recommendation), {
+      void trackEvent("result_exited", buildResultPayload(currentRecommendation), {
         useBeacon: true,
       });
     }
@@ -138,14 +139,42 @@ export function ResultView() {
   if (!recommendation) {
     return (
       <div className="container-shell py-16">
-        <div className="panel p-8">
-          <p className="text-sm text-[var(--color-muted)]">
-            Загружаем результат...
+        <section className="panel max-w-3xl p-8 sm:p-10">
+          <span className="eyebrow">Нет сохранённого результата</span>
+          <h1 className="heading-display mt-4 text-3xl font-bold text-balance sm:text-4xl">
+            Сначала пройдите квиз, и мы соберём подбор под ваши параметры
+          </h1>
+          <p className="mt-4 text-sm leading-7 text-[var(--color-muted)] sm:text-base">
+            Здесь больше нет демонстрационной выдачи. Страница результата теперь
+            показывает только ваш реальный расчёт после прохождения квиза.
           </p>
-        </div>
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+            <Link
+              href="/quiz"
+              className="inline-flex items-center justify-center rounded-full bg-[var(--color-pine)] px-5 py-3 text-sm font-bold text-white hover:-translate-y-0.5 hover:bg-[var(--color-sky-deep)]"
+            >
+              Пройти квиз
+            </Link>
+            <Link
+              href="/catalog"
+              className="inline-flex items-center justify-center rounded-full border border-[var(--color-border)] bg-white px-5 py-3 text-sm font-bold text-[var(--color-pine)] hover:border-[var(--color-sky)]"
+            >
+              Открыть каталог
+            </Link>
+          </div>
+        </section>
       </div>
     );
   }
+
+  const activeRecommendation = recommendation;
+  const trustSummary = buildRecommendationTrustSummary(recommendation);
+  const decisionGuideItems = buildRecommendationDecisionGuide(recommendation);
+  const priorityImpact = buildRecommendationPriorityImpact(recommendation);
+  const compactExplanation = getCompactExplanation(recommendation);
+  const topBoards = recommendation.recommendedBoards.slice(0, 3);
+  const comparisonBoards = recommendation.recommendedBoards.slice(0, 3);
+  const extraRecommendedBoards = recommendation.recommendedBoards.slice(3);
 
   async function handleEmailSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -174,12 +203,12 @@ export function ResultView() {
       }
 
       setEmailSuccess(
-        "Почта сохранена. Теперь этот результат можно использовать для повторного контакта.",
+        "Готово. Сохранили почту, чтобы вы могли вернуться к этому результату позже.",
       );
 
       void trackEvent("email_submitted", {
         source: "result-page",
-        ...buildResultPayload(recommendation),
+        ...buildResultPayload(activeRecommendation),
       });
     } catch (error) {
       setEmailError(
@@ -203,12 +232,12 @@ export function ResultView() {
       size_cm: sizeCm,
       size_label: sizeLabel,
       width_type: widthType,
-      ...buildResultPayload(recommendation),
+      ...buildResultPayload(activeRecommendation),
     };
   }
 
   function handleRecalculationStart() {
-    void trackEvent("recalculation_started", buildResultPayload(recommendation));
+    void trackEvent("recalculation_started", buildResultPayload(activeRecommendation));
   }
 
   return (
@@ -221,16 +250,16 @@ export function ResultView() {
             {widthTypeLabels[recommendation.recommendedWidthType]}
           </h1>
           <p className="mt-4 max-w-3xl text-base leading-8 text-[var(--color-muted)] sm:text-lg">
-            Коротко: под ваши параметры нужен рабочий диапазон длины, запас по
-            ширине под ботинок и форма доски без лишнего перекоса в чужой
-            сценарий.
+            Под ваши параметры сейчас логично смотреть на такой диапазон длины,
+            нужную ширину под ботинок и форму доски без сильного перекоса в
+            чужой сценарий катания.
           </p>
 
           <div className="mt-6 rounded-[1.4rem] border border-[var(--color-border)] bg-[var(--color-paper-soft)] p-5 sm:p-6">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-muted)]">
-                  Форма под сценарий
+                  Подходящая форма
                 </p>
                 <p className="mt-2 text-xl font-bold text-[var(--color-ink)]">
                   {boardShapeLabels[recommendation.shapeProfile.primary]}
@@ -241,7 +270,7 @@ export function ResultView() {
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-muted)]">
-                  Выбранный приоритет
+                  Ваш приоритет
                 </p>
                 <p className="mt-2 text-xl font-bold text-[var(--color-ink)]">
                   {terrainPriorityLabels[recommendation.input.terrainPriority]}
@@ -257,17 +286,17 @@ export function ResultView() {
             <MetricCard
               label="Длина"
               value={`${recommendation.lengthRange.min}-${recommendation.lengthRange.max} см`}
-              description="Рабочий диапазон без лишней псевдоточности."
+              description="Не одна случайная цифра, а рабочий диапазон под ваши вводные."
             />
             <MetricCard
               label="Ширина"
               value={widthTypeLabels[recommendation.recommendedWidthType]}
-              description={`Ориентир по талии около ${recommendation.targetWaistWidthMm} мм.`}
+              description={`Ориентир по талии доски около ${recommendation.targetWaistWidthMm} мм.`}
             />
             <MetricCard
               label="Риск зацепа"
               value={bootDragRiskLabels[recommendation.bootDragRisk]}
-              description="Оценка по ботинку, ширине и стойке."
+              description="Считаем по размеру ботинка, ширине доски и стойке."
             />
           </div>
 
@@ -316,7 +345,7 @@ export function ResultView() {
 
           <div className="panel p-6">
             <p className="text-sm font-bold uppercase tracking-[0.18em] text-[var(--color-sky-deep)]">
-              Что делать дальше
+              Что можно сделать дальше
             </p>
             <div className="mt-5 flex flex-col gap-3">
               <Link
@@ -341,11 +370,11 @@ export function ResultView() {
         <div className="mb-6">
           <span className="eyebrow">Подходящие модели</span>
           <h2 className="heading-display mt-4 text-3xl font-bold sm:text-4xl">
-            Что сейчас выглядит сильнее всего
+            Три варианта, с которых стоит начать
           </h2>
           <p className="mt-4 max-w-3xl text-sm leading-7 text-[var(--color-muted)]">
-            Здесь только главные варианты. Мы не растягиваем выдачу лишними
-            карточками сверху, чтобы решение было проще принять.
+            Здесь только самые сильные варианты, чтобы было проще выбрать
+            направление и не утонуть в длинной выдаче.
           </p>
         </div>
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
@@ -382,8 +411,8 @@ export function ResultView() {
                 Оставьте почту, если хотите вернуться позже
               </h2>
               <p className="mt-4 text-sm leading-7 text-[var(--color-muted)]">
-                Эта форма теперь ниже, чтобы не мешать просмотру результата, но
-                по-прежнему остаётся под рукой.
+                Если захотите вернуться к подбору позже, просто оставьте почту.
+                Ничего лишнего: сохраним результат и отправим его вам.
               </p>
             </div>
 
@@ -407,8 +436,8 @@ export function ResultView() {
                   className="mt-1 h-4 w-4 accent-[var(--color-pine)]"
                 />
                 <span className="text-sm leading-7 text-[var(--color-muted)]">
-                  Согласен получить результат подбора и связанный с ним полезный
-                  материал по этой почте.
+                  Согласен получить результат подбора и полезные материалы по
+                  этой теме на указанную почту.
                 </span>
               </label>
 
@@ -441,11 +470,11 @@ export function ResultView() {
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left [&::-webkit-details-marker]:hidden">
             <div>
               <p className="text-sm font-bold uppercase tracking-[0.18em] text-[var(--color-sky-deep)]">
-                Детали расчёта
+                Как мы получили этот результат
               </p>
               <p className="mt-2 text-sm leading-7 text-[var(--color-muted)]">
-                Здесь всё, что важно для тех, кто хочет глубже понять логику
-                подбора.
+                Здесь вся логика подбора для тех, кто хочет понять расчёт
+                глубже, а не просто увидеть готовый ответ.
               </p>
             </div>
             <span className="inline-flex items-center rounded-full border border-[var(--color-border)] px-4 py-2 text-xs font-bold text-[var(--color-pine)]">
@@ -508,11 +537,11 @@ export function ResultView() {
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left [&::-webkit-details-marker]:hidden">
             <div>
               <p className="text-sm font-bold uppercase tracking-[0.18em] text-[var(--color-sky-deep)]">
-                Как выбрать из верхних вариантов
+                Как выбрать между верхними вариантами
               </p>
               <p className="mt-2 text-sm leading-7 text-[var(--color-muted)]">
                 Здесь собраны три понятных сценария выбора и короткое сравнение
-                верхних моделей с прямыми ссылками.
+                верхних моделей, чтобы не читать всё подряд.
               </p>
             </div>
             <span className="inline-flex items-center rounded-full border border-[var(--color-border)] px-4 py-2 text-xs font-bold text-[var(--color-pine)]">
@@ -576,8 +605,8 @@ export function ResultView() {
                   Быстрое сравнение верхних вариантов
                 </p>
                 <p className="mt-2 text-sm leading-7 text-[var(--color-muted)]">
-                  Если не хочется читать длинные карточки, смотри на роль
-                  варианта, размер и сразу переходи к модели.
+                  Если не хочется читать длинные карточки, просто смотри на роль
+                  варианта, размер и переходи к нужной модели.
                 </p>
               </div>
 
@@ -668,7 +697,7 @@ export function ResultView() {
                 </h3>
                 <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--color-muted)]">
                   Эти модели не обязательно плохие сами по себе, но под ваши
-                  вводные сейчас попадают слабее.
+                  параметры и сценарий катания сейчас выглядят слабее.
                 </p>
                 <div className="mt-4 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
                   {recommendation.avoidBoards.map((match) => (

@@ -2,6 +2,7 @@ import {
   hasPlaceholderAffiliateLink,
   isReadyForCatalog,
   isVerifiedProduct,
+  hasTrustedFlex,
 } from "@/lib/catalog-readiness";
 import {
   aggressivenessLabels,
@@ -14,7 +15,6 @@ import {
   widthTypeDescriptions,
   widthTypeLabels,
 } from "@/lib/content";
-import boardsSeed from "@/data/seed/boards.seed.json";
 import {
   buildTerrainPriorityExplanation,
   getRecommendationShapeProfile,
@@ -24,6 +24,7 @@ import {
 import { getRecommendedWeightMaxValue } from "@/lib/weight-range";
 import type {
   BootDragRisk,
+  CamberProfile,
   Product,
   ProductSize,
   QuizInput,
@@ -34,25 +35,9 @@ import type {
   WidthType,
 } from "@/types/domain";
 
-export const ALGORITHM_VERSION = "v1.4.0";
+export const ALGORITHM_VERSION = "v1.6.0";
 
-function getDemoProducts() {
-  return (boardsSeed as Product[])
-    .filter((product) => product.isActive)
-    .map((product) => ({
-      ...product,
-      shapeType: product.shapeType ?? null,
-      dataStatus: product.dataStatus ?? "draft",
-      sourceName: product.sourceName?.trim() || null,
-      sourceUrl: product.sourceUrl?.trim() || null,
-      sourceCheckedAt: product.sourceCheckedAt || null,
-      sizes: product.sizes.map((size) => ({
-        ...size,
-        sizeLabel: size.sizeLabel?.trim() || null,
-        isAvailable: size.isAvailable !== false,
-      })),
-    }));
-}
+type CompatibilitySeverity = "ideal" | "neutral" | "soft-mismatch" | "hard-mismatch";
 
 const WEIGHT_LENGTH_RULES = [
   { min: 35, max: 44.99, range: { min: 138, max: 142 } },
@@ -192,16 +177,17 @@ function getSkillCompatibility(
   const order = ["beginner", "intermediate", "advanced"] as const;
   const boardIndex = order.indexOf(boardSkill);
   const userIndex = order.indexOf(userSkill);
+  const delta = boardIndex - userIndex;
 
-  if (boardIndex === userIndex) {
+  if (delta === 0) {
     return 16;
   }
 
-  if (Math.abs(boardIndex - userIndex) === 1) {
-    return 10;
+  if (delta < 0) {
+    return delta === -1 ? 12 : 6;
   }
 
-  return -10;
+  return delta === 1 ? 4 : -14;
 }
 
 function getBoardLineCompatibility(
@@ -280,6 +266,23 @@ function getStyleFocusedBoards(boards: Product[], input: QuizInput) {
   );
 
   return focusedBoards.length >= 3 ? focusedBoards : boards;
+}
+
+function getCandidateBoards(boards: Product[], input: QuizInput) {
+  const styleFocusedBoards = getStyleFocusedBoards(boards, input);
+  const catalogReadyBoards = styleFocusedBoards.filter(isReadyForCatalog);
+
+  if (catalogReadyBoards.length >= 3) {
+    return catalogReadyBoards;
+  }
+
+  const verifiedBoards = styleFocusedBoards.filter(isVerifiedProduct);
+
+  if (verifiedBoards.length >= 3) {
+    return verifiedBoards;
+  }
+
+  return styleFocusedBoards;
 }
 
 function getLengthTarget(
@@ -480,8 +483,50 @@ function getFlexPreferenceRange(input: QuizInput) {
   return { min, max };
 }
 
+function getFlexPenaltyProfile(input: QuizInput) {
+  let softPenaltyBoost = 0;
+  let stiffPenaltyBoost = 0;
+
+  if (input.skillLevel === "advanced") {
+    softPenaltyBoost += 2;
+  }
+
+  if (input.aggressiveness === "aggressive") {
+    softPenaltyBoost += 3;
+  }
+
+  if (
+    input.ridingStyle === "freeride" ||
+    input.terrainPriority === "groomers-carving" ||
+    input.terrainPriority === "soft-snow"
+  ) {
+    softPenaltyBoost += 2;
+  }
+
+  if (input.skillLevel === "beginner") {
+    stiffPenaltyBoost += 3;
+  }
+
+  if (input.aggressiveness === "relaxed") {
+    stiffPenaltyBoost += 2;
+  }
+
+  if (
+    input.ridingStyle === "park" ||
+    input.terrainPriority === "switch-freestyle"
+  ) {
+    stiffPenaltyBoost += 2;
+  }
+
+  return {
+    softPenaltyBoost,
+    stiffPenaltyBoost,
+  };
+}
+
 function getFlexCompatibility(flex: number, input: QuizInput) {
   const preferredRange = getFlexPreferenceRange(input);
+  const penaltyProfile = getFlexPenaltyProfile(input);
   const target = (preferredRange.min + preferredRange.max) / 2;
 
   if (flex >= preferredRange.min && flex <= preferredRange.max) {
@@ -502,9 +547,44 @@ function getFlexCompatibility(flex: number, input: QuizInput) {
     Math.abs(flex - preferredRange.max),
   );
 
+  if (flex < preferredRange.min) {
+    if (distanceToRange <= 0.5) {
+      return {
+        score: roundScore(4 - penaltyProfile.softPenaltyBoost * 0.5),
+        reason: null,
+        preferredRange,
+      };
+    }
+
+    if (distanceToRange <= 1) {
+      return {
+        score: roundScore(1 - penaltyProfile.softPenaltyBoost),
+        reason: null,
+        preferredRange,
+      };
+    }
+
+    if (distanceToRange <= 2) {
+      return {
+        score: roundScore(-5 - penaltyProfile.softPenaltyBoost * 1.5),
+        reason:
+          penaltyProfile.softPenaltyBoost >= 4
+            ? "Жесткость модели выглядит слишком мягкой под ваш темп и сценарий катания."
+            : null,
+        preferredRange,
+      };
+    }
+
+    return {
+      score: roundScore(-10 - penaltyProfile.softPenaltyBoost * 2),
+      reason: "Для вашего сценария эта доска выглядит слишком мягкой по жесткости.",
+      preferredRange,
+    };
+  }
+
   if (distanceToRange <= 1) {
     return {
-      score: 8,
+      score: roundScore(6 - penaltyProfile.stiffPenaltyBoost),
       reason: null,
       preferredRange,
     };
@@ -512,16 +592,319 @@ function getFlexCompatibility(flex: number, input: QuizInput) {
 
   if (distanceToRange <= 2) {
     return {
-      score: 2,
-      reason: null,
+      score: roundScore(0 - penaltyProfile.stiffPenaltyBoost * 1.5),
+      reason:
+        penaltyProfile.stiffPenaltyBoost >= 4
+          ? "Жесткость модели уже уходит в слишком дубовую сторону под ваш сценарий."
+          : null,
       preferredRange,
     };
   }
 
   return {
-    score: -8,
-    reason: null,
+    score: roundScore(-6 - penaltyProfile.stiffPenaltyBoost * 2),
+    reason: "Для вашего сценария эта доска выглядит слишком жесткой.",
     preferredRange,
+  };
+}
+
+function getTerrainPriorityCompatibility(product: Product, input: QuizInput) {
+  let score = 0;
+
+  switch (input.terrainPriority) {
+    case "balanced":
+      score += product.ridingStyle === "all-mountain" ? 8 : -3;
+
+      if (product.shapeType === "directional-twin") {
+        score += 4;
+      } else if (
+        product.shapeType === "directional" ||
+        product.shapeType === "twin" ||
+        product.shapeType === "asym-twin"
+      ) {
+        score += 1;
+      } else if (product.shapeType === "tapered-directional") {
+        score -= 3;
+      }
+      break;
+    case "switch-freestyle":
+      if (product.ridingStyle === "park") {
+        score += 8;
+      } else if (product.ridingStyle === "all-mountain") {
+        score += 3;
+      } else {
+        score -= 8;
+      }
+
+      if (product.shapeType === "twin" || product.shapeType === "asym-twin") {
+        score += 6;
+      } else if (product.shapeType === "directional-twin") {
+        score += 3;
+      } else if (product.shapeType) {
+        score -= 6;
+      }
+      break;
+    case "groomers-carving":
+      if (product.ridingStyle === "freeride") {
+        score += 7;
+      } else if (product.ridingStyle === "all-mountain") {
+        score += 5;
+      } else {
+        score -= 6;
+      }
+
+      if (product.shapeType === "directional") {
+        score += 6;
+      } else if (product.shapeType === "tapered-directional") {
+        score += 5;
+      } else if (product.shapeType === "directional-twin") {
+        score += 4;
+      } else if (product.shapeType) {
+        score -= 4;
+      }
+
+      if (product.flex >= 6) {
+        score += 2;
+      } else if (product.flex <= 4) {
+        score -= 2;
+      }
+      break;
+    case "soft-snow":
+      if (product.ridingStyle === "freeride") {
+        score += 9;
+      } else if (product.ridingStyle === "all-mountain") {
+        score += 3;
+      } else {
+        score -= 8;
+      }
+
+      if (product.shapeType === "tapered-directional") {
+        score += 8;
+      } else if (product.shapeType === "directional") {
+        score += 5;
+      } else if (product.shapeType === "directional-twin") {
+        score += 1;
+      } else if (product.shapeType) {
+        score -= 6;
+      }
+
+      if (product.flex >= 6) {
+        score += 2;
+      }
+      break;
+    default:
+      break;
+  }
+
+  return {
+    score,
+    reason:
+      score >= 8
+        ? "Модель хорошо совпадает с вашим главным приоритетом катания."
+        : null,
+  };
+}
+
+function getPreferredCamberProfiles(input: QuizInput) {
+  if (input.terrainPriority === "soft-snow") {
+    return {
+      primary: ["hybrid-rocker", "rocker"] as CamberProfile[],
+      secondary: ["hybrid-camber"] as CamberProfile[],
+    };
+  }
+
+  if (input.terrainPriority === "groomers-carving") {
+    return {
+      primary: ["camber", "hybrid-camber"] as CamberProfile[],
+      secondary: ["flat"] as CamberProfile[],
+    };
+  }
+
+  if (input.terrainPriority === "switch-freestyle" || input.ridingStyle === "park") {
+    if (
+      input.skillLevel === "advanced" &&
+      input.aggressiveness === "aggressive"
+    ) {
+      return {
+        primary: ["camber", "hybrid-camber"] as CamberProfile[],
+        secondary: ["flat", "hybrid-rocker"] as CamberProfile[],
+      };
+    }
+
+    return {
+      primary: ["flat", "hybrid-rocker"] as CamberProfile[],
+      secondary: ["rocker", "hybrid-camber"] as CamberProfile[],
+    };
+  }
+
+  if (
+    input.skillLevel === "beginner" ||
+    input.aggressiveness === "relaxed"
+  ) {
+    return {
+      primary: ["flat", "hybrid-rocker"] as CamberProfile[],
+      secondary: ["hybrid-camber", "rocker"] as CamberProfile[],
+    };
+  }
+
+  if (input.ridingStyle === "freeride") {
+    return {
+      primary: ["hybrid-camber", "camber"] as CamberProfile[],
+      secondary: ["hybrid-rocker"] as CamberProfile[],
+    };
+  }
+
+  return {
+    primary: ["hybrid-camber"] as CamberProfile[],
+    secondary: ["camber", "flat"] as CamberProfile[],
+  };
+}
+
+function getCamberCompatibility(
+  camberProfile: Product["camberProfile"],
+  input: QuizInput,
+) {
+  if (!camberProfile) {
+    return {
+      score: 0,
+      reason: null,
+    };
+  }
+
+  const preferredProfiles = getPreferredCamberProfiles(input);
+
+  if (preferredProfiles.primary.includes(camberProfile)) {
+    return {
+      score: 8,
+      reason:
+        "Прогиб доски хорошо совпадает с тем, как вы собираетесь кататься и какого ощущения ждёте от доски.",
+    };
+  }
+
+  if (preferredProfiles.secondary.includes(camberProfile)) {
+    return {
+      score: 3,
+      reason: null,
+    };
+  }
+
+  return {
+    score: -6,
+    reason: null,
+  };
+}
+
+function getLengthMismatchSeverity(
+  sizeCm: number,
+  lengthRange: { min: number; max: number },
+): CompatibilitySeverity {
+  if (sizeCm >= lengthRange.min && sizeCm <= lengthRange.max) {
+    return "ideal";
+  }
+
+  const distanceToRange = Math.min(
+    Math.abs(sizeCm - lengthRange.min),
+    Math.abs(sizeCm - lengthRange.max),
+  );
+
+  if (distanceToRange <= 2.5) {
+    return "soft-mismatch";
+  }
+
+  return "hard-mismatch";
+}
+
+function getWeightMismatchSeverity(
+  size: ProductSize,
+  weightKg: number,
+): CompatibilitySeverity {
+  const weightMax = getRecommendedWeightMaxValue(size);
+  const hasWeightData =
+    size.recommendedWeightMin > 0 || size.recommendedWeightMax != null;
+
+  if (!hasWeightData) {
+    return "neutral";
+  }
+
+  if (weightKg >= size.recommendedWeightMin && weightKg <= weightMax) {
+    return "ideal";
+  }
+
+  const distanceToRange = Math.max(
+    size.recommendedWeightMin - weightKg,
+    weightKg - weightMax,
+    0,
+  );
+
+  if (distanceToRange <= 5) {
+    return "soft-mismatch";
+  }
+
+  return "hard-mismatch";
+}
+
+function getWidthMismatchSeverity(
+  widthDelta: number,
+  input: QuizInput,
+): CompatibilitySeverity {
+  const negativeTolerance = input.stanceType === "duck" ? -1.5 : -1;
+
+  if (widthDelta >= negativeTolerance) {
+    return "ideal";
+  }
+
+  if (widthDelta >= -3) {
+    return "soft-mismatch";
+  }
+
+  return "hard-mismatch";
+}
+
+function getCriticalSizePenalty(
+  size: ProductSize,
+  input: QuizInput,
+  lengthRange: { min: number; max: number },
+  widthDelta: number,
+) {
+  const mismatchSeverities = [
+    getLengthMismatchSeverity(size.sizeCm, lengthRange),
+    getWeightMismatchSeverity(size, input.weightKg),
+    getWidthMismatchSeverity(widthDelta, input),
+  ];
+
+  const hardMismatchCount = mismatchSeverities.filter(
+    (severity) => severity === "hard-mismatch",
+  ).length;
+  const softMismatchCount = mismatchSeverities.filter(
+    (severity) => severity === "soft-mismatch",
+  ).length;
+
+  if (hardMismatchCount >= 2) {
+    return {
+      score: -18,
+      reason:
+        "По базовой посадке этот размер спорный сразу по нескольким параметрам, поэтому его стоит опускать ниже более ровных вариантов.",
+    };
+  }
+
+  if (hardMismatchCount === 1 && softMismatchCount >= 1) {
+    return {
+      score: -10,
+      reason:
+        "Размер уже не выглядит цельным вариантом: компромисс заметен сразу по нескольким базовым параметрам.",
+    };
+  }
+
+  if (hardMismatchCount === 1 && input.skillLevel === "beginner") {
+    return {
+      score: -6,
+      reason: null,
+    };
+  }
+
+  return {
+    score: 0,
+    reason: null,
   };
 }
 
@@ -559,6 +942,12 @@ function getWidthCompatibility(
   input: QuizInput,
 ) {
   const preferredOverWidth = getPreferredOverWidth(input);
+  const negativeTolerance = input.stanceType === "duck" ? -1.5 : -1;
+  const undersizePenaltyBoost =
+    input.aggressiveness === "aggressive" ||
+    input.terrainPriority === "groomers-carving"
+      ? 4
+      : 0;
 
   if (widthDelta >= 0 && widthDelta <= preferredOverWidth) {
     const closeness = clamp(1 - widthDelta / Math.max(preferredOverWidth, 1), 0, 1);
@@ -577,15 +966,23 @@ function getWidthCompatibility(
     };
   }
 
-  if (widthDelta >= -3) {
+  if (widthDelta >= negativeTolerance) {
     return {
-      score: 3,
+      score: 0,
       reason: null,
     };
   }
 
+  if (widthDelta >= -3) {
+    return {
+      score: -8 - undersizePenaltyBoost,
+      reason:
+        "Ширина уже близка к границе под ваш ботинок, поэтому запас получается сомнительным.",
+    };
+  }
+
   return {
-    score: -24,
+    score: -24 - undersizePenaltyBoost,
     reason: "Ширина может быть пограничной для вашего ботинка и требует осторожности.",
   };
 }
@@ -662,6 +1059,7 @@ function scoreCandidate(
   const widthDelta = size.waistWidthMm - targetWaistWidthMm;
   const catalogReady = isReadyForCatalog(product);
   const verifiedProduct = isVerifiedProduct(product);
+  const canTrustFlex = hasTrustedFlex(product);
 
   const lengthCompatibility = getLengthCompatibility(size.sizeCm, lengthRange, input);
   score += lengthCompatibility.score;
@@ -693,18 +1091,43 @@ function scoreCandidate(
     reasons.push("Уровень доски не выбивается из вашего текущего уровня катания.");
   }
 
-  const flexCompatibility = getFlexCompatibility(product.flex, input);
-  score += flexCompatibility.score;
-  if (flexCompatibility.reason) {
-    reasons.push(flexCompatibility.reason);
+  if (canTrustFlex) {
+    const flexCompatibility = getFlexCompatibility(product.flex, input);
+    score += flexCompatibility.score;
+    if (flexCompatibility.reason) {
+      reasons.push(flexCompatibility.reason);
+    }
   }
 
   score += getBoardLineCompatibility(product, input.boardLinePreference);
+
+  const terrainCompatibility = getTerrainPriorityCompatibility(product, input);
+  score += terrainCompatibility.score;
+  if (terrainCompatibility.reason) {
+    reasons.push(terrainCompatibility.reason);
+  }
+
+  const camberCompatibility = getCamberCompatibility(product.camberProfile, input);
+  score += camberCompatibility.score;
+  if (camberCompatibility.reason) {
+    reasons.push(camberCompatibility.reason);
+  }
 
   const widthCompatibility = getWidthCompatibility(widthDelta, input);
   score += widthCompatibility.score;
   if (widthCompatibility.reason) {
     reasons.push(widthCompatibility.reason);
+  }
+
+  const criticalSizePenalty = getCriticalSizePenalty(
+    size,
+    input,
+    lengthRange,
+    widthDelta,
+  );
+  score += criticalSizePenalty.score;
+  if (criticalSizePenalty.reason) {
+    reasons.unshift(criticalSizePenalty.reason);
   }
 
   if (catalogReady) {
@@ -821,19 +1244,14 @@ function buildExplanation(
 
 export function getRecommendation(
   input: QuizInput,
-  boards: Product[] = getDemoProducts(),
+  boards: Product[] = [],
 ): RecommendationResult {
   const activeBoards = boards.filter(
     (board) =>
       board.isActive &&
       board.sizes.some((size) => size.isAvailable !== false),
   );
-  const verifiedBoards = activeBoards.filter(
-    (board) => board.dataStatus === "verified",
-  );
-  const baseCandidateBoards =
-    verifiedBoards.length >= 3 ? verifiedBoards : activeBoards;
-  const candidateBoards = getStyleFocusedBoards(baseCandidateBoards, input);
+  const candidateBoards = getCandidateBoards(activeBoards, input);
   const weightRange = getWeightLengthRange(input.weightKg);
   const heightAdjustment = getHeightAdjustment(input.heightCm);
   const styleAdjustment = getStyleAdjustment(input.ridingStyle);

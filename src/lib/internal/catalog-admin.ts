@@ -21,6 +21,7 @@ interface ProductRow {
   isActive: boolean;
   boardLine: Product["boardLine"];
   shapeType: Product["shapeType"];
+  camberProfile: Product["camberProfile"];
   dataStatus: Product["dataStatus"];
   sourceName: string | null;
   sourceUrl: string | null;
@@ -69,6 +70,7 @@ function normalizeProduct(product: ProductRow): Product {
     flex: Number(product.flex),
     priceFrom: Number(product.priceFrom),
     shapeType: product.shapeType ?? null,
+    camberProfile: product.camberProfile ?? null,
     dataStatus: product.dataStatus ?? "draft",
     sourceName: product.sourceName?.trim() || null,
     sourceUrl: product.sourceUrl?.trim() || null,
@@ -88,6 +90,9 @@ export async function getCatalogProductsForInternalEditor() {
     : sql.unsafe("'[]'::jsonb");
   const shapeTypeSelect = columnSupport.shapeType
     ? sql.unsafe("p.shape_type")
+    : sql.unsafe("null::text");
+  const camberProfileSelect = columnSupport.camberProfile
+    ? sql.unsafe("p.camber_profile")
     : sql.unsafe("null::text");
   const dataStatusSelect = columnSupport.dataStatus
     ? sql.unsafe("p.data_status")
@@ -126,6 +131,7 @@ export async function getCatalogProductsForInternalEditor() {
       p.is_active as "isActive",
       p.board_line as "boardLine",
       ${shapeTypeSelect} as "shapeType",
+      ${camberProfileSelect} as "camberProfile",
       ${dataStatusSelect} as "dataStatus",
       ${sourceNameSelect} as "sourceName",
       ${sourceUrlSelect} as "sourceUrl",

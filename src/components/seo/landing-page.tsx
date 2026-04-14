@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { SeoLandingPage } from "@/lib/seo-pages";
 import { getSeoLandingPath, seoLandingPages } from "@/lib/seo-pages";
+import { getAbsoluteSiteUrl } from "@/lib/site-url";
 
 function buildArticleSchema(page: SeoLandingPage) {
   return {
@@ -17,7 +18,7 @@ function buildArticleSchema(page: SeoLandingPage) {
       "@type": "Organization",
       name: "EdgeFit",
     },
-    mainEntityOfPage: `https://edgefit.example/${page.slug}`,
+    mainEntityOfPage: getAbsoluteSiteUrl(`/${page.slug}`),
   };
 }
 
@@ -195,12 +196,12 @@ export function SeoLandingPageView({ page }: { page: SeoLandingPage }) {
             >
               Открыть квиз
             </Link>
-            <Link
-              href="/result"
-              className="inline-flex items-center justify-center rounded-full border border-[var(--color-border)] bg-white px-6 py-4 text-sm font-bold text-[var(--color-pine)] hover:border-[var(--color-sky)]"
-            >
-              Посмотреть пример результата
-            </Link>
+              <Link
+                href="/catalog"
+                className="inline-flex items-center justify-center rounded-full border border-[var(--color-border)] bg-white px-6 py-4 text-sm font-bold text-[var(--color-pine)] hover:border-[var(--color-sky)]"
+              >
+                Открыть каталог
+              </Link>
           </div>
         </div>
 

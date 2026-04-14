@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Manrope, Space_Grotesk } from "next/font/google";
 import { YandexMetrika } from "@/components/analytics/yandex-metrika";
+import { getSiteMetadataBase } from "@/lib/site-url";
 import { SiteFooter } from "@/components/site/site-footer";
 import { SiteHeader } from "@/components/site/site-header";
 import "./globals.css";
@@ -16,7 +17,7 @@ const headingFont = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://edgefit.example"),
+  metadataBase: getSiteMetadataBase(),
   title: {
     default: "EdgeFit",
     template: "%s | EdgeFit",

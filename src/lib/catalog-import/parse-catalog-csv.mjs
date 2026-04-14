@@ -11,6 +11,13 @@ const allowedShapeTypes = new Set([
   "directional",
   "tapered-directional",
 ]);
+const allowedCamberProfiles = new Set([
+  "camber",
+  "rocker",
+  "flat",
+  "hybrid-camber",
+  "hybrid-rocker",
+]);
 const allowedDataStatuses = new Set(["draft", "verified"]);
 
 function normalizeText(value) {
@@ -178,12 +185,16 @@ export function buildCatalogProducts(modelRows, sizeRows) {
     const skillLevel = readRequiredText(row.skill_level, "skill_level", context);
     const boardLine = readRequiredText(row.board_line, "board_line", context);
     const shapeType = readOptionalText(row.shape_type);
+    const camberProfile = readOptionalText(row.camber_profile);
 
     ensureValue(allowedRidingStyles, ridingStyle, "riding_style", context);
     ensureValue(allowedSkillLevels, skillLevel, "skill_level", context);
     ensureValue(allowedBoardLines, boardLine, "board_line", context);
     if (shapeType) {
       ensureValue(allowedShapeTypes, shapeType, "shape_type", context);
+    }
+    if (camberProfile) {
+      ensureValue(allowedCamberProfiles, camberProfile, "camber_profile", context);
     }
 
     const dataStatus = readOptionalText(row.data_status) ?? "draft";
@@ -232,6 +243,7 @@ export function buildCatalogProducts(modelRows, sizeRows) {
       isActive: toBoolean(row.is_active),
       boardLine,
       shapeType,
+      camberProfile,
       dataStatus,
       sourceName,
       sourceUrl,

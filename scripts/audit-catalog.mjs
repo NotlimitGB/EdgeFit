@@ -1,23 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import postgres from "postgres";
-
-const databaseUrl = process.env.DATABASE_URL;
-const sslMode = process.env.DATABASE_SSL === "disable" ? false : "require";
-const reportPath =
-  process.env.CATALOG_AUDIT_REPORT_PATH ?? "reports/catalog-audit.json";
-
-if (!databaseUrl) {
-  console.error("DATABASE_URL is not set.");
-  process.exit(1);
-}
-
-const sql = postgres(databaseUrl, {
-  ssl: sslMode,
-  prepare: false,
-  max: 1,
-  connect_timeout: 15,
-});
 
 function toIssue(row) {
   return Object.fromEntries(
@@ -38,263 +22,345 @@ function buildCheck({ title, severity, rows, count }) {
   };
 }
 
-async function writeReport(report) {
+async function writeReport(report, reportPath) {
   const targetPath = path.resolve(reportPath);
   await mkdir(path.dirname(targetPath), { recursive: true });
   await writeFile(targetPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
   return targetPath;
 }
 
-async function main() {
-  const [summary] = await sql`
-    select
-      count(*)::int as total_products,
-      count(*) filter (where is_active = true)::int as active_products,
-      count(*) filter (where affiliate_url like 'https://trial-sport.ru/%')::int as trial_sport_links,
-      count(*) filter (
-        where affiliate_url like 'https://www.traektoria.ru/%'
-           or affiliate_url like 'https://traektoria.ru/%'
-      )::int as traektoria_links
-    from products
-  `;
+export async function runCatalogAudit(options = {}) {
+  const databaseUrl = options.databaseUrl ?? process.env.DATABASE_URL;
+  const sslMode =
+    options.sslMode ?? (process.env.DATABASE_SSL === "disable" ? false : "require");
+  const reportPath =
+    options.reportPath ??
+    process.env.CATALOG_AUDIT_REPORT_PATH ??
+    "reports/catalog-audit.json";
+  const writeReportToFile = options.writeReportToFile ?? true;
+  const logger = options.logger ?? console;
+  const ownSqlClient = !options.sql;
 
-  const sourceCounts = await sql`
-    select
-      coalesce(nullif(trim(source_name), ''), 'unknown') as source_name,
-      count(*)::int as total_products,
-      count(*) filter (where is_active = true)::int as active_products
-    from products
-    group by coalesce(nullif(trim(source_name), ''), 'unknown')
-    order by active_products desc, source_name
-  `;
-
-  const [brokenAdultSizeCount] = await sql`
-    select count(*)::int as count
-    from product_sizes ps
-    join products p on p.id = ps.product_id
-    where ps.size_cm < 100
-      and ps.waist_width_mm >= 235
-  `;
-  const brokenAdultSizes = await sql`
-    select
-      p.slug,
-      p.brand,
-      p.model_name,
-      ps.size_cm::float8 as size_cm,
-      ps.size_label,
-      ps.waist_width_mm,
-      p.affiliate_url
-    from product_sizes ps
-    join products p on p.id = ps.product_id
-    where ps.size_cm < 100
-      and ps.waist_width_mm >= 235
-    order by p.brand, p.model_name, ps.size_cm
-    limit 50
-  `;
-
-  const [productsWithoutSizesCount] = await sql`
-    select count(*)::int as count
-    from products p
-    where p.is_active = true
-      and not exists (
-        select 1
-        from product_sizes ps
-        where ps.product_id = p.id
-      )
-  `;
-  const productsWithoutSizes = await sql`
-    select p.slug, p.brand, p.model_name, p.source_name, p.affiliate_url
-    from products p
-    where p.is_active = true
-      and not exists (
-        select 1
-        from product_sizes ps
-        where ps.product_id = p.id
-      )
-    order by p.brand, p.model_name
-    limit 50
-  `;
-
-  const [productsWithoutAvailableSizesCount] = await sql`
-    select count(*)::int as count
-    from products p
-    where p.is_active = true
-      and not exists (
-        select 1
-        from product_sizes ps
-        where ps.product_id = p.id
-          and ps.is_available = true
-      )
-  `;
-  const productsWithoutAvailableSizes = await sql`
-    select p.slug, p.brand, p.model_name, p.source_name, p.affiliate_url
-    from products p
-    where p.is_active = true
-      and not exists (
-        select 1
-        from product_sizes ps
-        where ps.product_id = p.id
-          and ps.is_available = true
-      )
-    order by p.brand, p.model_name
-    limit 50
-  `;
-
-  const [productsWithBadPriceCount] = await sql`
-    select count(*)::int as count
-    from products p
-    where p.is_active = true
-      and p.price_from <= 0
-  `;
-  const productsWithBadPrice = await sql`
-    select p.slug, p.brand, p.model_name, p.source_name, p.price_from, p.affiliate_url
-    from products p
-    where p.is_active = true
-      and p.price_from <= 0
-    order by p.brand, p.model_name
-    limit 50
-  `;
-
-  const [productsWithMissingImageCount] = await sql`
-    select count(*)::int as count
-    from products p
-    where p.is_active = true
-      and trim(coalesce(p.image_url, '')) = ''
-  `;
-  const productsWithMissingImage = await sql`
-    select p.slug, p.brand, p.model_name, p.source_name, p.affiliate_url
-    from products p
-    where p.is_active = true
-      and trim(coalesce(p.image_url, '')) = ''
-    order by p.brand, p.model_name
-    limit 50
-  `;
-
-  const [productsWithPlaceholderImageCount] = await sql`
-    select count(*)::int as count
-    from products p
-    where p.is_active = true
-      and (
-        p.image_url like '/boards/%'
-        or p.gallery_images::text like '%/boards/%'
-      )
-  `;
-  const productsWithPlaceholderImage = await sql`
-    select p.slug, p.brand, p.model_name, p.source_name, p.image_url, p.affiliate_url
-    from products p
-    where p.is_active = true
-      and (
-        p.image_url like '/boards/%'
-        or p.gallery_images::text like '%/boards/%'
-      )
-    order by p.brand, p.model_name
-    limit 50
-  `;
-
-  const [productsWithNonStoreLinkCount] = await sql`
-    select count(*)::int as count
-    from products p
-    where p.is_active = true
-      and p.affiliate_url not like 'https://trial-sport.ru/goods/%'
-      and p.affiliate_url not like 'https://www.trial-sport.ru/goods/%'
-      and p.affiliate_url not like 'https://www.traektoria.ru/product/%'
-      and p.affiliate_url not like 'https://traektoria.ru/product/%'
-  `;
-  const productsWithNonStoreLink = await sql`
-    select p.slug, p.brand, p.model_name, p.source_name, p.affiliate_url
-    from products p
-    where p.is_active = true
-      and p.affiliate_url not like 'https://trial-sport.ru/goods/%'
-      and p.affiliate_url not like 'https://www.trial-sport.ru/goods/%'
-      and p.affiliate_url not like 'https://www.traektoria.ru/product/%'
-      and p.affiliate_url not like 'https://traektoria.ru/product/%'
-    order by p.brand, p.model_name
-    limit 50
-  `;
-
-  const checks = {
-    brokenAdultSizes: buildCheck({
-      title: "No adult boards with corrupted short size labels like 58/88",
-      severity: "error",
-      count: brokenAdultSizeCount.count,
-      rows: brokenAdultSizes,
-    }),
-    productsWithoutSizes: buildCheck({
-      title: "Active products have at least one size",
-      severity: "error",
-      count: productsWithoutSizesCount.count,
-      rows: productsWithoutSizes,
-    }),
-    productsWithoutAvailableSizes: buildCheck({
-      title: "Active products have at least one available store size",
-      severity: "warning",
-      count: productsWithoutAvailableSizesCount.count,
-      rows: productsWithoutAvailableSizes,
-    }),
-    productsWithBadPrice: buildCheck({
-      title: "Active products have a positive price",
-      severity: "error",
-      count: productsWithBadPriceCount.count,
-      rows: productsWithBadPrice,
-    }),
-    productsWithMissingImage: buildCheck({
-      title: "Active products have a main image",
-      severity: "warning",
-      count: productsWithMissingImageCount.count,
-      rows: productsWithMissingImage,
-    }),
-    productsWithPlaceholderImage: buildCheck({
-      title: "Active products do not use local seed placeholder images",
-      severity: "warning",
-      count: productsWithPlaceholderImageCount.count,
-      rows: productsWithPlaceholderImage,
-    }),
-    productsWithNonStoreLink: buildCheck({
-      title: "Active products point directly to product pages in Trial Sport or Traektoria",
-      severity: "warning",
-      count: productsWithNonStoreLinkCount.count,
-      rows: productsWithNonStoreLink,
-    }),
-  };
-
-  const report = {
-    generatedAt: new Date().toISOString(),
-    summary: toIssue(summary),
-    sourceCounts: sourceCounts.map(toIssue),
-    checks,
-  };
-
-  const targetPath = await writeReport(report);
-  const failedChecks = Object.values(checks).filter(
-    (check) => check.severity === "error" && !check.passed,
-  );
-  const warningChecks = Object.values(checks).filter(
-    (check) => check.severity === "warning" && !check.passed,
-  );
-
-  console.log(`Catalog audit report: ${targetPath}`);
-  console.log(
-    `Products: ${summary.active_products} active / ${summary.total_products} total.`,
-  );
-
-  for (const check of Object.values(checks)) {
-    const marker = check.passed ? "OK" : check.severity.toUpperCase();
-    console.log(`${marker}: ${check.title} (${check.count})`);
+  if (!options.sql && !databaseUrl) {
+    throw new Error("DATABASE_URL is not set.");
   }
 
-  if (warningChecks.length > 0) {
-    console.log(
-      `Warnings do not fail the audit, but they are worth reviewing before production: ${warningChecks.length}.`,
+  const sql =
+    options.sql ??
+    postgres(databaseUrl, {
+      ssl: sslMode,
+      prepare: false,
+      max: 1,
+      connect_timeout: 15,
+    });
+
+  try {
+    const [summary] = await sql`
+      select
+        count(*)::int as total_products,
+        count(*) filter (where is_active = true)::int as active_products,
+        count(*) filter (where affiliate_url like 'https://trial-sport.ru/%')::int as trial_sport_links,
+        count(*) filter (
+          where affiliate_url like 'https://www.traektoria.ru/%'
+             or affiliate_url like 'https://traektoria.ru/%'
+        )::int as traektoria_links
+      from products
+    `;
+
+    const sourceCounts = await sql`
+      select
+        coalesce(nullif(trim(source_name), ''), 'unknown') as source_name,
+        count(*)::int as total_products,
+        count(*) filter (where is_active = true)::int as active_products
+      from products
+      group by coalesce(nullif(trim(source_name), ''), 'unknown')
+      order by active_products desc, source_name
+    `;
+
+    const [brokenAdultSizeCount] = await sql`
+      select count(*)::int as count
+      from product_sizes ps
+      join products p on p.id = ps.product_id
+      where ps.size_cm < 100
+        and ps.waist_width_mm >= 235
+    `;
+    const brokenAdultSizes = await sql`
+      select
+        p.slug,
+        p.brand,
+        p.model_name,
+        ps.size_cm::float8 as size_cm,
+        ps.size_label,
+        ps.waist_width_mm,
+        p.affiliate_url
+      from product_sizes ps
+      join products p on p.id = ps.product_id
+      where ps.size_cm < 100
+        and ps.waist_width_mm >= 235
+      order by p.brand, p.model_name, ps.size_cm
+      limit 50
+    `;
+
+    const [productsWithoutSizesCount] = await sql`
+      select count(*)::int as count
+      from products p
+      where p.is_active = true
+        and not exists (
+          select 1
+          from product_sizes ps
+          where ps.product_id = p.id
+        )
+    `;
+    const productsWithoutSizes = await sql`
+      select p.slug, p.brand, p.model_name, p.source_name, p.affiliate_url
+      from products p
+      where p.is_active = true
+        and not exists (
+          select 1
+          from product_sizes ps
+          where ps.product_id = p.id
+        )
+      order by p.brand, p.model_name
+      limit 50
+    `;
+
+    const [productsWithoutAvailableSizesCount] = await sql`
+      select count(*)::int as count
+      from products p
+      where p.is_active = true
+        and not exists (
+          select 1
+          from product_sizes ps
+          where ps.product_id = p.id
+            and ps.is_available = true
+        )
+    `;
+    const productsWithoutAvailableSizes = await sql`
+      select p.slug, p.brand, p.model_name, p.source_name, p.affiliate_url
+      from products p
+      where p.is_active = true
+        and not exists (
+          select 1
+          from product_sizes ps
+          where ps.product_id = p.id
+            and ps.is_available = true
+        )
+      order by p.brand, p.model_name
+      limit 50
+    `;
+
+    const [productsWithBadPriceCount] = await sql`
+      select count(*)::int as count
+      from products p
+      where p.is_active = true
+        and p.price_from <= 0
+    `;
+    const productsWithBadPrice = await sql`
+      select p.slug, p.brand, p.model_name, p.source_name, p.price_from, p.affiliate_url
+      from products p
+      where p.is_active = true
+        and p.price_from <= 0
+      order by p.brand, p.model_name
+      limit 50
+    `;
+
+    const [productsWithMissingImageCount] = await sql`
+      select count(*)::int as count
+      from products p
+      where p.is_active = true
+        and trim(coalesce(p.image_url, '')) = ''
+    `;
+    const productsWithMissingImage = await sql`
+      select p.slug, p.brand, p.model_name, p.source_name, p.affiliate_url
+      from products p
+      where p.is_active = true
+        and trim(coalesce(p.image_url, '')) = ''
+      order by p.brand, p.model_name
+      limit 50
+    `;
+
+    const [productsWithPlaceholderImageCount] = await sql`
+      select count(*)::int as count
+      from products p
+      where p.is_active = true
+        and (
+          p.image_url like '/boards/%'
+          or p.gallery_images::text like '%/boards/%'
+        )
+    `;
+    const productsWithPlaceholderImage = await sql`
+      select p.slug, p.brand, p.model_name, p.source_name, p.image_url, p.affiliate_url
+      from products p
+      where p.is_active = true
+        and (
+          p.image_url like '/boards/%'
+          or p.gallery_images::text like '%/boards/%'
+        )
+      order by p.brand, p.model_name
+      limit 50
+    `;
+
+    const [productsWithNonStoreLinkCount] = await sql`
+      select count(*)::int as count
+      from products p
+      where p.is_active = true
+        and p.affiliate_url not like 'https://trial-sport.ru/goods/%'
+        and p.affiliate_url not like 'https://www.trial-sport.ru/goods/%'
+        and p.affiliate_url not like 'https://www.traektoria.ru/product/%'
+        and p.affiliate_url not like 'https://traektoria.ru/product/%'
+    `;
+    const productsWithNonStoreLink = await sql`
+      select p.slug, p.brand, p.model_name, p.source_name, p.affiliate_url
+      from products p
+      where p.is_active = true
+        and p.affiliate_url not like 'https://trial-sport.ru/goods/%'
+        and p.affiliate_url not like 'https://www.trial-sport.ru/goods/%'
+        and p.affiliate_url not like 'https://www.traektoria.ru/product/%'
+        and p.affiliate_url not like 'https://traektoria.ru/product/%'
+      order by p.brand, p.model_name
+      limit 50
+    `;
+
+    const [productsWithoutTrustedFlexCount] = await sql`
+      select count(*)::int as count
+      from products p
+      where p.is_active = true
+        and not (
+          p.data_status = 'verified'
+          and trim(coalesce(p.source_url, '')) <> ''
+          and p.source_url not like 'https://trial-sport.ru/%'
+          and p.source_url not like 'https://www.trial-sport.ru/%'
+          and p.source_url not like 'https://traektoria.ru/%'
+          and p.source_url not like 'https://www.traektoria.ru/%'
+        )
+    `;
+    const productsWithoutTrustedFlex = await sql`
+      select p.slug, p.brand, p.model_name, p.flex, p.data_status, p.source_name, p.source_url
+      from products p
+      where p.is_active = true
+        and not (
+          p.data_status = 'verified'
+          and trim(coalesce(p.source_url, '')) <> ''
+          and p.source_url not like 'https://trial-sport.ru/%'
+          and p.source_url not like 'https://www.trial-sport.ru/%'
+          and p.source_url not like 'https://traektoria.ru/%'
+          and p.source_url not like 'https://www.traektoria.ru/%'
+        )
+      order by p.brand, p.model_name
+      limit 50
+    `;
+
+    const checks = {
+      brokenAdultSizes: buildCheck({
+        title: "No adult boards with corrupted short size labels like 58/88",
+        severity: "error",
+        count: brokenAdultSizeCount.count,
+        rows: brokenAdultSizes,
+      }),
+      productsWithoutSizes: buildCheck({
+        title: "Active products have at least one size",
+        severity: "error",
+        count: productsWithoutSizesCount.count,
+        rows: productsWithoutSizes,
+      }),
+      productsWithoutAvailableSizes: buildCheck({
+        title: "Active products have at least one available store size",
+        severity: "warning",
+        count: productsWithoutAvailableSizesCount.count,
+        rows: productsWithoutAvailableSizes,
+      }),
+      productsWithBadPrice: buildCheck({
+        title: "Active products have a positive price",
+        severity: "error",
+        count: productsWithBadPriceCount.count,
+        rows: productsWithBadPrice,
+      }),
+      productsWithMissingImage: buildCheck({
+        title: "Active products have a main image",
+        severity: "warning",
+        count: productsWithMissingImageCount.count,
+        rows: productsWithMissingImage,
+      }),
+      productsWithPlaceholderImage: buildCheck({
+        title: "Active products do not use local seed placeholder images",
+        severity: "warning",
+        count: productsWithPlaceholderImageCount.count,
+        rows: productsWithPlaceholderImage,
+      }),
+      productsWithNonStoreLink: buildCheck({
+        title:
+          "Active products point directly to product pages in Trial Sport or Traektoria",
+        severity: "warning",
+        count: productsWithNonStoreLinkCount.count,
+        rows: productsWithNonStoreLink,
+      }),
+      productsWithoutTrustedFlex: buildCheck({
+        title:
+          "Active products have stiffness confirmed by an official non-store source",
+        severity: "warning",
+        count: productsWithoutTrustedFlexCount.count,
+        rows: productsWithoutTrustedFlex,
+      }),
+    };
+
+    const report = {
+      generatedAt: new Date().toISOString(),
+      summary: toIssue(summary),
+      sourceCounts: sourceCounts.map(toIssue),
+      checks,
+    };
+    const targetPath = writeReportToFile ? await writeReport(report, reportPath) : null;
+    const failedChecks = Object.values(checks).filter(
+      (check) => check.severity === "error" && !check.passed,
     );
-  }
+    const warningChecks = Object.values(checks).filter(
+      (check) => check.severity === "warning" && !check.passed,
+    );
 
-  if (failedChecks.length > 0) {
-    process.exitCode = 1;
+    if (targetPath) {
+      logger.log(`Catalog audit report: ${targetPath}`);
+    }
+    logger.log(
+      `Products: ${summary.active_products} active / ${summary.total_products} total.`,
+    );
+
+    for (const check of Object.values(checks)) {
+      const marker = check.passed ? "OK" : check.severity.toUpperCase();
+      logger.log(`${marker}: ${check.title} (${check.count})`);
+    }
+
+    if (warningChecks.length > 0) {
+      logger.log(
+        `Warnings do not fail the audit, but they are worth reviewing: ${warningChecks.length}.`,
+      );
+    }
+
+    return {
+      report,
+      reportPath: targetPath,
+      failedChecks,
+      warningChecks,
+    };
+  } finally {
+    if (ownSqlClient) {
+      await sql.end({ timeout: 1 });
+    }
   }
 }
 
-try {
-  await main();
-} finally {
-  await sql.end({ timeout: 1 });
+const isDirectExecution =
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isDirectExecution) {
+  try {
+    const result = await runCatalogAudit();
+
+    if (result.failedChecks.length > 0) {
+      process.exitCode = 1;
+    }
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  }
 }

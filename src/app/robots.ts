@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { getAbsoluteSiteUrl } from "@/lib/site-url";
 
 export default function robots(): MetadataRoute.Robots {
   return {
@@ -6,6 +7,6 @@ export default function robots(): MetadataRoute.Robots {
       userAgent: "*",
       allow: "/",
     },
-    sitemap: "https://edgefit.example/sitemap.xml",
+    sitemap: getAbsoluteSiteUrl("/sitemap.xml"),
   };
 }

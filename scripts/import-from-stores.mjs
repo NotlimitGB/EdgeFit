@@ -1,6 +1,8 @@
 import postgres from "postgres";
 import http from "node:http";
 import https from "node:https";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { upsertCatalogProducts } from "./lib/upsert-boards.mjs";
 import {
   mergeImportedProducts,
@@ -9,25 +11,6 @@ import {
 } from "./lib/store-import/common.mjs";
 import { importTraektoriaProducts } from "./lib/store-import/traektoria.mjs";
 import { importTrialSportProducts } from "./lib/store-import/trial-sport.mjs";
-
-const databaseUrl = process.env.DATABASE_URL;
-const sslMode = process.env.DATABASE_SSL === "disable" ? false : "require";
-const checkedAt = new Date().toISOString().slice(0, 10);
-const sourceFilter = String(process.env.STORE_IMPORT_SOURCE ?? "all").trim().toLowerCase();
-const importLimit = Number.parseInt(process.env.STORE_IMPORT_LIMIT ?? "", 10);
-
-if (!databaseUrl) {
-  console.error("Не задана переменная DATABASE_URL в .env.local");
-  process.exit(1);
-}
-
-const sql = postgres(databaseUrl, {
-  ssl: sslMode,
-  prepare: false,
-  max: 1,
-});
-
-let productColumnSupport = null;
 
 function normalizeGalleryImages(value) {
   const rawImages =
@@ -49,7 +32,7 @@ function normalizeGalleryImages(value) {
     .filter(Boolean);
 }
 
-function hasImportLimit() {
+function hasImportLimit(importLimit) {
   return Number.isFinite(importLimit) && importLimit > 0;
 }
 
@@ -206,9 +189,9 @@ async function fetchArrayBuffer(url) {
   );
 }
 
-async function getProductColumnSupport() {
-  if (productColumnSupport) {
-    return productColumnSupport;
+async function getProductColumnSupport(sql, state) {
+  if (state.productColumnSupport) {
+    return state.productColumnSupport;
   }
 
   const rows = await sql`
@@ -238,18 +221,23 @@ async function getProductColumnSupport() {
       .map((row) => row.column_name),
   );
 
-  productColumnSupport = {
+  state.productColumnSupport = {
     hasSeasonLabel: productColumns.has("season_label"),
     hasGalleryImages: productColumns.has("gallery_images"),
     hasSizeLabel: sizeColumns.has("size_label"),
     hasSizeAvailable: sizeColumns.has("is_available"),
   };
 
-  return productColumnSupport;
+  return state.productColumnSupport;
 }
 
-async function loadExistingCatalog() {
-  const { hasSeasonLabel, hasGalleryImages, hasSizeLabel, hasSizeAvailable } = await getProductColumnSupport();
+async function loadExistingCatalog(sql, state) {
+  const {
+    hasSeasonLabel,
+    hasGalleryImages,
+    hasSizeLabel,
+    hasSizeAvailable,
+  } = await getProductColumnSupport(sql, state);
   const seasonLabelSelect = hasSeasonLabel
     ? sql.unsafe("p.season_label")
     : sql.unsafe("null::text");
@@ -403,7 +391,9 @@ function mergeWithExistingProduct(existingProduct, importedProduct) {
 }
 
 function isManagedStoreProduct(product) {
-  return product.sourceName === "Траектория" || product.sourceName === "Триал-Спорт";
+  return (
+    product.sourceName === "Траектория" || product.sourceName === "Триал-Спорт"
+  );
 }
 
 function shouldSyncStoreProduct(product, currentSourceFilter) {
@@ -412,29 +402,29 @@ function shouldSyncStoreProduct(product, currentSourceFilter) {
   }
 
   if (currentSourceFilter === "traektoria") {
-    return product.sourceName === "РўСЂР°РµРєС‚РѕСЂРёСЏ";
+    return product.sourceName === "Траектория";
   }
 
   if (currentSourceFilter === "trial" || currentSourceFilter === "trial-sport") {
-    return product.sourceName === "РўСЂРёР°Р»-РЎРїРѕСЂС‚";
+    return product.sourceName === "Триал-Спорт";
   }
 
   return false;
 }
 
-function summarizeWarnings(warnings) {
+function summarizeWarnings(warnings, logger) {
   if (warnings.length === 0) {
     return;
   }
 
-  console.warn(`Предупреждений при импорте: ${warnings.length}`);
+  logger.warn(`Warnings during store import: ${warnings.length}`);
 
   for (const warning of warnings.slice(0, 20)) {
-    console.warn(`- ${warning}`);
+    logger.warn(`- ${warning}`);
   }
 
   if (warnings.length > 20) {
-    console.warn(`... и ещё ${warnings.length - 20}`);
+    logger.warn(`... and ${warnings.length - 20} more`);
   }
 }
 
@@ -455,113 +445,171 @@ async function cleanupBrokenTrialSportSizes(sqlClient) {
   return result?.count ?? 0;
 }
 
-async function main() {
-  await sql`set statement_timeout = 0`;
-  const existingCatalog = await loadExistingCatalog();
-  const existingComparableVerifiedProducts = new Map(
-    Array.from(existingCatalog.values())
-      .filter((product) => product.dataStatus === "verified")
-      .map((product) => [
-        getComparableProductKey(product.brand, product.modelName),
-        product,
-      ]),
-  );
-  const importedProducts = [];
-  const warnings = [];
+export async function runStoreImport(options = {}) {
+  const databaseUrl = options.databaseUrl ?? process.env.DATABASE_URL;
+  const sslMode =
+    options.sslMode ?? (process.env.DATABASE_SSL === "disable" ? false : "require");
+  const checkedAt =
+    options.checkedAt ?? new Date().toISOString().slice(0, 10);
+  const sourceFilter = String(
+    options.sourceFilter ?? process.env.STORE_IMPORT_SOURCE ?? "all",
+  )
+    .trim()
+    .toLowerCase();
+  const importLimit = Number.isFinite(options.importLimit)
+    ? options.importLimit
+    : Number.parseInt(process.env.STORE_IMPORT_LIMIT ?? "", 10);
+  const logger = options.logger ?? console;
+  const ownSqlClient = !options.sql;
 
-  if (sourceFilter === "all" || sourceFilter === "traektoria") {
-    const result = await importTraektoriaProducts({
-      fetchJson,
-      fetchText,
-      checkedAt,
-      limit: hasImportLimit() ? importLimit : null,
-      logger: console,
+  if (!options.sql && !databaseUrl) {
+    throw new Error("DATABASE_URL is not set.");
+  }
+
+  const sql =
+    options.sql ??
+    postgres(databaseUrl, {
+      ssl: sslMode,
+      prepare: false,
+      max: 1,
     });
+  const state = { productColumnSupport: null };
 
-    importedProducts.push(...result.products);
-    warnings.push(...result.warnings);
-  }
+  try {
+    await sql`set statement_timeout = 0`;
 
-  if (sourceFilter === "all" || sourceFilter === "trial" || sourceFilter === "trial-sport") {
-    const result = await importTrialSportProducts({
-      fetchArrayBuffer,
-      fetchText,
+    const existingCatalog = await loadExistingCatalog(sql, state);
+    const existingComparableVerifiedProducts = new Map(
+      Array.from(existingCatalog.values())
+        .filter((product) => product.dataStatus === "verified")
+        .map((product) => [
+          getComparableProductKey(product.brand, product.modelName),
+          product,
+        ]),
+    );
+    const importedProducts = [];
+    const warnings = [];
+
+    if (sourceFilter === "all" || sourceFilter === "traektoria") {
+      const result = await importTraektoriaProducts({
+        fetchJson,
+        fetchText,
+        checkedAt,
+        limit: hasImportLimit(importLimit) ? importLimit : null,
+        logger,
+      });
+
+      importedProducts.push(...result.products);
+      warnings.push(...result.warnings);
+    }
+
+    if (
+      sourceFilter === "all" ||
+      sourceFilter === "trial" ||
+      sourceFilter === "trial-sport"
+    ) {
+      const result = await importTrialSportProducts({
+        fetchArrayBuffer,
+        fetchText,
+        checkedAt,
+        limit: hasImportLimit(importLimit) ? importLimit : null,
+        logger,
+      });
+
+      importedProducts.push(...result.products);
+      warnings.push(...result.warnings);
+    }
+
+    const mergedImportedProducts = new Map();
+
+    for (const importedProduct of importedProducts) {
+      const comparableProductKey = getComparableProductKey(
+        importedProduct.brand,
+        importedProduct.modelName,
+      );
+      const exactExistingProduct = existingCatalog.get(importedProduct.slug);
+      const comparableVerifiedProduct =
+        existingComparableVerifiedProducts.get(comparableProductKey);
+      const mergeTargetProduct =
+        comparableVerifiedProduct?.dataStatus === "verified"
+          ? comparableVerifiedProduct
+          : exactExistingProduct;
+      const mergedSlug = mergeTargetProduct?.slug ?? importedProduct.slug;
+      const normalizedImportedProduct =
+        mergedSlug === importedProduct.slug
+          ? importedProduct
+          : {
+              ...importedProduct,
+              slug: mergedSlug,
+            };
+      const current = mergedImportedProducts.get(mergedSlug);
+      mergedImportedProducts.set(
+        mergedSlug,
+        current
+          ? mergeImportedProducts(current, normalizedImportedProduct)
+          : normalizedImportedProduct,
+      );
+    }
+
+    const preparedProducts = Array.from(mergedImportedProducts.values())
+      .map((product) =>
+        mergeWithExistingProduct(existingCatalog.get(product.slug), product),
+      )
+      .filter((product) => product.sizes.length > 0);
+
+    const staleStoreProducts = Array.from(existingCatalog.values())
+      .filter(
+        (product) =>
+          shouldSyncStoreProduct(product, sourceFilter) &&
+          !mergedImportedProducts.has(product.slug),
+      )
+      .map((product) => ({
+        ...product,
+        isActive: false,
+      }));
+
+    const finalProducts = [...preparedProducts, ...staleStoreProducts];
+    const summary = await upsertCatalogProducts(sql, finalProducts);
+    const cleanedBrokenTrialSizes = await cleanupBrokenTrialSportSizes(sql);
+    const result = {
       checkedAt,
-      limit: hasImportLimit() ? importLimit : null,
-      logger: console,
-    });
+      sourceFilter,
+      warnings,
+      importedModels: summary.importedModels,
+      importedSizes: summary.importedSizes,
+      cleanedBrokenTrialSizes,
+      mergedProducts: finalProducts.length,
+      activeProducts: finalProducts.filter((product) => product.isActive).length,
+      draftProducts: finalProducts.filter(
+        (product) => product.dataStatus === "draft",
+      ).length,
+    };
 
-    importedProducts.push(...result.products);
-    warnings.push(...result.warnings);
+    logger.log(`Store import finished. Models: ${result.importedModels}`);
+    logger.log(`Sizes imported: ${result.importedSizes}`);
+    logger.log(`Broken Trial Sport sizes removed: ${result.cleanedBrokenTrialSizes}`);
+    logger.log(`Merged product cards: ${result.mergedProducts}`);
+    logger.log(`Active products after import: ${result.activeProducts}`);
+    logger.log(`Draft products after import: ${result.draftProducts}`);
+    summarizeWarnings(warnings, logger);
+
+    return result;
+  } finally {
+    if (ownSqlClient) {
+      await sql.end({ timeout: 1 });
+    }
   }
-
-  const mergedImportedProducts = new Map();
-
-  for (const importedProduct of importedProducts) {
-    const comparableProductKey = getComparableProductKey(
-      importedProduct.brand,
-      importedProduct.modelName,
-    );
-    const exactExistingProduct = existingCatalog.get(importedProduct.slug);
-    const comparableVerifiedProduct =
-      existingComparableVerifiedProducts.get(comparableProductKey);
-    const mergeTargetProduct =
-      comparableVerifiedProduct?.dataStatus === "verified"
-        ? comparableVerifiedProduct
-        : exactExistingProduct;
-    const mergedSlug = mergeTargetProduct?.slug ?? importedProduct.slug;
-    const normalizedImportedProduct =
-      mergedSlug === importedProduct.slug
-        ? importedProduct
-        : {
-            ...importedProduct,
-            slug: mergedSlug,
-          };
-    const current = mergedImportedProducts.get(mergedSlug);
-    mergedImportedProducts.set(
-      mergedSlug,
-      current
-        ? mergeImportedProducts(current, normalizedImportedProduct)
-        : normalizedImportedProduct,
-    );
-  }
-
-  const preparedProducts = Array.from(mergedImportedProducts.values())
-    .map((product) => mergeWithExistingProduct(existingCatalog.get(product.slug), product))
-    .filter((product) => product.sizes.length > 0);
-
-  const staleStoreProducts = Array.from(existingCatalog.values())
-    .filter(
-      (product) =>
-        shouldSyncStoreProduct(product, sourceFilter) &&
-        !mergedImportedProducts.has(product.slug),
-    )
-    .map((product) => ({
-      ...product,
-      isActive: false,
-    }));
-
-  const finalProducts = [...preparedProducts, ...staleStoreProducts];
-
-  const summary = await upsertCatalogProducts(sql, finalProducts);
-  const cleanedBrokenTrialSizes = await cleanupBrokenTrialSportSizes(sql);
-
-  console.log(`Готово. Импортировано моделей: ${summary.importedModels}`);
-  console.log(`Импортировано размеров: ${summary.importedSizes}`);
-  console.log(`Удалено сломанных trial-размеров: ${cleanedBrokenTrialSizes}`);
-  console.log(`Уникальных карточек после объединения: ${finalProducts.length}`);
-  console.log(
-    `Активных карточек после импорта: ${finalProducts.filter((product) => product.isActive).length}`,
-  );
-  console.log(
-    `Черновых карточек после импорта: ${finalProducts.filter((product) => product.dataStatus === "draft").length}`,
-  );
-
-  summarizeWarnings(warnings);
 }
 
-try {
-  await main();
-} finally {
-  await sql.end({ timeout: 1 });
+const isDirectExecution =
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isDirectExecution) {
+  try {
+    await runStoreImport();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  }
 }

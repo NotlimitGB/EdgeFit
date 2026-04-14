@@ -5,9 +5,11 @@ import { TrackedStoreLink } from "@/components/analytics/tracked-store-link";
 import { BoardCard } from "@/components/boards/board-card";
 import { BoardGallery } from "@/components/boards/board-gallery";
 import { getBoardSizeLabel } from "@/lib/board-size";
+import { hasTrustedFlex } from "@/lib/catalog-readiness";
 import { formatCatalogCheckedDate } from "@/lib/catalog-trust";
 import {
   boardShapeLabels,
+  camberProfileLabels,
   formatMoney,
   ridingStyleLabels,
   skillLevelLabels,
@@ -122,6 +124,14 @@ export default async function BoardPage({ params }: BoardPageProps) {
                 }
               />
               <InfoCard
+                label="Прогиб"
+                value={
+                  board.camberProfile
+                    ? camberProfileLabels[board.camberProfile]
+                    : "Уточняется"
+                }
+              />
+              <InfoCard
                 label="Жёсткость доски"
                 value={getBoardStiffnessValue(board)}
                 caption={getBoardStiffnessCaption(board)}
@@ -184,8 +194,8 @@ export default async function BoardPage({ params }: BoardPageProps) {
               Размерная сетка
             </p>
             <p className="mt-3 text-sm leading-7 text-[var(--color-muted)]">
-              Показываем полную размерную сетку модели и отдельно отмечаем,
-              какие размеры доступны сейчас.
+              Показываем всю размерную сетку модели и отдельно отмечаем, какие
+              размеры действительно доступны в магазине сейчас.
             </p>
             <div className="mt-5 overflow-x-auto">
               <table className="min-w-full text-left text-sm">
@@ -258,7 +268,7 @@ export default async function BoardPage({ params }: BoardPageProps) {
                 Источник характеристик
               </p>
               <p className="mt-4 text-sm leading-7 text-[var(--color-muted)]">
-                Данные по размерам и ширине сверялись с источником:
+                Размеры и ширина сверялись с источником:
                 {" "}
                 {board.sourceName}
                 {sourceCheckedAtLabel
@@ -283,7 +293,7 @@ export default async function BoardPage({ params }: BoardPageProps) {
         <div className="mb-6">
           <span className="eyebrow">Похожие модели</span>
           <h2 className="heading-display mt-4 text-3xl font-bold sm:text-4xl">
-            Что ещё посмотреть рядом
+            Что ещё стоит посмотреть
           </h2>
         </div>
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
@@ -307,7 +317,7 @@ export default async function BoardPage({ params }: BoardPageProps) {
 }
 
 function getBoardStiffnessValue(board: BoardPageProduct) {
-  if (board.dataStatus === "verified") {
+  if (hasTrustedFlex(board)) {
     return `${board.flex} из 10`;
   }
 
@@ -315,11 +325,11 @@ function getBoardStiffnessValue(board: BoardPageProduct) {
 }
 
 function getBoardStiffnessCaption(board: BoardPageProduct) {
-  if (board.dataStatus === "verified") {
+  if (hasTrustedFlex(board)) {
     return null;
   }
 
-  return "Магазин не даёт надёжной точной оценки, поэтому число пока не показываем.";
+  return "По этой модели магазин не даёт надёжной точной оценки, поэтому не показываем жёсткость как конкретный балл.";
 }
 
 function InfoCard({
