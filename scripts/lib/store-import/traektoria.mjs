@@ -3,10 +3,12 @@ import {
   buildNotIdealFor,
   buildScenarios,
   classifyWidthType,
+  isPlausibleWaistWidthMm,
   mapBoardLineFromText,
   mapRidingStyle,
   mapShapeType,
   mapSkillLevel,
+  normalizeWaistWidthMm,
   normalizeWhitespace,
   parseFlexNumber,
   parseSeasonLabel,
@@ -82,7 +84,7 @@ function parseTraektoriaSizeTable(gridSizeHtml) {
       }
 
       if (rowLabel.includes("ширина талии")) {
-        const waistWidth = Number.parseInt(value.replace(/[^\d]/gu, ""), 10);
+        const waistWidth = normalizeWaistWidthMm(value);
         if (Number.isFinite(waistWidth)) {
           item.waistWidthMm = waistWidth;
         }
@@ -91,7 +93,11 @@ function parseTraektoriaSizeTable(gridSizeHtml) {
   }
 
   return Array.from(sizesByLabel.values())
-    .filter((size) => Number.isFinite(size.sizeCm) && Number.isFinite(size.waistWidthMm))
+    .filter(
+      (size) =>
+        Number.isFinite(size.sizeCm) &&
+        isPlausibleWaistWidthMm(size.sizeCm, size.waistWidthMm),
+    )
     .map((size) => ({
       sizeCm: size.sizeCm,
       sizeLabel: size.sizeLabel,

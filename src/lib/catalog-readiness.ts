@@ -34,6 +34,10 @@ export function hasTrustedFlex(product: Product) {
   );
 }
 
+export function hasCompleteBoardSpecs(product: Product) {
+  return Boolean(product.shapeType && product.camberProfile);
+}
+
 export function hasPlaceholderAffiliateLink(product: Product) {
   return placeholderShopPattern.test(product.affiliateUrl);
 }
@@ -50,6 +54,7 @@ export function isReadyForCatalog(product: Product) {
   return (
     isVerifiedProduct(product) &&
     hasCatalogSource(product) &&
+    hasCompleteBoardSpecs(product) &&
     hasAffiliateLink(product) &&
     !hasPlaceholderAffiliateLink(product)
   );
@@ -64,6 +69,14 @@ export function getProductCatalogIssues(product: Product) {
 
   if (!hasCatalogSource(product)) {
     issues.push("Не указан источник характеристик.");
+  }
+
+  if (!product.shapeType) {
+    issues.push("Не указана форма / направленность доски.");
+  }
+
+  if (!product.camberProfile) {
+    issues.push("Не указан прогиб доски.");
   }
 
   if (!hasAffiliateLink(product)) {

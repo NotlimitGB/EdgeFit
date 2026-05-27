@@ -5,14 +5,15 @@ import {
   buildScenarios,
   classifyWidthType,
   decodeHtml,
+  isPlausibleWaistWidthMm,
   mapBoardLineFromText,
   mapRidingStyle,
   mapShapeType,
   mapSkillLevel,
   normalizeBoardKey,
   normalizeSizeKey,
+  normalizeWaistWidthMm,
   normalizeWhitespace,
-  parseFloatNumber,
   parseFlexNumber,
   parseSeasonLabel,
   parseSizeCm,
@@ -26,15 +27,7 @@ const TRIAL_SECTION_URL =
   `${TRIAL_BASE_URL}/gds.php?s=51526&c1=1070639&c2=1078224&gpp=100`;
 
 function isReliableTrialSize(sizeCm, waistWidthMm) {
-  if (!Number.isFinite(sizeCm) || !Number.isFinite(waistWidthMm)) {
-    return false;
-  }
-
-  if (sizeCm >= 100) {
-    return true;
-  }
-
-  return waistWidthMm < 235;
+  return isPlausibleWaistWidthMm(sizeCm, waistWidthMm);
 }
 
 function isWideTrialModel(modelName) {
@@ -178,7 +171,7 @@ function buildTrialSpecMap(workbookBytes) {
     }
 
     const sizeCm = parseSizeCm(sizeLabel);
-    const waistWidthMm = Math.round(parseFloatNumber(row.H) ?? Number.NaN);
+    const waistWidthMm = normalizeWaistWidthMm(row.H);
 
     if (!isReliableTrialSize(sizeCm, waistWidthMm)) {
       continue;

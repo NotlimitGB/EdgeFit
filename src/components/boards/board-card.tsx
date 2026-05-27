@@ -5,9 +5,9 @@ import { TrackedStoreLink } from "@/components/analytics/tracked-store-link";
 import { getBoardSizeLabel } from "@/lib/board-size";
 import {
   boardShapeLabels,
+  camberProfileLabels,
   formatMoney,
   ridingStyleLabels,
-  skillLevelLabels,
   widthTypeLabels,
 } from "@/lib/content";
 import {
@@ -112,6 +112,12 @@ export function BoardCard({
       value: ridingStyleLabels[product.ridingStyle],
     },
     {
+      label: "Прогиб",
+      value: product.camberProfile
+        ? camberProfileLabels[product.camberProfile]
+        : "уточняется",
+    },
+    {
       label: "Форма",
       value: product.shapeType
         ? boardShapeLabels[product.shapeType]
@@ -128,8 +134,10 @@ export function BoardCard({
       value: ridingStyleLabels[product.ridingStyle],
     },
     {
-      label: "Уровень",
-      value: skillLevelLabels[product.skillLevel],
+      label: "Прогиб",
+      value: product.camberProfile
+        ? camberProfileLabels[product.camberProfile]
+        : "уточняется",
     },
     {
       label: "Форма",
@@ -148,18 +156,18 @@ export function BoardCard({
       <div
         className={`w-full rounded-[1.2rem] border border-white/55 bg-[linear-gradient(145deg,rgba(32,89,119,0.96),rgba(74,136,170,0.74))] p-5 text-white ${
           compact
-            ? "mb-4 flex min-h-[18.75rem] flex-col pb-6 sm:h-[18.75rem]"
+            ? "mb-4 flex min-h-[21.5rem] flex-col pb-6 sm:h-[21.5rem]"
             : "mb-5 flex h-[21.5rem] flex-col pb-5"
         }`}
       >
         <div
           className={`flex gap-3 ${
             compact
-              ? "mb-6 flex-col sm:min-h-[6.5rem] sm:flex-row sm:items-start"
+              ? "mb-5 flex-col sm:min-h-[5.5rem] sm:flex-row sm:items-start"
               : "mb-4 min-h-[5.5rem] flex-col sm:flex-row sm:items-start"
           }`}
         >
-          <div className={compact ? "min-h-[6.5rem] flex-1" : "min-h-[5.5rem] flex-1"}>
+          <div className={compact ? "min-h-[5.5rem] flex-1" : "min-h-[5.5rem] flex-1"}>
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/72">
               {product.brand}
             </p>
@@ -186,17 +194,17 @@ export function BoardCard({
         </div>
 
         {compact ? (
-          <div className="grid flex-1 auto-rows-fr grid-cols-2 gap-x-4 gap-y-3 text-sm text-white/84">
+          <div className="grid flex-1 auto-rows-fr grid-cols-2 gap-x-4 gap-y-2 text-sm text-white/84">
             {compactMetrics.map((metric) => (
-              <div key={metric.label} className="min-h-[3.75rem]">
+              <div key={metric.label} className="min-h-[3rem]">
                 <p className="text-white/58">{metric.label}</p>
-                <p className="mt-1 line-clamp-2 font-semibold leading-6">
+                <p className="mt-1 line-clamp-2 font-semibold leading-5">
                   {metric.value}
                 </p>
               </div>
             ))}
 
-            <div className="col-span-2 mt-1 rounded-[1rem] bg-white/12 px-4 py-3">
+            <div className="col-span-2 rounded-[1rem] bg-white/12 px-4 py-2">
               <p className="text-white/58">Цена от</p>
               <p className="mt-1 text-lg font-semibold leading-6 text-white">
                 {formatMoney(product.priceFrom)}
@@ -267,7 +275,7 @@ export function BoardCard({
                 : ""
             }`}
           >
-            Талия {size.waistWidthMm} мм, рекомендованный вес{" "}
+            Ширина талии {size.waistWidthMm} мм, рекомендованный вес{" "}
             {formatRecommendedWeightRange(size)}.
           </p>
         </div>

@@ -4,11 +4,16 @@ import https from "node:https";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { upsertCatalogProducts } from "./lib/upsert-boards.mjs";
+import { normalizeCatalogWaistWidths } from "./lib/catalog-repair.mjs";
 import {
   mergeImportedProducts,
   normalizeBoardKey,
   normalizeWhitespace,
 } from "./lib/store-import/common.mjs";
+import {
+  applyOfficialProductSpecs,
+  loadOfficialProductSpecs,
+} from "./lib/official-specs.mjs";
 import { importTraektoriaProducts } from "./lib/store-import/traektoria.mjs";
 import { importTrialSportProducts } from "./lib/store-import/trial-sport.mjs";
 
@@ -52,6 +57,24 @@ function isPreferredStoreLink(url) {
   } catch {
     return false;
   }
+}
+
+function getManagedStoreCodeFromUrl(url) {
+  try {
+    const hostname = new URL(String(url ?? "")).hostname.toLowerCase();
+
+    if (hostname === "traektoria.ru" || hostname === "www.traektoria.ru") {
+      return "traektoria";
+    }
+
+    if (hostname === "trial-sport.ru" || hostname === "www.trial-sport.ru") {
+      return "trial-sport";
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
 }
 
 function buildTrialSportSearchLink(product) {
@@ -396,6 +419,7 @@ function isManagedStoreProduct(product) {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function shouldSyncStoreProduct(product, currentSourceFilter) {
   if (currentSourceFilter === "all") {
     return isManagedStoreProduct(product);
@@ -407,6 +431,28 @@ function shouldSyncStoreProduct(product, currentSourceFilter) {
 
   if (currentSourceFilter === "trial" || currentSourceFilter === "trial-sport") {
     return product.sourceName === "Триал-Спорт";
+  }
+
+  return false;
+}
+
+function isManagedStoreCatalogProduct(product) {
+  return Boolean(getManagedStoreCodeFromUrl(product.affiliateUrl));
+}
+
+function shouldSyncManagedStoreProduct(product, currentSourceFilter) {
+  const managedStoreCode = getManagedStoreCodeFromUrl(product.affiliateUrl);
+
+  if (currentSourceFilter === "all") {
+    return isManagedStoreCatalogProduct(product);
+  }
+
+  if (currentSourceFilter === "traektoria") {
+    return managedStoreCode === "traektoria";
+  }
+
+  if (currentSourceFilter === "trial" || currentSourceFilter === "trial-sport") {
+    return managedStoreCode === "trial-sport";
   }
 
   return false;
@@ -479,6 +525,7 @@ export async function runStoreImport(options = {}) {
     await sql`set statement_timeout = 0`;
 
     const existingCatalog = await loadExistingCatalog(sql, state);
+    const officialProductSpecs = await loadOfficialProductSpecs();
     const existingComparableVerifiedProducts = new Map(
       Array.from(existingCatalog.values())
         .filter((product) => product.dataStatus === "verified")
@@ -552,25 +599,39 @@ export async function runStoreImport(options = {}) {
     }
 
     const preparedProducts = Array.from(mergedImportedProducts.values())
-      .map((product) =>
-        mergeWithExistingProduct(existingCatalog.get(product.slug), product),
-      )
+      .map((product) => {
+        const mergedProduct = mergeWithExistingProduct(
+          existingCatalog.get(product.slug),
+          product,
+        );
+
+        return applyOfficialProductSpecs(
+          mergedProduct,
+          officialProductSpecs.get(mergedProduct.slug),
+        );
+      })
       .filter((product) => product.sizes.length > 0);
 
     const staleStoreProducts = Array.from(existingCatalog.values())
       .filter(
         (product) =>
-          shouldSyncStoreProduct(product, sourceFilter) &&
+          shouldSyncManagedStoreProduct(product, sourceFilter) &&
           !mergedImportedProducts.has(product.slug),
       )
-      .map((product) => ({
-        ...product,
-        isActive: false,
-      }));
+      .map((product) =>
+        applyOfficialProductSpecs(
+          {
+            ...product,
+            isActive: false,
+          },
+          officialProductSpecs.get(product.slug),
+        ),
+      );
 
     const finalProducts = [...preparedProducts, ...staleStoreProducts];
     const summary = await upsertCatalogProducts(sql, finalProducts);
     const cleanedBrokenTrialSizes = await cleanupBrokenTrialSportSizes(sql);
+    const repairedWaistWidths = await normalizeCatalogWaistWidths(sql);
     const result = {
       checkedAt,
       sourceFilter,
@@ -578,19 +639,25 @@ export async function runStoreImport(options = {}) {
       importedModels: summary.importedModels,
       importedSizes: summary.importedSizes,
       cleanedBrokenTrialSizes,
+      repairedWaistWidths: repairedWaistWidths.length,
       mergedProducts: finalProducts.length,
       activeProducts: finalProducts.filter((product) => product.isActive).length,
       draftProducts: finalProducts.filter(
         (product) => product.dataStatus === "draft",
+      ).length,
+      verifiedProducts: finalProducts.filter(
+        (product) => product.dataStatus === "verified",
       ).length,
     };
 
     logger.log(`Store import finished. Models: ${result.importedModels}`);
     logger.log(`Sizes imported: ${result.importedSizes}`);
     logger.log(`Broken Trial Sport sizes removed: ${result.cleanedBrokenTrialSizes}`);
+    logger.log(`Waist widths repaired: ${result.repairedWaistWidths}`);
     logger.log(`Merged product cards: ${result.mergedProducts}`);
     logger.log(`Active products after import: ${result.activeProducts}`);
     logger.log(`Draft products after import: ${result.draftProducts}`);
+    logger.log(`Verified products after import: ${result.verifiedProducts}`);
     summarizeWarnings(warnings, logger);
 
     return result;

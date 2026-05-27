@@ -101,6 +101,39 @@ export async function runCatalogAudit(options = {}) {
       limit 50
     `;
 
+    const invalidWaistCondition = sql`
+      (
+        ps.waist_width_mm <= 0
+        or ps.waist_width_mm >= 400
+        or (ps.size_cm >= 140 and (ps.waist_width_mm < 200 or ps.waist_width_mm > 340))
+        or (ps.size_cm >= 100 and ps.size_cm < 140 and (ps.waist_width_mm < 170 or ps.waist_width_mm > 340))
+        or (ps.size_cm < 100 and (ps.waist_width_mm < 120 or ps.waist_width_mm > 240))
+      )
+    `;
+    const [sizesWithInvalidWaistCount] = await sql`
+      select count(*)::int as count
+      from product_sizes ps
+      join products p on p.id = ps.product_id
+      where p.is_active = true
+        and ${invalidWaistCondition}
+    `;
+    const sizesWithInvalidWaist = await sql`
+      select
+        p.slug,
+        p.brand,
+        p.model_name,
+        ps.size_cm::float8 as size_cm,
+        ps.size_label,
+        ps.waist_width_mm,
+        p.affiliate_url
+      from product_sizes ps
+      join products p on p.id = ps.product_id
+      where p.is_active = true
+        and ${invalidWaistCondition}
+      order by ps.waist_width_mm desc, p.brand, p.model_name, ps.size_cm
+      limit 50
+    `;
+
     const [productsWithoutSizesCount] = await sql`
       select count(*)::int as count
       from products p
@@ -250,12 +283,47 @@ export async function runCatalogAudit(options = {}) {
       limit 50
     `;
 
+    const [productsWithoutCompleteBoardSpecsCount] = await sql`
+      select count(*)::int as count
+      from products p
+      where p.is_active = true
+        and (
+          p.shape_type is null
+          or p.camber_profile is null
+        )
+    `;
+    const productsWithoutCompleteBoardSpecs = await sql`
+      select
+        p.slug,
+        p.brand,
+        p.model_name,
+        p.shape_type,
+        p.camber_profile,
+        p.data_status,
+        p.source_name,
+        p.source_url
+      from products p
+      where p.is_active = true
+        and (
+          p.shape_type is null
+          or p.camber_profile is null
+        )
+      order by p.brand, p.model_name
+      limit 50
+    `;
+
     const checks = {
       brokenAdultSizes: buildCheck({
         title: "No adult boards with corrupted short size labels like 58/88",
         severity: "error",
         count: brokenAdultSizeCount.count,
         rows: brokenAdultSizes,
+      }),
+      sizesWithInvalidWaist: buildCheck({
+        title: "Product sizes have plausible snowboard waist widths",
+        severity: "error",
+        count: sizesWithInvalidWaistCount.count,
+        rows: sizesWithInvalidWaist,
       }),
       productsWithoutSizes: buildCheck({
         title: "Active products have at least one size",
@@ -296,10 +364,16 @@ export async function runCatalogAudit(options = {}) {
       }),
       productsWithoutTrustedFlex: buildCheck({
         title:
-          "Active products have stiffness confirmed by an official non-store source",
+          "Active products without stiffness confirmed by an official non-store source",
         severity: "warning",
         count: productsWithoutTrustedFlexCount.count,
         rows: productsWithoutTrustedFlex,
+      }),
+      productsWithoutCompleteBoardSpecs: buildCheck({
+        title: "Active products without shape or camber profile filled",
+        severity: "warning",
+        count: productsWithoutCompleteBoardSpecsCount.count,
+        rows: productsWithoutCompleteBoardSpecs,
       }),
     };
 

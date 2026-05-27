@@ -13,6 +13,7 @@ import {
 } from "@/lib/content";
 import {
   getProductCatalogIssues,
+  hasTrustedFlex,
   isReadyForCatalog,
 } from "@/lib/catalog-readiness";
 import type {
@@ -70,6 +71,14 @@ interface ProductDraft {
   notIdealForText: string;
   sizes: ProductSizeDraft[];
 }
+
+type CatalogListFilter =
+  | "all"
+  | "missing-specs"
+  | "missing-camber"
+  | "missing-shape"
+  | "missing-trusted-flex"
+  | "unready";
 
 const boardLineLabels: Record<Product["boardLine"], string> = {
   men: "Мужская",
@@ -183,6 +192,24 @@ function splitLines(value: string) {
     .filter(Boolean);
 }
 
+function matchesListFilter(product: Product, filter: CatalogListFilter) {
+  switch (filter) {
+    case "missing-specs":
+      return !product.shapeType || !product.camberProfile;
+    case "missing-camber":
+      return !product.camberProfile;
+    case "missing-shape":
+      return !product.shapeType;
+    case "missing-trusted-flex":
+      return !hasTrustedFlex(product);
+    case "unready":
+      return !isReadyForCatalog(product);
+    case "all":
+    default:
+      return true;
+  }
+}
+
 function draftToPayload(draft: ProductDraft) {
   return {
     slug: draft.slug.trim(),
@@ -230,6 +257,7 @@ export function CatalogEditor({ initialProducts }: CatalogEditorProps) {
     initialProducts[0] ? productToDraft(initialProducts[0]) : createEmptyDraft(),
   );
   const [query, setQuery] = useState("");
+  const [listFilter, setListFilter] = useState<CatalogListFilter>("all");
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -239,6 +267,10 @@ export function CatalogEditor({ initialProducts }: CatalogEditorProps) {
     const normalizedQuery = deferredQuery.trim().toLowerCase();
 
     return products.filter((product) => {
+      if (!matchesListFilter(product, listFilter)) {
+        return false;
+      }
+
       if (!normalizedQuery) {
         return true;
       }
@@ -247,7 +279,7 @@ export function CatalogEditor({ initialProducts }: CatalogEditorProps) {
         .toLowerCase()
         .includes(normalizedQuery);
     });
-  }, [deferredQuery, products]);
+  }, [deferredQuery, listFilter, products]);
 
   const stats = useMemo(() => {
     return {
@@ -256,8 +288,53 @@ export function CatalogEditor({ initialProducts }: CatalogEditorProps) {
       inactive: products.filter((product) => !product.isActive).length,
       verified: products.filter((product) => product.dataStatus === "verified").length,
       ready: products.filter(isReadyForCatalog).length,
+      missingSpecs: products.filter(
+        (product) => !product.shapeType || !product.camberProfile,
+      ).length,
+      missingCamber: products.filter((product) => !product.camberProfile).length,
+      missingShape: products.filter((product) => !product.shapeType).length,
+      missingTrustedFlex: products.filter((product) => !hasTrustedFlex(product))
+        .length,
+      unready: products.filter((product) => !isReadyForCatalog(product)).length,
     };
   }, [products]);
+
+  const filterOptions = useMemo(
+    () =>
+      [
+        { value: "all", label: "Все", count: stats.total },
+        {
+          value: "missing-specs",
+          label: "Нет формы или прогиба",
+          count: stats.missingSpecs,
+        },
+        {
+          value: "missing-camber",
+          label: "Нет прогиба",
+          count: stats.missingCamber,
+        },
+        {
+          value: "missing-shape",
+          label: "Нет формы",
+          count: stats.missingShape,
+        },
+        {
+          value: "missing-trusted-flex",
+          label: "Нет офиц. жёсткости",
+          count: stats.missingTrustedFlex,
+        },
+        {
+          value: "unready",
+          label: "Не готово к публикации",
+          count: stats.unready,
+        },
+      ] satisfies {
+        value: CatalogListFilter;
+        label: string;
+        count: number;
+      }[],
+    [stats],
+  );
 
   const draftIssues = useMemo(() => {
     return getProductCatalogIssues({
@@ -425,6 +502,24 @@ export function CatalogEditor({ initialProducts }: CatalogEditorProps) {
               className="w-full rounded-[1.2rem] border border-[var(--color-border)] bg-white px-4 py-3 outline-none focus:border-[var(--color-sky)]"
             />
           </label>
+
+          <div className="mt-5">
+            <p className="text-sm font-semibold">Быстрые фильтры</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {filterOptions.map((option) => (
+                <FilterChip
+                  key={option.value}
+                  label={option.label}
+                  count={option.count}
+                  isActive={listFilter === option.value}
+                  onClick={() => setListFilter(option.value)}
+                />
+              ))}
+            </div>
+            <p className="mt-3 text-sm text-[var(--color-muted)]">
+              Показано {filteredProducts.length} из {products.length} моделей.
+            </p>
+          </div>
 
           <button
             type="button"
@@ -816,7 +911,7 @@ export function CatalogEditor({ initialProducts }: CatalogEditorProps) {
                       hint="Например: 160W"
                     />
                     <NumberField
-                      label="Талия, мм"
+                      label="Ширина талии, мм"
                       value={size.waistWidthMm}
                       onChange={(value) => updateSize(index, "waistWidthMm", value)}
                     />
@@ -877,6 +972,39 @@ function StatCard({ label, value }: { label: string; value: string }) {
         {value}
       </p>
     </div>
+  );
+}
+
+function FilterChip({
+  label,
+  count,
+  isActive,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  isActive: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
+        isActive
+          ? "border-transparent bg-[var(--color-pine)] text-white"
+          : "border-[var(--color-border)] bg-white text-[var(--color-sky-deep)] hover:border-[var(--color-sky)]"
+      }`}
+    >
+      <span>{label}</span>
+      <span
+        className={`rounded-full px-2 py-0.5 text-xs ${
+          isActive ? "bg-white/18 text-white" : "bg-[var(--color-paper-soft)]"
+        }`}
+      >
+        {count}
+      </span>
+    </button>
   );
 }
 

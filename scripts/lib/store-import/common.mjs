@@ -202,6 +202,39 @@ export function parseFloatNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+export function normalizeWaistWidthMm(value) {
+  const parsed = parseFloatNumber(value);
+  if (parsed == null) {
+    return null;
+  }
+
+  if (parsed >= 1000 && parsed <= 4000) {
+    return Math.round(parsed / 10);
+  }
+
+  if (parsed > 0 && parsed < 100) {
+    return Math.round(parsed * 10);
+  }
+
+  return Math.round(parsed);
+}
+
+export function isPlausibleWaistWidthMm(sizeCm, waistWidthMm) {
+  if (!Number.isFinite(sizeCm) || !Number.isFinite(waistWidthMm)) {
+    return false;
+  }
+
+  if (sizeCm >= 140) {
+    return waistWidthMm >= 200 && waistWidthMm <= 340;
+  }
+
+  if (sizeCm >= 100) {
+    return waistWidthMm >= 170 && waistWidthMm <= 340;
+  }
+
+  return waistWidthMm >= 120 && waistWidthMm <= 240;
+}
+
 export function parseFlexNumber(value) {
   const directNumber = parseFloatNumber(value);
   if (directNumber != null) {

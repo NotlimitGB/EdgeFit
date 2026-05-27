@@ -47,6 +47,7 @@ function createProduct(
     isActive: true,
     boardLine: "men",
     shapeType: "directional-twin",
+    camberProfile: "hybrid-camber",
     dataStatus: "verified",
     sourceName: "Официальный источник",
     sourceUrl: "https://brand.test/test-board",

@@ -19,6 +19,7 @@ const baseProduct: Product = {
   isActive: true,
   boardLine: "unisex",
   shapeType: "directional",
+  camberProfile: "camber",
   dataStatus: "verified",
   sourceName: "Официальная страница Test",
   sourceUrl: "https://brand.test/trust-board",
@@ -67,6 +68,19 @@ describe("catalog trust helpers", () => {
     expect(details.issueLabel).toBe("Модель ещё не отмечена как проверенная.");
     expect(details.badgeDescription).toContain("Модель ещё не отмечена");
   });
+
+  it("does not mark cards as ready without shape and camber profile", () => {
+    const details = getProductTrustDetails({
+      ...baseProduct,
+      shapeType: null,
+      camberProfile: null,
+    });
+
+    expect(details.isReady).toBe(false);
+    expect(details.badgeLabel).toBe("Нужно перепроверить");
+    expect(details.issueLabel).toBe("Не указана форма / направленность доски.");
+  });
+
   it("trusts stiffness only for verified non-store sources", () => {
     expect(hasTrustedFlex(baseProduct)).toBe(true);
 

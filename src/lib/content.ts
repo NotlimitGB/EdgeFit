@@ -89,9 +89,8 @@ export const productDataStatusLabels: Record<ProductDataStatus, string> = {
 };
 
 export function formatMoney(value: number) {
-  return new Intl.NumberFormat("ru-RU", {
-    style: "currency",
-    currency: "RUB",
-    maximumFractionDigits: 0,
-  }).format(value);
+  const roundedValue = Math.round(Number.isFinite(value) ? value : 0);
+  const formattedValue = String(roundedValue).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+
+  return `${formattedValue} ₽`;
 }

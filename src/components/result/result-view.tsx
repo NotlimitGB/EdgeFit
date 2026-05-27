@@ -291,7 +291,7 @@ export function ResultView() {
             <MetricCard
               label="Ширина"
               value={widthTypeLabels[recommendation.recommendedWidthType]}
-              description={`Ориентир по талии доски около ${recommendation.targetWaistWidthMm} мм.`}
+              description={`Ориентир по ширине талии доски около ${recommendation.targetWaistWidthMm} мм.`}
             />
             <MetricCard
               label="Риск зацепа"

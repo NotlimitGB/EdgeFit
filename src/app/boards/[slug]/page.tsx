@@ -202,7 +202,7 @@ export default async function BoardPage({ params }: BoardPageProps) {
                 <thead className="text-[var(--color-muted)]">
                   <tr>
                     <th className="pb-3 pr-6 font-semibold">Размер</th>
-                    <th className="pb-3 pr-6 font-semibold">Waist</th>
+                    <th className="pb-3 pr-6 font-semibold">Ширина талии</th>
                     <th className="pb-3 pr-6 font-semibold">Ширина</th>
                     <th className="pb-3 pr-6 font-semibold">Вес райдера</th>
                     <th className="pb-3 font-semibold">Наличие</th>
@@ -274,7 +274,6 @@ export default async function BoardPage({ params }: BoardPageProps) {
                 {sourceCheckedAtLabel
                   ? `, проверка от ${sourceCheckedAtLabel}`
                   : ""}
-                .
               </p>
               <a
                 href={board.sourceUrl}
