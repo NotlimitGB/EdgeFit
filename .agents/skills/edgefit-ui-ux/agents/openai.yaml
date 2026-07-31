@@ -1,0 +1,4 @@
+interface:
+  display_name: "EdgeFit UI/UX"
+  short_description: "Product UI direction and hierarchy for EdgeFit"
+  default_prompt: "Use $edgefit-ui-ux to choose an EdgeFit-specific UI direction before implementation."

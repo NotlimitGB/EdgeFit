@@ -1,0 +1,4 @@
+interface:
+  display_name: "EdgeFit Brand"
+  short_description: "Brand voice and positioning for EdgeFit"
+  default_prompt: "Use $edgefit-brand to define or review EdgeFit brand messaging."

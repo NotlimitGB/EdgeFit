@@ -1,0 +1,4 @@
+interface:
+  display_name: "EdgeFit Design System"
+  short_description: "UI tokens, components, and states for EdgeFit"
+  default_prompt: "Use $edgefit-design-system to turn EdgeFit design direction into reusable UI rules."

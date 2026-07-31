@@ -126,6 +126,15 @@ db                          схема PostgreSQL
 scripts                     проверка подключения и заполнение базы
 ```
 
+## Codex and design workflow
+
+- `AGENTS.md` — project-level instructions for Codex and coding agents.
+- `.agents/skills/edgefit-brand/SKILL.md` — brand and messaging workflow.
+- `.agents/skills/edgefit-ui-ux/SKILL.md` — UI/UX direction workflow.
+- `.agents/skills/edgefit-design-system/SKILL.md` — design-system workflow.
+- `.agents/skills/edgefit-ui-styling/SKILL.md` — Tailwind/React UI implementation workflow.
+- `docs/codex-skills.md` — index of local EdgeFit skills.
+
 ## Ближайшие шаги
 
 1. Держать каталог в актуальном состоянии через CSV и импорт из магазинов.

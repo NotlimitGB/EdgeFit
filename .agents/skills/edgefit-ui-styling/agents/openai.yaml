@@ -1,0 +1,4 @@
+interface:
+  display_name: "EdgeFit UI Styling"
+  short_description: "React and Tailwind UI implementation for EdgeFit"
+  default_prompt: "Use $edgefit-ui-styling to implement an approved EdgeFit UI direction in React and Tailwind."
