@@ -1,16 +1,15 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { trackEvent } from "@/lib/analytics/client";
-import { boardLineLabels, terrainPriorityLabels } from "@/lib/content";
 import {
   defaultQuizDraft,
   quizSubmissionSchema,
   type QuizSubmission,
 } from "@/lib/quiz/schema";
 import { getOrCreateSessionId } from "@/lib/session-id";
+import styles from "./quiz-flow.module.css";
 
 const STORAGE_KEY = "edgefit.quiz-draft";
 const RESULT_STORAGE_KEY = "edgefit.latest-recommendation";
@@ -22,7 +21,176 @@ const stepFields = [
 ] as const;
 const stepNames = ["body", "profile", "style"] as const;
 
+const stepDetails = [
+  {
+    shortLabel: "Параметры",
+    eyebrow: "Твои параметры",
+    title: "Начнём с того, что реально влияет на размер",
+    description:
+      "Рост и вес помогают определить рабочую длину, а размер ботинка — безопасную ширину доски.",
+    context:
+      "Вес задаёт основу ростовки, рост уточняет диапазон, а ботинок определяет нужный запас по ширине.",
+  },
+  {
+    shortLabel: "Профиль",
+    eyebrow: "Твой профиль",
+    title: "Уровень и предпочтение по линейке",
+    description:
+      "Уровень влияет на характер подходящих моделей. Линейка фильтрует каталог, но не меняет твой физический fit.",
+    context:
+      "Здесь мы отделяем физические параметры райдера от того, в какой части каталога искать подходящие модели.",
+  },
+  {
+    shortLabel: "Катание",
+    eyebrow: "Как ты катаешься",
+    title: "Осталось понять характер и сценарий катания",
+    description:
+      "Стиль, приоритет и стойка помогают уточнить длину, ширину и профиль доски.",
+    context:
+      "Стиль задаёт общее направление, а приоритет объясняет, что важнее именно внутри твоего сценария.",
+  },
+] as const;
+
 type DraftState = Record<keyof QuizSubmission, string>;
+
+interface ChoiceOption<Value extends string> {
+  value: Value;
+  title: string;
+  description: string;
+}
+
+const boardLineOptions = [
+  {
+    value: "men",
+    title: "Мужская / унисекс",
+    description:
+      "Сначала ищем модели из этой линейки. Размер и ширину всё равно считаем по твоим параметрам.",
+  },
+  {
+    value: "women",
+    title: "Женская",
+    description:
+      "Сначала ищем модели из женской линейки. Физический fit остаётся персональным.",
+  },
+  {
+    value: "any",
+    title: "Без привязки",
+    description:
+      "Не ограничиваем каталог линейкой и смотрим прежде всего на fit.",
+  },
+] as const satisfies readonly ChoiceOption<
+  QuizSubmission["boardLinePreference"]
+>[];
+
+const skillOptions = [
+  {
+    value: "beginner",
+    title: "Осваиваю базу",
+    description: "Хочу более понятную и прощающую доску.",
+  },
+  {
+    value: "intermediate",
+    title: "Уверенно катаюсь",
+    description: "Нужен баланс контроля, прогресса и стабильности.",
+  },
+  {
+    value: "advanced",
+    title: "Катаюсь технично",
+    description:
+      "Можно рассматривать более требовательные и поддерживающие модели.",
+  },
+] as const satisfies readonly ChoiceOption<QuizSubmission["skillLevel"]>[];
+
+const ridingStyleOptions = [
+  {
+    value: "all-mountain",
+    title: "All-mountain",
+    description: "Трассы, немного вне трасс и разные условия в течение дня.",
+  },
+  {
+    value: "park",
+    title: "Park / freestyle",
+    description: "Фигуры, прыжки, свич и более живое ощущение доски.",
+  },
+  {
+    value: "freeride",
+    title: "Freeride / powder",
+    description: "Скорость, рельеф и больше времени вне подготовленных трасс.",
+  },
+] as const satisfies readonly ChoiceOption<QuizSubmission["ridingStyle"]>[];
+
+const terrainPriorityOptions = [
+  {
+    value: "balanced",
+    title: "Универсальность",
+    description: "Одна доска на разные сценарии без сильного перекоса.",
+  },
+  {
+    value: "switch-freestyle",
+    title: "Фристайл / свич",
+    description:
+      "Свич, вращения, side hits и более живое ощущение доски.",
+  },
+  {
+    value: "groomers-carving",
+    title: "Карвинг / подготовленные трассы",
+    description:
+      "Резаные дуги, скорость и сильная закантовка. Оставим дополнительный запас по ширине против зацепа ботинком.",
+  },
+  {
+    value: "soft-snow",
+    title: "Мягкий снег / разбитка",
+    description: "Больше запаса в мягком снегу, каше и разбитом рельефе.",
+  },
+] as const satisfies readonly ChoiceOption<
+  QuizSubmission["terrainPriority"]
+>[];
+
+const aggressivenessOptions = [
+  {
+    value: "relaxed",
+    title: "Спокойный",
+    description: "Комфорт, лёгкое управление и больше прощения.",
+  },
+  {
+    value: "balanced",
+    title: "Сбалансированный",
+    description: "Ровный баланс манёвренности, контроля и стабильности.",
+  },
+  {
+    value: "aggressive",
+    title: "Агрессивный",
+    description: "Больше стабильности и поддержки на скорости.",
+  },
+] as const satisfies readonly ChoiceOption<
+  QuizSubmission["aggressiveness"]
+>[];
+
+const stanceOptions = [
+  {
+    value: "standard",
+    title: "Стандартная",
+    description: "Обычная направленная стойка без сильного разворота наружу.",
+  },
+  {
+    value: "duck",
+    title: "Duck stance",
+    description: "Носки развёрнуты в разные стороны — часто удобно для свича.",
+  },
+  {
+    value: "unknown",
+    title: "Не знаю",
+    description: "Это нормально — EdgeFit оставит более осторожную оценку.",
+  },
+] as const satisfies readonly ChoiceOption<QuizSubmission["stanceType"]>[];
+
+const resultOutputs = [
+  ["01", "Ростовка", "рабочий диапазон длины"],
+  ["02", "Ширина", "regular, mid-wide или wide"],
+  ["03", "Талия", "ориентир в миллиметрах"],
+  ["04", "Boot drag", "понятный уровень риска"],
+  ["05", "Модели", "варианты для сравнения"],
+] as const;
 
 function createInitialDraft(): DraftState {
   return {
@@ -42,11 +210,16 @@ export function QuizFlow() {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [draft, setDraft] = useState<DraftState>(createInitialDraft);
-  const [errors, setErrors] = useState<Partial<Record<keyof QuizSubmission, string>>>(
-    {},
-  );
+  const [errors, setErrors] = useState<
+    Partial<Record<keyof QuizSubmission, string>>
+  >({});
   const [submissionError, setSubmissionError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const stepHeadingRef = useRef<HTMLHeadingElement>(null);
+  const isInitialStep = useRef(true);
+  const isBusy = isSubmitting || isPending;
+  const currentStep = stepDetails[step];
 
   useEffect(() => {
     const rawDraft = window.sessionStorage.getItem(STORAGE_KEY);
@@ -79,9 +252,19 @@ export function QuizFlow() {
     });
   }, [step]);
 
-  const progress = ((step + 1) / stepFields.length) * 100;
+  useEffect(() => {
+    if (isInitialStep.current) {
+      isInitialStep.current = false;
+      return;
+    }
 
-  function updateDraft<Key extends keyof DraftState>(key: Key, value: DraftState[Key]) {
+    stepHeadingRef.current?.focus();
+  }, [step]);
+
+  function updateDraft<Key extends keyof DraftState>(
+    key: Key,
+    value: DraftState[Key],
+  ) {
     setDraft((current) => ({ ...current, [key]: value }));
     setErrors((current) => ({ ...current, [key]: undefined }));
   }
@@ -96,22 +279,25 @@ export function QuizFlow() {
 
     const nextErrors = result.error.flatten().fieldErrors;
     const fields = stepFields[step];
-    const scopedErrors = fields.reduce<Partial<Record<keyof QuizSubmission, string>>>(
-      (accumulator, field) => {
-        const message = nextErrors[field]?.[0];
-        if (message) {
-          accumulator[field] = message;
-        }
-        return accumulator;
-      },
-      {},
-    );
+    const scopedErrors = fields.reduce<
+      Partial<Record<keyof QuizSubmission, string>>
+    >((accumulator, field) => {
+      const message = nextErrors[field]?.[0];
+      if (message) {
+        accumulator[field] = message;
+      }
+      return accumulator;
+    }, {});
 
     setErrors((current) => ({ ...current, ...scopedErrors }));
     return null;
   }
 
   async function handleSubmit() {
+    if (isBusy) {
+      return;
+    }
+
     const payload = validateCurrentStep();
 
     if (!payload) {
@@ -119,6 +305,7 @@ export function QuizFlow() {
     }
 
     setSubmissionError("");
+    setIsSubmitting(true);
 
     try {
       const идентификаторСессии = getOrCreateSessionId();
@@ -169,10 +356,15 @@ export function QuizFlow() {
           ? error.message
           : "Сервис временно недоступен. Попробуйте ещё раз.",
       );
+      setIsSubmitting(false);
     }
   }
 
   function nextStep() {
+    if (isBusy) {
+      return;
+    }
+
     const parsed = validateCurrentStep();
 
     if (!parsed) {
@@ -188,361 +380,362 @@ export function QuizFlow() {
   }
 
   function previousStep() {
+    if (isBusy) {
+      return;
+    }
+
     setStep((current) => Math.max(current - 1, 0));
   }
 
   return (
-    <div className="grid gap-10 xl:grid-cols-[1.15fr_0.85fr]">
-      <section className="panel p-6 sm:p-8">
-        <div className="mb-8 flex items-end justify-between gap-4">
-          <div>
-            <span className="eyebrow">Шаг {step + 1} из 3</span>
-            <h1 className="heading-display mt-4 text-4xl font-bold sm:text-5xl">
-              Короткий квиз без лишних вопросов
-            </h1>
-            <p className="mt-4 max-w-2xl text-pretty text-base leading-8 text-[var(--color-muted)] sm:text-lg">
-              Нужны только те данные, которые действительно влияют на длину,
-              ширину и риск зацепа ботинком. Без длинной анкеты и странных
-              вопросов ради галочки.
-            </p>
-          </div>
+    <div className={styles.quizLayout} aria-busy={isBusy}>
+      <section className={styles.quizCore} aria-labelledby="quiz-step-title">
+        <div
+          className={styles.progress}
+          role="progressbar"
+          aria-label={`Шаг ${step + 1} из 3: ${currentStep.shortLabel}`}
+          aria-valuemin={1}
+          aria-valuemax={stepFields.length}
+          aria-valuenow={step + 1}
+        >
+          <ol className={styles.progressSteps} aria-hidden="true">
+            {stepDetails.map((item, index) => {
+              const state =
+                index < step ? "completed" : index === step ? "active" : "upcoming";
+
+              return (
+                <li key={item.shortLabel} data-state={state}>
+                  <span className={styles.progressMarker}>
+                    {state === "completed" ? "✓" : index + 1}
+                  </span>
+                  <span>{item.shortLabel}</span>
+                  <small>{state === "active" ? "сейчас" : state === "completed" ? "готово" : "далее"}</small>
+                </li>
+              );
+            })}
+          </ol>
         </div>
 
-        <div className="mb-8 h-2 overflow-hidden rounded-full bg-[var(--color-ice)]">
-          <div
-            className="h-full rounded-full bg-[linear-gradient(90deg,var(--color-sky-deep),var(--color-sky))]"
-            style={{ width: `${progress}%` }}
-          />
+        <header className={styles.stepHeader}>
+          <p className={styles.microLabel}>
+            Шаг {step + 1} / {stepFields.length} · {currentStep.eyebrow}
+          </p>
+          <h2 id="quiz-step-title" ref={stepHeadingRef} tabIndex={-1}>
+            {currentStep.title}
+          </h2>
+          <p>{currentStep.description}</p>
+        </header>
+
+        <div className={styles.stepContent} key={step}>
+          {step === 0 ? (
+            <div className={styles.measurementGrid}>
+              <NumberField
+                id="heightCm"
+                label="Рост"
+                unit="см"
+                hint="Например, 178"
+                explanation="Помогает скорректировать рабочий диапазон длины."
+                value={draft.heightCm}
+                onChange={(value) => updateDraft("heightCm", value)}
+                error={errors.heightCm}
+                step="1"
+              />
+              <NumberField
+                id="weightKg"
+                label="Вес"
+                unit="кг"
+                hint="Например, 74"
+                explanation="Главный ориентир для базовой ростовки."
+                value={draft.weightKg}
+                onChange={(value) => updateDraft("weightKg", value)}
+                error={errors.weightKg}
+                step="1"
+              />
+              <NumberField
+                id="bootSizeEu"
+                label="Размер ботинка"
+                unit="EU"
+                hint="Например, 43 или 43.5"
+                explanation="Влияет на ширину доски и риск boot drag."
+                value={draft.bootSizeEu}
+                onChange={(value) => updateDraft("bootSizeEu", value)}
+                error={errors.bootSizeEu}
+                step="0.5"
+              />
+            </div>
+          ) : null}
+
+          {step === 1 ? (
+            <div className={styles.questionStack}>
+              <ChoiceGroup
+                name="boardLinePreference"
+                label="Линейка досок"
+                helper="Это фильтр каталога, а не отдельная формула размера."
+                value={draft.boardLinePreference}
+                onChange={(value) => updateDraft("boardLinePreference", value)}
+                options={boardLineOptions}
+                error={errors.boardLinePreference}
+                columns="three"
+              />
+              <ChoiceGroup
+                name="skillLevel"
+                label="Как ты оцениваешь свой уровень?"
+                helper="Выбери описание, которое ближе к твоему катанию сейчас."
+                value={draft.skillLevel}
+                onChange={(value) => updateDraft("skillLevel", value)}
+                options={skillOptions}
+                error={errors.skillLevel}
+                columns="three"
+              />
+            </div>
+          ) : null}
+
+          {step === 2 ? (
+            <div className={styles.questionStack}>
+              <ChoiceGroup
+                name="ridingStyle"
+                label="Базовый стиль"
+                helper="Выбери ближайшее направление. Ниже отдельно уточним главный приоритет."
+                value={draft.ridingStyle}
+                onChange={(value) => updateDraft("ridingStyle", value)}
+                options={ridingStyleOptions}
+                error={errors.ridingStyle}
+                columns="three"
+              />
+              <ChoiceGroup
+                name="terrainPriority"
+                label="Главный приоритет"
+                helper="Что ты хочешь получить от доски в первую очередь?"
+                value={draft.terrainPriority}
+                onChange={(value) => updateDraft("terrainPriority", value)}
+                options={terrainPriorityOptions}
+                error={errors.terrainPriority}
+                columns="two"
+              />
+              <ChoiceGroup
+                name="aggressiveness"
+                label="Какой характер доски нравится?"
+                helper="Это про ощущение доски, а не про уровень райдера."
+                value={draft.aggressiveness}
+                onChange={(value) => updateDraft("aggressiveness", value)}
+                options={aggressivenessOptions}
+                error={errors.aggressiveness}
+                columns="three"
+              />
+              <ChoiceGroup
+                name="stanceType"
+                label="Какая у тебя стойка?"
+                helper="Стойка немного влияет на запас против boot drag. Если не знаешь — это нормально."
+                value={draft.stanceType}
+                onChange={(value) => updateDraft("stanceType", value)}
+                options={stanceOptions}
+                error={errors.stanceType}
+                columns="three"
+              />
+            </div>
+          ) : null}
         </div>
-
-        {step === 0 ? (
-          <div className="grid gap-5 md:grid-cols-3">
-            <NumberField
-              label="Рост, см"
-              hint="Например, 178"
-              value={draft.heightCm}
-              onChange={(value) => updateDraft("heightCm", value)}
-              error={errors.heightCm}
-            />
-            <NumberField
-              label="Вес, кг"
-              hint="Например, 74"
-              value={draft.weightKg}
-              onChange={(value) => updateDraft("weightKg", value)}
-              error={errors.weightKg}
-            />
-            <NumberField
-              label="Размер ботинка, EU"
-              hint="Например, 43 или 44.5"
-              value={draft.bootSizeEu}
-              onChange={(value) => updateDraft("bootSizeEu", value)}
-              error={errors.bootSizeEu}
-            />
-          </div>
-        ) : null}
-
-        {step === 1 ? (
-          <div className="grid gap-6">
-            <ChoiceGroup
-              label="Линейка досок"
-              value={draft.boardLinePreference}
-              onChange={(value) => updateDraft("boardLinePreference", value)}
-              options={[
-                {
-                  value: "men",
-                  title: boardLineLabels.men,
-                  description: "Обычно здесь больше универсальных и широких моделей.",
-                },
-                {
-                  value: "women",
-                  title: boardLineLabels.women,
-                  description: "Ближе к женским моделям и более узким талиям доски.",
-                },
-                {
-                  value: "any",
-                  title: boardLineLabels.any,
-                  description: "Будем смотреть только на ваши реальные параметры, без жёсткой привязки к линейке.",
-                },
-              ]}
-              error={errors.boardLinePreference}
-            />
-            <ChoiceGroup
-              label="Ваш уровень"
-              value={draft.skillLevel}
-              onChange={(value) => updateDraft("skillLevel", value)}
-              options={[
-                {
-                  value: "beginner",
-                  title: "Начинающий",
-                  description: "Лучше смотреть на более понятные и прощающие модели.",
-                },
-                {
-                  value: "intermediate",
-                  title: "Средний уровень",
-                  description: "Нужен хороший баланс контроля, прогресса и стабильности.",
-                },
-                {
-                  value: "advanced",
-                  title: "Продвинутый",
-                  description: "Можно смотреть на более жёсткие и требовательные модели.",
-                },
-              ]}
-              error={errors.skillLevel}
-            />
-          </div>
-        ) : null}
-
-        {step === 2 ? (
-          <div className="grid gap-6">
-            <ChoiceGroup
-              label="Основной стиль катания"
-              value={draft.ridingStyle}
-              onChange={(value) => updateDraft("ridingStyle", value)}
-              options={[
-                {
-                  value: "all-mountain",
-                  title: "All-mountain",
-                  description: "Нужна универсальная доска без сильного перекоса в одну сторону.",
-                },
-                {
-                  value: "park",
-                  title: "Park / freestyle",
-                  description: "Часто лучше что-то покороче, живее и легче в перекантовке.",
-                },
-                {
-                  value: "freeride",
-                  title: "Freeride / powder",
-                  description: "Часто лучше чуть длиннее, спокойнее и стабильнее.",
-                },
-              ]}
-              error={errors.ridingStyle}
-            />
-            <ChoiceGroup
-              label="Что для вас важнее всего"
-              value={draft.terrainPriority}
-              onChange={(value) => updateDraft("terrainPriority", value)}
-              options={[
-                {
-                  value: "balanced",
-                  title: terrainPriorityLabels.balanced,
-                  description: "Хочется одну доску на разные сценарии без явного перекоса.",
-                },
-                {
-                  value: "switch-freestyle",
-                  title: terrainPriorityLabels["switch-freestyle"],
-                  description: "Хочется легче катать свич, крутиться и сохранить более живое ощущение доски.",
-                },
-                {
-                  value: "groomers-carving",
-                  title: terrainPriorityLabels["groomers-carving"],
-                  description: "Важнее уверенность на трассе, хорошая дуга и спокойствие на скорости.",
-                },
-                {
-                  value: "soft-snow",
-                  title: terrainPriorityLabels["soft-snow"],
-                  description: "Хочется больше запаса в мягком снегу, каше и разбитом рельефе.",
-                },
-              ]}
-              error={errors.terrainPriority}
-            />
-            <ChoiceGroup
-              label="Предпочтение по характеру доски"
-              value={draft.aggressiveness}
-              onChange={(value) => updateDraft("aggressiveness", value)}
-              options={[
-                {
-                  value: "relaxed",
-                  title: "Спокойный",
-                  description: "Важнее комфорт, контроль и прощение ошибок.",
-                },
-                {
-                  value: "balanced",
-                  title: "Сбалансированный",
-                  description: "Нужен баланс между стабильностью и манёвренностью.",
-                },
-                {
-                  value: "aggressive",
-                  title: "Агрессивный",
-                  description: "Нужен больший запас по стабильности, скорости и поддержке.",
-                },
-              ]}
-              error={errors.aggressiveness}
-            />
-            <ChoiceGroup
-              label="Стойка / углы"
-              value={draft.stanceType}
-              onChange={(value) => updateDraft("stanceType", value)}
-              options={[
-                {
-                  value: "standard",
-                  title: "Стандартная",
-                  description: "Обычная стойка без сильного разворота носков наружу.",
-                },
-                {
-                  value: "duck",
-                  title: "Duck stance",
-                  description: "Часто даёт немного больше запаса против зацепа ботинком.",
-                },
-                {
-                  value: "unknown",
-                  title: "Не знаю",
-                  description: "Тогда просто дадим более осторожную оценку риска.",
-                },
-              ]}
-              error={errors.stanceType}
-            />
-          </div>
-        ) : null}
 
         {submissionError ? (
-          <p className="mt-6 rounded-2xl border border-[rgba(173,62,55,0.18)] bg-[rgba(173,62,55,0.08)] px-4 py-3 text-sm font-medium text-[var(--color-danger)]">
-            {submissionError}
-          </p>
+          <div className={styles.submissionError} role="alert">
+            <strong>Не получилось завершить подбор</strong>
+            <p>{submissionError}</p>
+          </div>
         ) : null}
+      </section>
 
-        <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <aside className={styles.contextRail} aria-labelledby="quiz-output-title">
+        <div className={styles.contextCoordinate} aria-hidden="true">
+          EF / FIT 0{step + 1}
+        </div>
+        <p className={styles.microLabel}>Что получится на выходе</p>
+        <h2 id="quiz-output-title">Понятный fit, а не одна случайная цифра</h2>
+        <dl className={styles.outputList}>
+          {resultOutputs.map(([number, term, description]) => (
+            <div key={term}>
+              <span aria-hidden="true">{number}</span>
+              <div>
+                <dt>{term}</dt>
+                <dd>{description}</dd>
+              </div>
+            </div>
+          ))}
+        </dl>
+        <div className={styles.contextNote}>
+          <p className={styles.microLabel}>Зачем этот шаг</p>
+          <p>{currentStep.context}</p>
+        </div>
+        <p className={styles.contextDisclaimer}>
+          Предварительные цифры не показываем: сначала нужны все ответы, затем
+          считаем реальный fit.
+        </p>
+      </aside>
+
+      <div className={styles.navigation} data-first-step={step === 0}>
+        {step > 0 ? (
           <button
             type="button"
             onClick={previousStep}
-            disabled={step === 0 || isPending}
-            className="inline-flex items-center justify-center rounded-full border border-[var(--color-border)] bg-white px-5 py-3 text-sm font-bold text-[var(--color-muted)] disabled:cursor-not-allowed disabled:opacity-45"
+            disabled={isBusy}
+            className={styles.secondaryAction}
           >
+            <span aria-hidden="true">←</span>
             Назад
           </button>
+        ) : null}
 
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Link
-              href="/catalog"
-              className="inline-flex items-center justify-center rounded-full border border-[var(--color-border)] bg-white px-5 py-3 text-sm font-bold text-[var(--color-pine)] hover:border-[var(--color-sky)]"
-            >
-              Открыть каталог
-            </Link>
-            {step < stepFields.length - 1 ? (
-              <button
-                type="button"
-                onClick={nextStep}
-                className="inline-flex items-center justify-center rounded-full bg-[var(--color-pine)] px-5 py-3 text-sm font-bold text-white hover:-translate-y-0.5 hover:bg-[var(--color-sky-deep)]"
-              >
-                Дальше
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={isPending}
-                className="inline-flex items-center justify-center rounded-full bg-[var(--color-pine)] px-5 py-3 text-sm font-bold text-white hover:-translate-y-0.5 hover:bg-[var(--color-sky-deep)] disabled:cursor-wait disabled:opacity-75"
-              >
-                {isPending ? "Считаем подбор..." : "Получить рекомендации"}
-              </button>
-            )}
-          </div>
-        </div>
-      </section>
-
-      <aside className="space-y-5">
-        <div className="panel p-6">
-          <p className="text-sm font-bold uppercase tracking-[0.18em] text-[var(--color-sky-deep)]">
-            Что учитываем
-          </p>
-          <ul className="mt-5 space-y-4 text-sm leading-7 text-[var(--color-muted)]">
-            <li>Вес сильнее влияет на длину доски, чем рост.</li>
-            <li>Стиль катания смещает рекомендацию: для park чаще короче, для freeride чаще длиннее.</li>
-            <li>Приоритет помогает точнее понять, какая форма доски вам ближе.</li>
-            <li>Размер ботинка и стойка влияют на ширину и риск зацепа.</li>
-            <li>Подходящие модели подбираются по размерной сетке, уровню и характеру доски.</li>
-          </ul>
-        </div>
-
-        <div className="panel p-6">
-          <p className="text-sm font-bold uppercase tracking-[0.18em] text-[var(--color-sky-deep)]">
-            Почему квиз короткий
-          </p>
-          <p className="mt-4 text-sm leading-7 text-[var(--color-muted)]">
-            Мы не собираем всё подряд. Если параметр не влияет на длину, ширину
-            или риск зацепа ботинком, значит он не должен мешать подбору.
-          </p>
-        </div>
-      </aside>
+        {step < stepFields.length - 1 ? (
+          <button
+            type="button"
+            onClick={nextStep}
+            disabled={isBusy}
+            className={styles.primaryAction}
+          >
+            Продолжить
+            <span aria-hidden="true">→</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={isBusy}
+            aria-busy={isBusy}
+            className={styles.primaryAction}
+          >
+            {isBusy ? "Подбираем доски…" : "Получить подбор"}
+            {!isBusy ? <span aria-hidden="true">→</span> : null}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
 
 interface NumberFieldProps {
+  id: "heightCm" | "weightKg" | "bootSizeEu";
   label: string;
+  unit: string;
   hint: string;
+  explanation: string;
   value: string;
   onChange: (value: string) => void;
   error?: string;
+  step: string;
 }
 
-function NumberField({ label, hint, value, onChange, error }: NumberFieldProps) {
+function NumberField({
+  id,
+  label,
+  unit,
+  hint,
+  explanation,
+  value,
+  onChange,
+  error,
+  step,
+}: NumberFieldProps) {
+  const hintId = `${id}-hint`;
+  const errorId = `${id}-error`;
+  const describedBy = error ? `${hintId} ${errorId}` : hintId;
+
   return (
-    <label className="block">
-      <span className="mb-2 block text-sm font-semibold">{label}</span>
-      <input
-        inputMode="decimal"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={`w-full rounded-[1.2rem] border bg-white px-4 py-4 outline-none ${
-          error
-            ? "border-[rgba(173,62,55,0.36)]"
-            : "border-[var(--color-border)] focus:border-[var(--color-sky)]"
-        }`}
-      />
-      <span className="mt-2 block text-sm text-[var(--color-muted)]">
-        {error ?? hint}
-      </span>
-    </label>
+    <div className={styles.numberField}>
+      <label htmlFor={id}>{label}</label>
+      <div className={styles.numberControl}>
+        <input
+          id={id}
+          name={id}
+          type="number"
+          inputMode="decimal"
+          step={step}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          aria-invalid={Boolean(error)}
+          aria-describedby={describedBy}
+        />
+        <span aria-hidden="true">{unit}</span>
+      </div>
+      <div id={hintId} className={styles.fieldHint}>
+        <span>{hint}</span>
+        <p>{explanation}</p>
+      </div>
+      {error ? (
+        <p id={errorId} className={styles.fieldError} role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
-interface ChoiceGroupProps<T extends string> {
+interface ChoiceGroupProps<Value extends string> {
+  name: keyof QuizSubmission;
   label: string;
-  value: T;
-  onChange: (value: T) => void;
-  options: { value: T; title: string; description: string }[];
+  helper: string;
+  value: Value;
+  onChange: (value: Value) => void;
+  options: readonly ChoiceOption<Value>[];
   error?: string;
+  columns: "two" | "three";
 }
 
-function ChoiceGroup<T extends string>({
+function ChoiceGroup<Value extends string>({
+  name,
   label,
+  helper,
   value,
   onChange,
   options,
   error,
-}: ChoiceGroupProps<T>) {
+  columns,
+}: ChoiceGroupProps<Value>) {
+  const helperId = `${name}-helper`;
+  const errorId = `${name}-error`;
+  const describedBy = error ? `${helperId} ${errorId}` : helperId;
+
   return (
-    <fieldset>
-      <legend className="mb-3 text-sm font-semibold">{label}</legend>
-      <div className="grid gap-3 md:grid-cols-3">
+    <fieldset
+      className={styles.choiceGroup}
+      aria-describedby={describedBy}
+      aria-invalid={Boolean(error)}
+    >
+      <legend>{label}</legend>
+      <p id={helperId} className={styles.groupHelper}>
+        {helper}
+      </p>
+      <div className={styles.choiceGrid} data-columns={columns}>
         {options.map((option) => {
-          const active = value === option.value;
+          const selected = value === option.value;
 
           return (
-            <button
+            <label
               key={option.value}
-              type="button"
-              onClick={() => onChange(option.value)}
-              className={`rounded-[1.2rem] border p-4 text-left ${
-                active
-                  ? "border-transparent bg-[linear-gradient(145deg,rgba(32,89,119,1),rgba(74,136,170,0.86))] text-white shadow-[0_16px_30px_rgba(32,89,119,0.16)]"
-                  : "border-[var(--color-border)] bg-white text-[var(--color-ink)] hover:border-[var(--color-sky)]"
-              }`}
+              className={styles.choiceCard}
+              data-selected={selected}
             >
-              <p className="font-semibold">{option.title}</p>
-              <p
-                className={`mt-2 text-sm leading-6 ${
-                  active ? "text-white/78" : "text-[var(--color-muted)]"
-                }`}
-              >
-                {option.description}
-              </p>
-            </button>
+              <input
+                className={styles.choiceInput}
+                type="radio"
+                name={name}
+                value={option.value}
+                checked={selected}
+                onChange={() => onChange(option.value)}
+                aria-describedby={describedBy}
+              />
+              <span className={styles.choiceMarker} aria-hidden="true" />
+              <span className={styles.choiceContent}>
+                <strong>{option.title}</strong>
+                <span>{option.description}</span>
+              </span>
+              {selected ? (
+                <span className={styles.selectedLabel}>Выбрано</span>
+              ) : null}
+            </label>
           );
         })}
       </div>
       {error ? (
-        <p className="mt-2 text-sm font-medium text-[var(--color-danger)]">
+        <p id={errorId} className={styles.groupError} role="alert">
           {error}
         </p>
       ) : null}

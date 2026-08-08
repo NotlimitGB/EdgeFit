@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { QuizFlow } from "@/components/quiz/quiz-flow";
+import styles from "@/components/quiz/quiz-flow.module.css";
 
 export const metadata: Metadata = {
   title: "Квиз подбора сноуборда",
@@ -9,8 +10,19 @@ export const metadata: Metadata = {
 
 export default function QuizPage() {
   return (
-    <div className="container-shell py-12 sm:py-16">
-      <QuizFlow />
+    <div className={styles.quizPage}>
+      <div className={styles.atmosphere} aria-hidden="true" />
+      <div className={styles.quizShell}>
+        <header className={styles.pageIntro}>
+          <p className={styles.kicker}>EdgeFit / персональный fit</p>
+          <h1>Подбор сноуборда под твои параметры</h1>
+          <p>
+            Три коротких шага — и ты получишь рабочую ростовку, безопасную
+            ширину и модели, которые стоит сравнить в первую очередь.
+          </p>
+        </header>
+        <QuizFlow />
+      </div>
     </div>
   );
 }
