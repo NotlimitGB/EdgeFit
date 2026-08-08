@@ -8,13 +8,17 @@ import {
   type FormEvent,
 } from "react";
 import { TrackedStoreLink } from "@/components/analytics/tracked-store-link";
-import { BoardCard } from "@/components/boards/board-card";
+import {
+  ProductRecommendationCard,
+  recommendationRoleLabels,
+} from "@/components/result/product-recommendation-card";
 import { trackEvent } from "@/lib/analytics/client";
 import { getBoardSizeLabel } from "@/lib/board-size";
 import {
   boardShapeLabels,
   bootDragRiskLabels,
   ridingStyleLabels,
+  stanceLabels,
   terrainPriorityLabels,
   widthTypeLabels,
 } from "@/lib/content";
@@ -22,12 +26,28 @@ import { buildRecommendationDecisionGuide } from "@/lib/recommendation/decision-
 import { buildRecommendationPriorityImpact } from "@/lib/recommendation/priority-impact";
 import { buildRecommendationTrustSummary } from "@/lib/recommendation/trust-summary";
 import { getOrCreateSessionId } from "@/lib/session-id";
-import { buildStoreRedirectHref, buildStoreRedirectHrefForSize } from "@/lib/store-redirect";
+import {
+  buildStoreRedirectHref,
+  buildStoreRedirectHrefForSize,
+} from "@/lib/store-redirect";
 import type { RecommendationResult } from "@/types/domain";
+import styles from "./result-view.module.css";
 
 const RESULT_STORAGE_KEY = "edgefit.latest-recommendation";
 let cachedRawRecommendation: string | null | undefined;
 let cachedRecommendation: RecommendationResult | null = null;
+
+const riskDescriptions: Record<RecommendationResult["bootDragRisk"], string> = {
+  low: "Запас по ширине выглядит спокойным.",
+  medium: "Ширину конкретного размера стоит проверить внимательнее.",
+  high: "Перед покупкой обязательно сверь талию выбранного размера.",
+};
+
+const riskClasses: Record<RecommendationResult["bootDragRisk"], string> = {
+  low: styles.riskLow,
+  medium: styles.riskMedium,
+  high: styles.riskHigh,
+};
 
 interface EmailLeadResponse {
   message: string;
@@ -74,18 +94,6 @@ function buildResultPayload(recommendation: RecommendationResult) {
     skill_level: recommendation.input.skillLevel,
     board_line_preference: recommendation.input.boardLinePreference,
   };
-}
-
-function buildMatchNote(match: RecommendationResult["recommendedBoards"][number]) {
-  const mainReason = match.reasons[0];
-
-  if (match.isCatalogReady) {
-    return mainReason ?? match.confidenceLabel;
-  }
-
-  return mainReason
-    ? `${mainReason} Размер перед покупкой лучше ещё раз сверить вручную.`
-    : "Модель выглядит рабочей, но размер перед покупкой лучше ещё раз сверить вручную.";
 }
 
 function getCompactExplanation(recommendation: RecommendationResult) {
@@ -138,31 +146,31 @@ export function ResultView() {
 
   if (!recommendation) {
     return (
-      <div className="container-shell py-16">
-        <section className="panel max-w-3xl p-8 sm:p-10">
-          <span className="eyebrow">Нет сохранённого результата</span>
-          <h1 className="heading-display mt-4 text-3xl font-bold text-balance sm:text-4xl">
-            Сначала пройдите квиз, и мы соберём подбор под ваши параметры
-          </h1>
-          <p className="mt-4 text-sm leading-7 text-[var(--color-muted)] sm:text-base">
-            Здесь больше нет демонстрационной выдачи. Страница результата теперь
-            показывает только ваш реальный расчёт после прохождения квиза.
-          </p>
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-            <Link
-              href="/quiz"
-              className="inline-flex items-center justify-center rounded-full bg-[var(--color-pine)] px-5 py-3 text-sm font-bold text-white hover:-translate-y-0.5 hover:bg-[var(--color-sky-deep)]"
-            >
-              Пройти квиз
-            </Link>
-            <Link
-              href="/catalog"
-              className="inline-flex items-center justify-center rounded-full border border-[var(--color-border)] bg-white px-5 py-3 text-sm font-bold text-[var(--color-pine)] hover:border-[var(--color-sky)]"
-            >
-              Открыть каталог
-            </Link>
-          </div>
-        </section>
+      <div className={`${styles.resultPage} ${styles.emptyResultPage}`}>
+        <div className={styles.atmosphere} aria-hidden="true" />
+        <div className={styles.resultShell}>
+          <section
+            className={styles.emptyResult}
+            aria-labelledby="empty-result-title"
+          >
+            <p className={styles.kicker}>Нет сохранённого результата</p>
+            <h1 id="empty-result-title">
+              Сначала пройди квиз — здесь появится персональный fit
+            </h1>
+            <p>
+              После квиза покажем рабочую ростовку, ширину, риск boot drag и
+              модели, с которых разумно начать сравнение.
+            </p>
+            <div className={styles.inlineActions}>
+              <Link href="/quiz" className={styles.primaryAction}>
+                Пройти квиз <span aria-hidden="true">→</span>
+              </Link>
+              <Link href="/catalog" className={styles.secondaryAction}>
+                Открыть каталог
+              </Link>
+            </div>
+          </section>
+        </div>
       </div>
     );
   }
@@ -241,406 +249,302 @@ export function ResultView() {
   }
 
   return (
-    <div className="container-shell py-10 sm:py-16">
-      <section className="panel grid gap-6 p-5 sm:p-8 xl:grid-cols-[minmax(0,1fr)_21rem] xl:gap-8">
-        <div>
-          <span className="eyebrow">Результат подбора</span>
-          <h1 className="heading-display mt-4 text-4xl font-bold text-balance sm:text-5xl">
-            Длина {recommendation.lengthRange.min}-{recommendation.lengthRange.max} см,{" "}
-            {widthTypeLabels[recommendation.recommendedWidthType]}
-          </h1>
-          <p className="mt-4 max-w-3xl text-base leading-8 text-[var(--color-muted)] sm:text-lg">
-            Под ваши параметры сейчас логично смотреть на такой диапазон длины,
-            нужную ширину под ботинок и форму доски без сильного перекоса в
-            чужой сценарий катания.
-          </p>
-
-          <div className="mt-6 rounded-[1.4rem] border border-[var(--color-border)] bg-[var(--color-paper-soft)] p-5 sm:p-6">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-muted)]">
-                  Подходящая форма
-                </p>
-                <p className="mt-2 text-xl font-bold text-[var(--color-ink)]">
-                  {boardShapeLabels[recommendation.shapeProfile.primary]}
-                </p>
-                <p className="mt-2 text-sm leading-7 text-[var(--color-muted)]">
-                  {recommendation.shapeProfile.headline}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-muted)]">
-                  Ваш приоритет
-                </p>
-                <p className="mt-2 text-xl font-bold text-[var(--color-ink)]">
-                  {terrainPriorityLabels[recommendation.input.terrainPriority]}
-                </p>
-                <p className="mt-2 text-sm leading-7 text-[var(--color-muted)]">
-                  {priorityImpact.headline}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6 grid gap-4 sm:grid-cols-3">
-            <MetricCard
-              label="Длина"
-              value={`${recommendation.lengthRange.min}-${recommendation.lengthRange.max} см`}
-              description="Не одна случайная цифра, а рабочий диапазон под ваши вводные."
-            />
-            <MetricCard
-              label="Ширина"
-              value={widthTypeLabels[recommendation.recommendedWidthType]}
-              description={`Ориентир по ширине талии доски около ${recommendation.targetWaistWidthMm} мм.`}
-            />
-            <MetricCard
-              label="Риск зацепа"
-              value={bootDragRiskLabels[recommendation.bootDragRisk]}
-              description="Считаем по размеру ботинка, ширине доски и стойке."
-            />
-          </div>
-
-          <div className="mt-6 grid gap-3">
-            {compactExplanation.map((item) => (
-              <div
-                key={item}
-                className="rounded-[1.2rem] border border-[var(--color-border)] bg-white/72 px-4 py-4 text-sm leading-7 text-[var(--color-muted)]"
-              >
-                {item}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
-          <div className="rounded-[1.6rem] border border-white/60 bg-[linear-gradient(155deg,rgba(18,52,63,1),rgba(32,89,119,0.92))] p-6 text-white shadow-[0_24px_50px_rgba(18,52,63,0.18)]">
-            <p className="text-sm font-bold uppercase tracking-[0.18em] text-white/68">
-              Ваши параметры
-            </p>
-            <dl className="mt-5 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3 xl:grid-cols-2">
-              <MetricRow
-                term="Рост"
-                description={`${recommendation.input.heightCm} см`}
-              />
-              <MetricRow
-                term="Вес"
-                description={`${recommendation.input.weightKg} кг`}
-              />
-              <MetricRow
-                term="Ботинок"
-                description={`EU ${recommendation.input.bootSizeEu}`}
-              />
-              <MetricRow
-                term="Стиль"
-                description={ridingStyleLabels[recommendation.input.ridingStyle]}
-              />
-              <MetricRow
-                term="Приоритет"
-                description={
-                  terrainPriorityLabels[recommendation.input.terrainPriority]
-                }
-              />
-            </dl>
-          </div>
-
-          <div className="panel p-6">
-            <p className="text-sm font-bold uppercase tracking-[0.18em] text-[var(--color-sky-deep)]">
-              Что можно сделать дальше
-            </p>
-            <div className="mt-5 flex flex-col gap-3">
-              <Link
-                href="/catalog"
-                className="inline-flex items-center justify-center rounded-full bg-[var(--color-pine)] px-5 py-3 text-sm font-bold text-white hover:-translate-y-0.5 hover:bg-[var(--color-sky-deep)]"
-              >
-                Смотреть все модели
-              </Link>
-              <Link
-                href="/quiz"
-                onClick={handleRecalculationStart}
-                className="inline-flex items-center justify-center rounded-full border border-[var(--color-border)] bg-white px-5 py-3 text-sm font-bold text-[var(--color-pine)] hover:border-[var(--color-sky)]"
-              >
-                Пересчитать подбор
-              </Link>
-            </div>
-          </div>
-        </aside>
-      </section>
-
-      <section className="mt-12">
-        <div className="mb-6">
-          <span className="eyebrow">Подходящие модели</span>
-          <h2 className="heading-display mt-4 text-3xl font-bold sm:text-4xl">
-            Три варианта, с которых стоит начать
-          </h2>
-          <p className="mt-4 max-w-3xl text-sm leading-7 text-[var(--color-muted)]">
-            Здесь только самые сильные варианты, чтобы было проще выбрать
-            направление и не утонуть в длинной выдаче.
-          </p>
-        </div>
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {topBoards.map((match) => (
-            <BoardCard
-              key={`${match.product.id}-${getBoardSizeLabel(match.size)}`}
-              product={match.product}
-              size={match.size}
-              eyebrow={match.fitLabel}
-              note={buildMatchNote(match)}
-              compact
-              shopHref={buildStoreRedirectHrefForSize(match.product.slug, match.size, {
-                from: "result-top",
-                placement: "recommended",
-              })}
-              shopAnalyticsPayload={buildProductClickPayload(
-                "recommended",
-                match.product.slug,
-                match.size.sizeCm,
-                getBoardSizeLabel(match.size),
-                match.size.widthType,
-              )}
-            />
-          ))}
-        </div>
-      </section>
-
-      <section className="mt-10">
-        <div className="panel p-6 sm:p-8">
-          <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr] xl:items-start">
-            <div>
-              <span className="eyebrow">Сохранить результат</span>
-              <h2 className="heading-display mt-4 text-3xl font-bold sm:text-4xl">
-                Оставьте почту, если хотите вернуться позже
-              </h2>
-              <p className="mt-4 text-sm leading-7 text-[var(--color-muted)]">
-                Если захотите вернуться к подбору позже, просто оставьте почту.
-                Ничего лишнего: сохраним результат и отправим его вам.
+    <div className={styles.resultPage}>
+      <div className={styles.atmosphere} aria-hidden="true" />
+      <div className={styles.resultShell}>
+        <section className={styles.summary} aria-labelledby="result-title">
+          <div className={styles.summaryGrid} aria-hidden="true" />
+          <div className={styles.summaryLayout}>
+            <div className={styles.summaryMain}>
+              <p className={styles.kicker}>Персональный snowboard fit</p>
+              <h1 id="result-title">Твой рабочий fit</h1>
+              <p className={styles.summaryLead}>
+                Сначала — что искать. Ниже объясняем, почему диапазон и модели
+                подходят именно под твои параметры.
               </p>
-            </div>
 
-            <form className="grid gap-4" onSubmit={handleEmailSubmit}>
-              <label className="block">
-                <span className="mb-2 block text-sm font-semibold">Почта</span>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="you@example.com"
-                  className="w-full rounded-[1.2rem] border border-[var(--color-border)] bg-white px-4 py-3 outline-none focus:border-[var(--color-sky)]"
-                />
-              </label>
-
-              <label className="flex items-start gap-3 rounded-[1.2rem] border border-[var(--color-border)] bg-white px-4 py-4">
-                <input
-                  type="checkbox"
-                  checked={consent}
-                  onChange={(event) => setConsent(event.target.checked)}
-                  className="mt-1 h-4 w-4 accent-[var(--color-pine)]"
-                />
-                <span className="text-sm leading-7 text-[var(--color-muted)]">
-                  Согласен получить результат подбора и полезные материалы по
-                  этой теме на указанную почту.
-                </span>
-              </label>
-
-              {emailError ? (
-                <p className="rounded-[1.2rem] border border-[rgba(173,62,55,0.18)] bg-[rgba(173,62,55,0.08)] px-4 py-3 text-sm leading-7 text-[var(--color-danger)]">
-                  {emailError}
-                </p>
-              ) : null}
-
-              {emailSuccess ? (
-                <p className="rounded-[1.2rem] border border-[rgba(24,112,78,0.14)] bg-[rgba(24,112,78,0.08)] px-4 py-3 text-sm leading-7 text-[var(--color-pine)]">
-                  {emailSuccess}
-                </p>
-              ) : null}
-
-              <button
-                type="submit"
-                disabled={isSubmittingEmail}
-                className="inline-flex items-center justify-center rounded-full bg-[var(--color-pine)] px-5 py-3 text-sm font-bold text-white hover:-translate-y-0.5 hover:bg-[var(--color-sky-deep)] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isSubmittingEmail ? "Сохраняем..." : "Отправить на почту"}
-              </button>
-            </form>
-          </div>
-        </div>
-      </section>
-
-      <section className="mt-10 space-y-4">
-        <details className="panel group rounded-[1.8rem] p-5 sm:p-8">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left [&::-webkit-details-marker]:hidden">
-            <div>
-              <p className="text-sm font-bold uppercase tracking-[0.18em] text-[var(--color-sky-deep)]">
-                Как мы получили этот результат
-              </p>
-              <p className="mt-2 text-sm leading-7 text-[var(--color-muted)]">
-                Здесь вся логика подбора для тех, кто хочет понять расчёт
-                глубже, а не просто увидеть готовый ответ.
-              </p>
-            </div>
-            <span className="inline-flex items-center rounded-full border border-[var(--color-border)] px-4 py-2 text-xs font-bold text-[var(--color-pine)]">
-              логика подбора
-            </span>
-          </summary>
-
-          <div className="mt-6 space-y-6">
-            <div className="grid gap-4 lg:grid-cols-3">
-              {priorityImpact.cards.map((card) => (
-                <MetricCard
-                  key={card.id}
-                  label={card.label}
-                  value={card.value}
-                  description={card.description}
-                />
-              ))}
-            </div>
-
-            <div className="grid gap-3">
-              {recommendation.explanation.map((item) => (
-                <div
-                  key={item}
-                  className="rounded-[1.2rem] border border-[var(--color-border)] bg-white/72 px-4 py-4 text-sm leading-7 text-[var(--color-muted)]"
-                >
-                  {item}
+              <div className={styles.lengthMetric}>
+                <p className={styles.microLabel}>Ростовка</p>
+                <div className={styles.lengthValue}>
+                  <strong>
+                    {recommendation.lengthRange.min}–{recommendation.lengthRange.max}
+                  </strong>
+                  <span>см</span>
                 </div>
-              ))}
-            </div>
+                <p>
+                  Короче внутри диапазона — манёвреннее. Длиннее — стабильнее.
+                </p>
+              </div>
 
-            <div className="rounded-[1.4rem] border border-[var(--color-border)] bg-[var(--color-paper-soft)] p-5">
-              <p className="text-lg font-bold text-[var(--color-ink)]">
-                {trustSummary.headline}
-              </p>
-              <p className="mt-3 text-sm leading-7 text-[var(--color-muted)]">
-                {trustSummary.description}
-              </p>
-              <div className="mt-5 grid gap-4 sm:grid-cols-3">
-                <MetricCard
-                  label="В подборке"
-                  value={String(trustSummary.totalCount)}
-                  description="Столько моделей сейчас участвуют в выдаче."
-                />
-                <MetricCard
-                  label="Проверены"
-                  value={String(trustSummary.readyCount)}
-                  description="Карточки со сверенными данными и живыми ссылками."
-                />
-                <MetricCard
-                  label="Перепроверить"
-                  value={String(trustSummary.needsReviewCount)}
-                  description="Карточки, которые лучше ещё раз проверить вручную."
-                />
+              <div className={styles.summaryMetrics}>
+                <div className={styles.summaryMetric}>
+                  <p className={styles.microLabel}>Ширина</p>
+                  <strong>
+                    {widthTypeLabels[recommendation.recommendedWidthType]}
+                  </strong>
+                  <p>Категория под размер ботинка и стойку.</p>
+                </div>
+                <div className={styles.summaryMetric}>
+                  <p className={styles.microLabel}>Ориентир талии</p>
+                  <strong>{recommendation.targetWaistWidthMm} мм</strong>
+                  <p>Сверяй это значение у конкретного размера доски.</p>
+                </div>
+                <div
+                  className={`${styles.summaryMetric} ${styles.riskMetric} ${
+                    riskClasses[recommendation.bootDragRisk]
+                  }`}
+                >
+                  <p className={styles.microLabel}>Boot drag</p>
+                  <strong>
+                    <span className={styles.riskDot} aria-hidden="true" />
+                    {bootDragRiskLabels[recommendation.bootDragRisk]} риск
+                  </strong>
+                  <p>{riskDescriptions[recommendation.bootDragRisk]}</p>
+                </div>
+              </div>
+
+              <div className={styles.inlineActions}>
+                <a href="#recommended-models" className={styles.primaryAction}>
+                  Смотреть рекомендации <span aria-hidden="true">↓</span>
+                </a>
+                <Link
+                  href="/quiz"
+                  onClick={handleRecalculationStart}
+                  className={styles.secondaryAction}
+                >
+                  Пересчитать
+                </Link>
+              </div>
+
+              <div className={styles.fitContext}>
+                <div>
+                  <p className={styles.microLabel}>Подходящая форма</p>
+                  <strong>
+                    {boardShapeLabels[recommendation.shapeProfile.primary]}
+                  </strong>
+                  <p>{recommendation.shapeProfile.headline}</p>
+                </div>
+                <div>
+                  <p className={styles.microLabel}>Сценарий</p>
+                  <strong>
+                    {terrainPriorityLabels[recommendation.input.terrainPriority]}
+                  </strong>
+                  <p>{priorityImpact.headline}</p>
+                </div>
               </div>
             </div>
+
+            <aside className={styles.inputContext} aria-label="Ваши параметры">
+              <div className={styles.inputContextHeader}>
+                <p className={styles.microLabel}>Контекст расчёта</p>
+                <span aria-hidden="true">EF / INPUT</span>
+              </div>
+              <dl className={styles.inputRail}>
+                <InputMetric
+                  term="Рост"
+                  description={`${recommendation.input.heightCm} см`}
+                />
+                <InputMetric
+                  term="Вес"
+                  description={`${recommendation.input.weightKg} кг`}
+                />
+                <InputMetric
+                  term="Ботинок"
+                  description={`EU ${recommendation.input.bootSizeEu}`}
+                />
+                <InputMetric
+                  term="Стиль"
+                  description={ridingStyleLabels[recommendation.input.ridingStyle]}
+                />
+                <InputMetric
+                  term="Приоритет"
+                  description={
+                    terrainPriorityLabels[recommendation.input.terrainPriority]
+                  }
+                />
+                <InputMetric
+                  term="Стойка"
+                  description={stanceLabels[recommendation.input.stanceType]}
+                />
+              </dl>
+            </aside>
           </div>
-        </details>
+        </section>
 
-        <details className="panel group rounded-[1.8rem] p-5 sm:p-8">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left [&::-webkit-details-marker]:hidden">
-            <div>
-              <p className="text-sm font-bold uppercase tracking-[0.18em] text-[var(--color-sky-deep)]">
-                Как выбрать между верхними вариантами
-              </p>
-              <p className="mt-2 text-sm leading-7 text-[var(--color-muted)]">
-                Здесь собраны три понятных сценария выбора и короткое сравнение
-                верхних моделей, чтобы не читать всё подряд.
-              </p>
+        {compactExplanation.length > 0 ? (
+          <section className={styles.reasonSection} aria-labelledby="reason-title">
+            <SectionHeader
+              kicker="Почему так"
+              title="Почему получился такой fit"
+              description="Три короткие причины из расчёта — без скрытых формул и лишней теории."
+              id="reason-title"
+            />
+            <ol className={styles.reasonRail}>
+              {compactExplanation.map((item, index) => (
+                <li key={item}>
+                  <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+                  <p>{item}</p>
+                </li>
+              ))}
+            </ol>
+          </section>
+        ) : null}
+
+        <section
+          id="recommended-models"
+          className={styles.recommendationSection}
+          aria-labelledby="recommendation-title"
+        >
+          <SectionHeader
+            kicker="Персональная подборка"
+            title="Модели, с которых стоит начать"
+            description="Сначала смотри на роль, размер и причины совпадения. Цена и переход в магазин идут после fit-аргументов."
+            id="recommendation-title"
+          />
+
+          {topBoards.length > 0 ? (
+            <div className={styles.recommendationGrid}>
+              {topBoards.map((match, index) => (
+                <ProductRecommendationCard
+                  key={`${match.product.id}-${getBoardSizeLabel(match.size)}`}
+                  match={match}
+                  position={index + 1}
+                  variant={index === 0 ? "featured" : "recommended"}
+                  shopHref={buildStoreRedirectHrefForSize(
+                    match.product.slug,
+                    match.size,
+                    {
+                      from: "result-top",
+                      placement: "recommended",
+                    },
+                  )}
+                  shopAnalyticsPayload={buildProductClickPayload(
+                    "recommended",
+                    match.product.slug,
+                    match.size.sizeCm,
+                    getBoardSizeLabel(match.size),
+                    match.size.widthType,
+                  )}
+                />
+              ))}
             </div>
-            <span className="inline-flex items-center rounded-full border border-[var(--color-border)] px-4 py-2 text-xs font-bold text-[var(--color-pine)]">
-              сценарии выбора
-            </span>
-          </summary>
-
-          <div className="mt-6 space-y-6">
-            <div className="grid gap-5 lg:grid-cols-3">
-              {decisionGuideItems.map((item) => (
-                <article
-                  key={item.id}
-                  className="flex h-full flex-col rounded-[1.6rem] border border-[var(--color-border)] bg-white/72 p-5"
+          ) : (
+            <div className={styles.emptyRecommendations}>
+              <p className={styles.microLabel}>Fit готов, каталог не совпал</p>
+              <h3>
+                Fit рассчитан, но в текущем каталоге подходящих вариантов не
+                нашли
+              </h3>
+              <p>
+                Не подменяем результат случайными моделями. Можно изменить
+                вводные или посмотреть каталог самостоятельно.
+              </p>
+              <div className={styles.inlineActions}>
+                <Link
+                  href="/quiz"
+                  onClick={handleRecalculationStart}
+                  className={styles.secondaryAction}
                 >
-                  <p className="text-sm font-bold uppercase tracking-[0.16em] text-[var(--color-sky-deep)]">
-                    {item.title}
-                  </p>
-                  <p className="mt-3 text-sm leading-7 text-[var(--color-muted)] sm:min-h-[7rem]">
-                    {item.summary}
-                  </p>
-                  <p className="mt-4 text-lg font-bold text-[var(--color-ink)] sm:min-h-[3.5rem]">
-                    {item.boardTitle}
-                  </p>
-                  <p className="mt-2 inline-flex w-fit rounded-full border border-[var(--color-border)] bg-white px-3 py-1 text-xs font-semibold text-[var(--color-pine)]">
-                    Размер {item.sizeLabel}
-                  </p>
-                  <p className="mt-4 text-sm leading-7 text-[var(--color-ink)] sm:min-h-[6rem]">
-                    {item.highlight}
-                  </p>
-                  <div className="mt-auto flex items-center gap-3 pt-5">
-                    <Link
-                      href={`/boards/${item.boardSlug}`}
-                      className="inline-flex flex-1 items-center justify-center rounded-full border border-[var(--color-border)] bg-white px-4 py-3 text-sm font-bold text-[var(--color-pine)] hover:border-[var(--color-sky)] hover:text-[var(--color-sky-deep)]"
-                    >
-                      О модели
-                    </Link>
-                    <TrackedStoreLink
-                      href={buildStoreRedirectHref(item.boardSlug, {
-                        from: "result-decision-guide",
-                        placement: item.id,
-                        sizeLabel: item.sizeLabel,
-                      })}
-                      analyticsPayload={buildProductClickPayload(
-                        "recommended",
-                        item.boardSlug,
-                        undefined,
-                        item.sizeLabel,
-                      )}
-                      className="inline-flex flex-1 items-center justify-center rounded-full bg-[var(--color-pine)] px-4 py-3 text-sm font-bold text-white hover:-translate-y-0.5 hover:bg-[var(--color-sky-deep)]"
-                    >
-                      В магазин
-                    </TrackedStoreLink>
+                  Пересчитать подбор
+                </Link>
+                <Link href="/catalog" className={styles.textAction}>
+                  Смотреть каталог <span aria-hidden="true">→</span>
+                </Link>
+              </div>
+            </div>
+          )}
+        </section>
+
+        {topBoards.length > 0 && decisionGuideItems.length > 0 ? (
+          <section className={styles.decisionSection} aria-labelledby="decision-title">
+            <SectionHeader
+              kicker="Быстрое решение"
+              title="Если выбирать по характеру"
+              description="Сравни сильные варианты по тому, как именно хочется чувствовать доску."
+              id="decision-title"
+            />
+            <div className={styles.decisionGuideGrid}>
+              {decisionGuideItems.map((item, index) => (
+                <article key={item.id} className={styles.decisionGuideItem}>
+                  <span className={styles.decisionNumber} aria-hidden="true">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <div>
+                    <p className={styles.microLabel}>{item.title}</p>
+                    <p>{item.summary}</p>
+                    <h3>{item.boardTitle}</h3>
+                    <p className={styles.decisionSize}>Размер {item.sizeLabel}</p>
+                    <p className={styles.decisionHighlight}>{item.highlight}</p>
+                    <div className={styles.compactActions}>
+                      <Link
+                        href={`/boards/${item.boardSlug}`}
+                        className={styles.secondaryAction}
+                      >
+                        О модели
+                      </Link>
+                      <TrackedStoreLink
+                        href={buildStoreRedirectHref(item.boardSlug, {
+                          from: "result-decision-guide",
+                          placement: item.id,
+                          sizeLabel: item.sizeLabel,
+                        })}
+                        analyticsPayload={buildProductClickPayload(
+                          "recommended",
+                          item.boardSlug,
+                          undefined,
+                          item.sizeLabel,
+                        )}
+                        className={styles.primaryAction}
+                      >
+                        В магазин
+                      </TrackedStoreLink>
+                    </div>
                   </div>
                 </article>
               ))}
             </div>
 
-            <div className="rounded-[1.6rem] border border-[var(--color-border)] bg-white/72 p-5">
-              <div className="mb-4">
-                <p className="text-sm font-bold uppercase tracking-[0.16em] text-[var(--color-sky-deep)]">
-                  Быстрое сравнение верхних вариантов
-                </p>
-                <p className="mt-2 text-sm leading-7 text-[var(--color-muted)]">
-                  Если не хочется читать длинные карточки, просто смотри на роль
-                  варианта, размер и переходи к нужной модели.
-                </p>
-              </div>
-
-              <div className="grid gap-3">
-                {comparisonBoards.map((match, index) => (
-                  <article
-                    key={`${match.product.id}-${match.size.sizeCm}-row`}
-                    className="rounded-[1.3rem] border border-[var(--color-border)] bg-white px-4 py-4"
-                  >
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--color-sky-deep)]">
-                          Вариант {index + 1}
-                        </p>
-                        <h3 className="mt-2 text-xl font-bold text-[var(--color-ink)]">
+            {comparisonBoards.length > 0 ? (
+              <div className={styles.comparison}>
+                <div className={styles.comparisonHeader}>
+                  <p className={styles.microLabel}>Верхние варианты рядом</p>
+                  <p>Роль, размер и fit — без повторения полных карточек.</p>
+                </div>
+                <div className={styles.comparisonRows}>
+                  {comparisonBoards.map((match, index) => (
+                    <article
+                      key={`${match.product.id}-${match.size.sizeCm}-comparison`}
+                      className={styles.comparisonRow}
+                    >
+                      <span aria-hidden="true">
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+                      <div>
+                        <p>{recommendationRoleLabels[match.role]}</p>
+                        <h3>
                           {match.product.brand} {match.product.modelName}
                         </h3>
-                        <p className="mt-2 text-sm leading-7 text-[var(--color-muted)]">
-                          {match.fitLabel}. Размер {getBoardSizeLabel(match.size)}.
-                        </p>
                       </div>
-
-                      <div className="flex flex-col gap-3 sm:flex-row">
+                      <p>
+                        <strong>{getBoardSizeLabel(match.size)}</strong>
+                        {match.fitLabel}
+                      </p>
+                      <div className={styles.comparisonActions}>
                         <Link
                           href={`/boards/${match.product.slug}`}
-                          className="inline-flex items-center justify-center rounded-full border border-[var(--color-border)] bg-white px-4 py-3 text-sm font-bold text-[var(--color-pine)] hover:border-[var(--color-sky)] hover:text-[var(--color-sky-deep)]"
+                          className={styles.textAction}
                         >
                           О модели
                         </Link>
                         <TrackedStoreLink
-                          href={buildStoreRedirectHrefForSize(match.product.slug, match.size, {
-                            from: "result-comparison",
-                            placement: "recommended",
-                          })}
+                          href={buildStoreRedirectHrefForSize(
+                            match.product.slug,
+                            match.size,
+                            {
+                              from: "result-comparison",
+                              placement: "recommended",
+                            },
+                          )}
                           analyticsPayload={buildProductClickPayload(
                             "recommended",
                             match.product.slug,
@@ -648,119 +552,302 @@ export function ResultView() {
                             getBoardSizeLabel(match.size),
                             match.size.widthType,
                           )}
-                          className="inline-flex items-center justify-center rounded-full bg-[var(--color-pine)] px-4 py-3 text-sm font-bold text-white hover:-translate-y-0.5 hover:bg-[var(--color-sky-deep)]"
+                          className={styles.textActionStrong}
                         >
-                          В магазин
+                          В магазин ↗
                         </TrackedStoreLink>
                       </div>
-                    </div>
-                  </article>
-                ))}
+                    </article>
+                  ))}
+                </div>
               </div>
+            ) : null}
+          </section>
+        ) : null}
+
+        <section className={styles.emailSection} aria-labelledby="email-title">
+          <div>
+            <p className={styles.kicker}>Сохранить полезный результат</p>
+            <h2 id="email-title">
+              Сохрани подбор, чтобы вернуться к нему позже
+            </h2>
+            <p>
+              Отправим этот fit на указанную почту. Без обещаний «идеальной
+              доски» — только результат, к которому удобно вернуться.
+            </p>
+          </div>
+
+          <form
+            className={styles.emailForm}
+            onSubmit={handleEmailSubmit}
+            aria-busy={isSubmittingEmail}
+          >
+            <div className={styles.emailField}>
+              <label htmlFor="result-email">Почта</label>
+              <input
+                id="result-email"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@example.com"
+                aria-invalid={emailError ? "true" : "false"}
+                aria-describedby={
+                  emailError
+                    ? "result-email-hint result-email-error"
+                    : "result-email-hint"
+                }
+              />
+              <p id="result-email-hint">
+                Используем адрес только для сохранения результата и материалов
+                по теме.
+              </p>
             </div>
 
-            {extraRecommendedBoards.length > 0 ? (
-              <div>
-                <h3 className="text-2xl font-bold text-[var(--color-ink)]">
-                  Ещё подходящие модели
-                </h3>
-                <div className="mt-4 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-                  {extraRecommendedBoards.map((match) => (
-                    <BoardCard
-                      key={`${match.product.id}-${getBoardSizeLabel(match.size)}`}
-                      product={match.product}
-                      size={match.size}
-                      eyebrow={match.fitLabel}
-                      note={buildMatchNote(match)}
-                      compact
-                      shopHref={buildStoreRedirectHrefForSize(match.product.slug, match.size, {
-                        from: "result-extra",
-                        placement: "recommended",
-                      })}
-                      shopAnalyticsPayload={buildProductClickPayload(
-                        "recommended",
-                        match.product.slug,
-                        match.size.sizeCm,
-                        getBoardSizeLabel(match.size),
-                        match.size.widthType,
-                      )}
-                    />
-                  ))}
-                </div>
-              </div>
+            <label className={styles.consentField} htmlFor="result-consent">
+              <input
+                id="result-consent"
+                type="checkbox"
+                checked={consent}
+                onChange={(event) => setConsent(event.target.checked)}
+              />
+              <span>
+                Согласен получить результат подбора и полезные материалы по
+                этой теме на указанную почту.
+              </span>
+            </label>
+
+            {emailError ? (
+              <p
+                id="result-email-error"
+                className={styles.formError}
+                role="alert"
+              >
+                {emailError}
+              </p>
             ) : null}
 
-            {recommendation.avoidBoards.length > 0 ? (
-              <div>
-                <h3 className="text-2xl font-bold text-[var(--color-ink)]">
-                  С осторожностью
-                </h3>
-                <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--color-muted)]">
-                  Эти модели не обязательно плохие сами по себе, но под ваши
-                  параметры и сценарий катания сейчас выглядят слабее.
-                </p>
-                <div className="mt-4 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-                  {recommendation.avoidBoards.map((match) => (
-                    <BoardCard
-                      key={`${match.product.id}-${getBoardSizeLabel(match.size)}`}
-                      product={match.product}
-                      size={match.size}
-                      eyebrow="ниже по совпадению"
-                      note={buildMatchNote(match)}
-                      compact
-                      shopHref={buildStoreRedirectHrefForSize(match.product.slug, match.size, {
-                        from: "result-avoid",
-                        placement: "avoid",
-                      })}
-                      shopAnalyticsPayload={buildProductClickPayload(
-                        "avoid",
-                        match.product.slug,
-                        match.size.sizeCm,
-                        getBoardSizeLabel(match.size),
-                        match.size.widthType,
-                      )}
-                    />
-                  ))}
-                </div>
-              </div>
+            {emailSuccess ? (
+              <p className={styles.formSuccess} role="status">
+                {emailSuccess}
+              </p>
             ) : null}
+
+            <button
+              type="submit"
+              disabled={isSubmittingEmail}
+              className={styles.primaryAction}
+            >
+              {isSubmittingEmail ? "Сохраняем..." : "Отправить на почту"}
+            </button>
+          </form>
+        </section>
+
+        <section className={styles.methodSection} aria-label="Методика подбора">
+          <details className={styles.methodDisclosure}>
+            <summary>
+              <span>
+                <span className={styles.microLabel}>Подробности расчёта</span>
+                <strong>Как мы получили этот результат</strong>
+                <small>
+                  Форма, сценарий, полное объяснение и статус данных каталога.
+                </small>
+              </span>
+              <span className={styles.disclosureMark} aria-hidden="true">+</span>
+            </summary>
+
+            <div className={styles.methodContent}>
+              <div className={styles.detailMetrics}>
+                {priorityImpact.cards.map((card) => (
+                  <DetailMetric
+                    key={card.id}
+                    label={card.label}
+                    value={card.value}
+                    description={card.description}
+                  />
+                ))}
+              </div>
+
+              <ol className={styles.fullExplanation}>
+                {recommendation.explanation.map((item, index) => (
+                  <li key={item}>
+                    <span aria-hidden="true">
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+                    <p>{item}</p>
+                  </li>
+                ))}
+              </ol>
+
+              {trustSummary.totalCount > 0 ? (
+                <div className={styles.trustSummary}>
+                  <div>
+                    <p className={styles.microLabel}>Что известно о данных</p>
+                    <h3>{trustSummary.headline}</h3>
+                    <p>{trustSummary.description}</p>
+                    <p>{trustSummary.reviewMessage}</p>
+                  </div>
+                  <dl>
+                    <div>
+                      <dt>В подборке</dt>
+                      <dd>{trustSummary.totalCount}</dd>
+                    </div>
+                    <div>
+                      <dt>Сверены</dt>
+                      <dd>{trustSummary.readyCount}</dd>
+                    </div>
+                    <div>
+                      <dt>Перепроверить</dt>
+                      <dd>{trustSummary.needsReviewCount}</dd>
+                    </div>
+                  </dl>
+                </div>
+              ) : null}
+            </div>
+          </details>
+        </section>
+
+        {extraRecommendedBoards.length > 0 ? (
+          <section className={styles.quietSection} aria-labelledby="extra-title">
+            <SectionHeader
+              kicker="Ещё в рабочей зоне"
+              title="Дополнительные подходящие модели"
+              description="Они остаются в исходном порядке рекомендации, но визуально идут после главного решения."
+              id="extra-title"
+            />
+            <div className={styles.recommendationGrid}>
+              {extraRecommendedBoards.map((match, index) => (
+                <ProductRecommendationCard
+                  key={`${match.product.id}-${getBoardSizeLabel(match.size)}`}
+                  match={match}
+                  position={index + 4}
+                  variant="extra"
+                  shopHref={buildStoreRedirectHrefForSize(
+                    match.product.slug,
+                    match.size,
+                    {
+                      from: "result-extra",
+                      placement: "recommended",
+                    },
+                  )}
+                  shopAnalyticsPayload={buildProductClickPayload(
+                    "recommended",
+                    match.product.slug,
+                    match.size.sizeCm,
+                    getBoardSizeLabel(match.size),
+                    match.size.widthType,
+                  )}
+                />
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {recommendation.avoidBoards.length > 0 ? (
+          <section className={styles.carefulSection} aria-labelledby="careful-title">
+            <SectionHeader
+              kicker="С осторожностью"
+              title="Хорошие доски, но слабее под текущий fit"
+              description="Модель может быть удачной сама по себе — здесь она просто хуже совпадает с твоими параметрами и сценарием."
+              id="careful-title"
+            />
+            <div className={styles.recommendationGrid}>
+              {recommendation.avoidBoards.map((match, index) => (
+                <ProductRecommendationCard
+                  key={`${match.product.id}-${getBoardSizeLabel(match.size)}`}
+                  match={match}
+                  position={index + 1}
+                  variant="careful"
+                  shopHref={buildStoreRedirectHrefForSize(
+                    match.product.slug,
+                    match.size,
+                    {
+                      from: "result-avoid",
+                      placement: "avoid",
+                    },
+                  )}
+                  shopAnalyticsPayload={buildProductClickPayload(
+                    "avoid",
+                    match.product.slug,
+                    match.size.sizeCm,
+                    getBoardSizeLabel(match.size),
+                    match.size.widthType,
+                  )}
+                />
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        <section className={styles.finalActions} aria-labelledby="final-action-title">
+          <div>
+            <p className={styles.kicker}>Следующий шаг</p>
+            <h2 id="final-action-title">Хочешь изменить вводные или посмотреть шире?</h2>
+            <p>
+              Пересчитай fit или перейди к каталогу — персональные модели выше
+              останутся главным ориентиром.
+            </p>
           </div>
-        </details>
-      </section>
+          <div className={styles.inlineActions}>
+            <Link
+              href="/quiz"
+              onClick={handleRecalculationStart}
+              className={styles.secondaryAction}
+            >
+              Пересчитать подбор
+            </Link>
+            <Link href="/catalog" className={styles.textAction}>
+              Смотреть весь каталог <span aria-hidden="true">→</span>
+            </Link>
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
 
-interface MetricCardProps {
+interface SectionHeaderProps {
+  kicker: string;
+  title: string;
+  description: string;
+  id: string;
+}
+
+function SectionHeader({ kicker, title, description, id }: SectionHeaderProps) {
+  return (
+    <header className={styles.sectionHeader}>
+      <p className={styles.kicker}>{kicker}</p>
+      <h2 id={id}>{title}</h2>
+      <p>{description}</p>
+    </header>
+  );
+}
+
+interface DetailMetricProps {
   label: string;
   value: string;
   description: string;
 }
 
-function MetricCard({ label, value, description }: MetricCardProps) {
+function DetailMetric({ label, value, description }: DetailMetricProps) {
   return (
-    <div className="h-full rounded-[1.4rem] border border-[var(--color-border)] bg-white/82 p-5">
-      <p className="text-sm font-semibold text-[var(--color-muted)]">{label}</p>
-      <p className="mt-3 heading-display text-2xl font-bold text-[var(--color-ink)]">
-        {value}
-      </p>
-      <p className="mt-3 text-sm leading-6 text-[var(--color-muted)]">
-        {description}
-      </p>
-    </div>
+    <article className={styles.detailMetric}>
+      <p className={styles.microLabel}>{label}</p>
+      <h3>{value}</h3>
+      <p>{description}</p>
+    </article>
   );
 }
 
-interface MetricRowProps {
+interface InputMetricProps {
   term: string;
   description: string;
 }
 
-function MetricRow({ term, description }: MetricRowProps) {
+function InputMetric({ term, description }: InputMetricProps) {
   return (
     <div>
-      <dt className="text-white/56">{term}</dt>
-      <dd className="mt-1 font-semibold text-white">{description}</dd>
+      <dt>{term}</dt>
+      <dd>{description}</dd>
     </div>
   );
 }
