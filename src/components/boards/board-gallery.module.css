@@ -6,7 +6,7 @@
   border-radius: 1.25rem;
   background:
     linear-gradient(145deg, rgb(16 40 50 / 96%), rgb(7 19 24 / 98%)),
-    var(--ef-technical);
+    var(--ef-surface-technical);
   box-shadow: 0 1.4rem 4rem rgb(0 0 0 / 22%);
 }
 
@@ -191,7 +191,7 @@
 .fallbackModel {
   margin-top: 0.55rem;
   color: var(--ef-text);
-  font-family: var(--font-display), sans-serif;
+  font-family: var(--font-space-grotesk), sans-serif;
   font-size: clamp(2rem, 8vw, 4rem);
   line-height: 0.95;
   letter-spacing: -0.05em;
@@ -201,7 +201,7 @@
 .fallbackIdentity span {
   display: block;
   margin-top: 1.2rem;
-  color: var(--ef-soft);
+  color: var(--ef-text-soft);
   font-weight: 680;
 }
 
@@ -310,7 +310,7 @@
 .viewerHeader h2 {
   margin-top: 0.2rem;
   color: var(--ef-text);
-  font-family: var(--font-display), sans-serif;
+  font-family: var(--font-space-grotesk), sans-serif;
   font-size: clamp(1rem, 3vw, 1.35rem);
   line-height: 1.1;
   overflow-wrap: anywhere;
