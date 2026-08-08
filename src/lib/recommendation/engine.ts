@@ -35,7 +35,7 @@ import type {
   WidthType,
 } from "@/types/domain";
 
-export const ALGORITHM_VERSION = "v1.6.0";
+export const ALGORITHM_VERSION = "v1.6.1";
 
 type CompatibilitySeverity = "ideal" | "neutral" | "soft-mismatch" | "hard-mismatch";
 
@@ -110,11 +110,11 @@ function getWidthRecommendation(
   stanceType: QuizInput["stanceType"],
 ) {
   let recommendedWidthType: WidthType = "regular";
-  let targetWaistWidthMm = 250;
+  let targetWaistWidthMm = bootSizeEu <= 38 ? 240 : 250;
 
   if (bootSizeEu >= 45.5) {
     recommendedWidthType = "wide";
-    targetWaistWidthMm = 262;
+    targetWaistWidthMm = bootSizeEu >= 48 ? 272 : 264;
   } else if (bootSizeEu >= 43.5) {
     recommendedWidthType = "mid-wide";
     targetWaistWidthMm = 257;
@@ -141,21 +141,22 @@ function getBootDragRisk(
 ): BootDragRisk {
   let score = 0;
 
-  if (bootSizeEu >= 45.5) {
+  if (bootSizeEu >= 48) {
+    score += 3;
+  } else if (bootSizeEu >= 45.5) {
     score += 2;
   } else if (bootSizeEu >= 43.5) {
     score += 1;
   }
 
-  if (stanceType === "unknown") {
+  if (stanceType === "unknown" && bootSizeEu >= 43.5) {
     score += 1;
   }
 
-  if (stanceType === "duck" && score > 0) {
-    score -= 1;
-  }
-
-  if (recommendedWidthType === "wide" && score > 0) {
+  if (
+    (stanceType === "duck" || recommendedWidthType === "wide") &&
+    score > 0
+  ) {
     score -= 1;
   }
 

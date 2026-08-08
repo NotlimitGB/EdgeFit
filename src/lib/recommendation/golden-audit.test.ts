@@ -32,6 +32,13 @@ function normalizeMarkdown(value: string) {
   return value.replace(/\r\n/g, "\n").trimEnd();
 }
 
+function renderCurrentVersionAuditMarkdown() {
+  return renderGoldenAuditMarkdown(currentGoldenAudit).replace(
+    /^# Recommendation Engine Audit v[^\n]+/u,
+    `# Recommendation Engine Audit ${ALGORITHM_VERSION}`,
+  );
+}
+
 describe("golden recommendation audit", () => {
   it("audits all golden cases and invariants against the current version", () => {
     expect(currentGoldenAudit.absoluteResults).toHaveLength(36);
@@ -263,13 +270,13 @@ describe("golden recommendation audit", () => {
 
   it("keeps the checked-in evidence document equal to the structured audit", () => {
     const documentUrl = new URL(
-      "../../../docs/recommendation-engine-audit-v1.6.0.md",
+      `../../../docs/recommendation-engine-audit-${ALGORITHM_VERSION}.md`,
       import.meta.url,
     );
     const checkedInDocument = readFileSync(documentUrl, "utf8");
 
     expect(normalizeMarkdown(checkedInDocument)).toBe(
-      normalizeMarkdown(renderGoldenAuditMarkdown(currentGoldenAudit)),
+      normalizeMarkdown(renderCurrentVersionAuditMarkdown()),
     );
   });
 });

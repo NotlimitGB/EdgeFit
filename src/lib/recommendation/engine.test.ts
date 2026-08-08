@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Product, ProductSize, QuizInput } from "@/types/domain";
-import { getRecommendation } from "./engine";
+import { ALGORITHM_VERSION, getRecommendation } from "./engine";
 
 const baseInput: QuizInput = {
   heightCm: 178,
@@ -88,11 +88,42 @@ const defaultBoards = [
 ];
 
 describe("getRecommendation", () => {
+  it("reports the localized width-safety algorithm version", () => {
+    expect(ALGORITHM_VERSION).toBe("v1.6.1");
+  });
+
   it("returns stable all-mountain length range for base input", () => {
     const result = getRecommendation(baseInput, defaultBoards);
 
     expect(result.lengthRange).toEqual({ min: 152, max: 156 });
     expect(result.recommendedBoards.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("uses a smaller regular target waist for an EU 37 boot", () => {
+    const result = getRecommendation(
+      {
+        ...baseInput,
+        bootSizeEu: 37,
+      },
+      defaultBoards,
+    );
+
+    expect(result.recommendedWidthType).toBe("regular");
+    expect(result.targetWaistWidthMm).toBeLessThan(250);
+    expect(result.bootDragRisk).toBe("low");
+  });
+
+  it("does not elevate boot-drag risk for an EU 37 unknown stance", () => {
+    const result = getRecommendation(
+      {
+        ...baseInput,
+        bootSizeEu: 37,
+        stanceType: "unknown",
+      },
+      defaultBoards,
+    );
+
+    expect(result.bootDragRisk).toBe("low");
   });
 
   it("moves width recommendation to mid-wide for larger boots", () => {
@@ -105,6 +136,18 @@ describe("getRecommendation", () => {
     expect(result.targetWaistWidthMm).toBeGreaterThanOrEqual(257);
   });
 
+  it("preserves the wide boundary at EU 45.5", () => {
+    const result = getRecommendation(
+      {
+        ...baseInput,
+        bootSizeEu: 45.5,
+      },
+      defaultBoards,
+    );
+
+    expect(result.recommendedWidthType).toBe("wide");
+  });
+
   it("moves width recommendation to wide for very large boots", () => {
     const result = getRecommendation({
       ...baseInput,
@@ -112,7 +155,58 @@ describe("getRecommendation", () => {
     }, defaultBoards);
 
     expect(result.recommendedWidthType).toBe("wide");
-    expect(result.bootDragRisk).not.toBe("low");
+    expect(result.targetWaistWidthMm).toBeGreaterThanOrEqual(264);
+    expect(result.bootDragRisk).toBe("medium");
+  });
+
+  it("keeps an EU 46 duck stance at meaningful boot-drag concern", () => {
+    const result = getRecommendation(
+      {
+        ...baseInput,
+        bootSizeEu: 46,
+        stanceType: "duck",
+      },
+      defaultBoards,
+    );
+
+    expect(result.recommendedWidthType).toBe("wide");
+    expect(result.bootDragRisk).toBe("medium");
+  });
+
+  it("keeps an EU 46 unknown stance more cautious than standard", () => {
+    const standard = getRecommendation(
+      {
+        ...baseInput,
+        bootSizeEu: 46,
+        stanceType: "standard",
+      },
+      defaultBoards,
+    );
+    const unknown = getRecommendation(
+      {
+        ...baseInput,
+        bootSizeEu: 46,
+        stanceType: "unknown",
+      },
+      defaultBoards,
+    );
+
+    expect(standard.bootDragRisk).toBe("medium");
+    expect(unknown.bootDragRisk).toBe("high");
+  });
+
+  it("gives an EU 49 boot a distinct waist tier and high concern", () => {
+    const result = getRecommendation(
+      {
+        ...baseInput,
+        bootSizeEu: 49,
+      },
+      defaultBoards,
+    );
+
+    expect(result.recommendedWidthType).toBe("wide");
+    expect(result.targetWaistWidthMm).toBeGreaterThanOrEqual(270);
+    expect(result.bootDragRisk).toBe("high");
   });
 
   it("recommends shorter boards for park than for freeride", () => {
