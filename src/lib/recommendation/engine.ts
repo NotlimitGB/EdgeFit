@@ -35,9 +35,15 @@ import type {
   WidthType,
 } from "@/types/domain";
 
-export const ALGORITHM_VERSION = "v1.6.1";
+export const ALGORITHM_VERSION = "v1.6.2";
 
 type CompatibilitySeverity = "ideal" | "neutral" | "soft-mismatch" | "hard-mismatch";
+
+const RECOMMENDATION_SCORE_THRESHOLD = 56;
+const ALTERNATIVE_SCORE_THRESHOLD = 40;
+const CATASTROPHIC_LENGTH_DISTANCE_CM = 12;
+const CATASTROPHIC_WAIST_DEFICIT_MM = 12;
+const CATASTROPHIC_WEIGHT_DISTANCE_KG = 20;
 
 const WEIGHT_LENGTH_RULES = [
   { min: 35, max: 44.99, range: { min: 138, max: 142 } },
@@ -861,6 +867,59 @@ function getWidthMismatchSeverity(
   return "hard-mismatch";
 }
 
+function getDistanceOutsideRange(value: number, min: number, max: number) {
+  if (value < min) {
+    return min - value;
+  }
+
+  if (value > max) {
+    return value - max;
+  }
+
+  return 0;
+}
+
+function isPhysicallyEligibleSize(
+  size: ProductSize,
+  input: QuizInput,
+  lengthRange: { min: number; max: number },
+  targetWaistWidthMm: number,
+) {
+  const widthDelta = size.waistWidthMm - targetWaistWidthMm;
+  const mismatchSeverities = [
+    getLengthMismatchSeverity(size.sizeCm, lengthRange),
+    getWeightMismatchSeverity(size, input.weightKg),
+    getWidthMismatchSeverity(widthDelta, input),
+  ];
+  const hardMismatchCount = mismatchSeverities.filter(
+    (severity) => severity === "hard-mismatch",
+  ).length;
+  const lengthDistance = getDistanceOutsideRange(
+    size.sizeCm,
+    lengthRange.min,
+    lengthRange.max,
+  );
+  const hasWeightData =
+    size.recommendedWeightMin > 0 || size.recommendedWeightMax != null;
+  const weightDistance = hasWeightData
+    ? getDistanceOutsideRange(
+        input.weightKg,
+        size.recommendedWeightMin,
+        getRecommendedWeightMaxValue(size),
+      )
+    : 0;
+
+  if (
+    lengthDistance >= CATASTROPHIC_LENGTH_DISTANCE_CM ||
+    widthDelta <= -CATASTROPHIC_WAIST_DEFICIT_MM ||
+    weightDistance >= CATASTROPHIC_WEIGHT_DISTANCE_KG
+  ) {
+    return false;
+  }
+
+  return hardMismatchCount < 2;
+}
+
 function getCriticalSizePenalty(
   size: ProductSize,
   input: QuizInput,
@@ -1173,11 +1232,20 @@ function getCandidates(
       (size) => size.isAvailable !== false,
     );
 
-    if (availableSizes.length === 0) {
+    const eligibleSizes = availableSizes.filter((size) =>
+      isPhysicallyEligibleSize(
+        size,
+        input,
+        lengthRange,
+        targetWaistWidthMm,
+      ),
+    );
+
+    if (eligibleSizes.length === 0) {
       return [];
     }
 
-    const matches = availableSizes.map((size) =>
+    const matches = eligibleSizes.map((size) =>
       scoreCandidate(
         product,
         size,
@@ -1194,13 +1262,9 @@ function getCandidates(
   });
 
   const sortedBoards = bestPerBoard.sort((left, right) => right.score - left.score);
-  let recommendedBoards = sortedBoards
-    .filter((match) => match.score >= 56)
+  const recommendedBoards = sortedBoards
+    .filter((match) => match.score >= RECOMMENDATION_SCORE_THRESHOLD)
     .slice(0, 4);
-
-  if (recommendedBoards.length < 3) {
-    recommendedBoards = sortedBoards.slice(0, Math.min(4, sortedBoards.length));
-  }
 
   const recommendedKeys = new Set(
     recommendedBoards.map((match) => `${match.product.id}-${match.size.sizeCm}`),
@@ -1210,7 +1274,7 @@ function getCandidates(
     .filter(
       (match) => !recommendedKeys.has(`${match.product.id}-${match.size.sizeCm}`),
     )
-    .sort((left, right) => left.score - right.score)
+    .filter((match) => match.score >= ALTERNATIVE_SCORE_THRESHOLD)
     .slice(0, 3);
 
   return {

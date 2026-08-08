@@ -89,7 +89,7 @@ const defaultBoards = [
 
 describe("getRecommendation", () => {
   it("reports the localized width-safety algorithm version", () => {
-    expect(ALGORITHM_VERSION).toBe("v1.6.1");
+    expect(ALGORITHM_VERSION).toBe("v1.6.2");
   });
 
   it("returns stable all-mountain length range for base input", () => {
@@ -786,5 +786,271 @@ describe("getRecommendation", () => {
     ]);
 
     expect(result.recommendedBoards[0]?.product.slug).toBe("draft-good-fit");
+  });
+
+  it("excludes an absurd child-sized candidate from every presented result", () => {
+    const absurdBoard = createProduct(
+      {
+        slug: "synthetic-absurd-size",
+        modelName: "Synthetic Absurd Size",
+      },
+      {
+        sizeCm: 86,
+        waistWidthMm: 180,
+        recommendedWeightMin: 0,
+        recommendedWeightMax: null,
+      },
+    );
+
+    const result = getRecommendation(baseInput, [absurdBoard]);
+    expect(result.recommendedBoards.map((match) => match.product.slug)).not.toContain(
+      "synthetic-absurd-size",
+    );
+    expect(result.avoidBoards.map((match) => match.product.slug)).not.toContain(
+      "synthetic-absurd-size",
+    );
+  });
+
+  it.each([
+    {
+      label: "length",
+      size: { sizeCm: 140 },
+    },
+    {
+      label: "waist deficit",
+      size: { waistWidthMm: 238 },
+    },
+    {
+      label: "known weight range",
+      size: { recommendedWeightMin: 94, recommendedWeightMax: 110 },
+    },
+  ] satisfies Array<{ label: string; size: Partial<ProductSize> }>)(
+    "excludes a catastrophic $label mismatch on its own",
+    ({ label, size }) => {
+      const product = createProduct(
+        {
+          slug: `catastrophic-${label.replaceAll(" ", "-")}`,
+          modelName: `Catastrophic ${label}`,
+        },
+        size,
+      );
+
+      const result = getRecommendation(baseInput, [product]);
+
+      expect(result.recommendedBoards).toHaveLength(0);
+      expect(result.avoidBoards).toHaveLength(0);
+    },
+  );
+
+  it("excludes a size with two non-catastrophic hard mismatches", () => {
+    const product = createProduct(
+      {
+        slug: "two-hard-mismatches",
+        modelName: "Two Hard Mismatches",
+      },
+      {
+        sizeCm: 148,
+        waistWidthMm: 244,
+      },
+    );
+
+    const result = getRecommendation(baseInput, [product]);
+
+    expect(result.recommendedBoards).toHaveLength(0);
+    expect(result.avoidBoards).toHaveLength(0);
+  });
+
+  it("keeps isolated hard and soft near-miss sizes eligible", () => {
+    const isolatedHard = createProduct(
+      {
+        slug: "isolated-hard-length",
+        modelName: "Isolated Hard Length",
+      },
+      { sizeCm: 148 },
+    );
+    const softNearMiss = createProduct(
+      {
+        slug: "soft-length-near-miss",
+        modelName: "Soft Length Near Miss",
+      },
+      { sizeCm: 150 },
+    );
+
+    const result = getRecommendation(baseInput, [isolatedHard, softNearMiss]);
+    const presentedSlugs = [
+      ...result.recommendedBoards,
+      ...result.avoidBoards,
+    ].map((match) => match.product.slug);
+
+    expect(presentedSlugs).toContain("isolated-hard-length");
+    expect(presentedSlugs).toContain("soft-length-near-miss");
+  });
+
+  it("chooses the valid size when a product mixes impossible and valid sizes", () => {
+    const mixedSizeProduct = createProduct({
+      slug: "mixed-size-product",
+      modelName: "Mixed Size Product",
+      sizes: [
+        createSize({
+          sizeCm: 86,
+          waistWidthMm: 180,
+          recommendedWeightMin: 0,
+          recommendedWeightMax: null,
+        }),
+        createSize({ sizeCm: 154, waistWidthMm: 252 }),
+      ],
+    });
+
+    const result = getRecommendation(baseInput, [mixedSizeProduct]);
+    const selectedMatch = [
+      ...result.recommendedBoards,
+      ...result.avoidBoards,
+    ].find((match) => match.product.slug === "mixed-size-product");
+
+    expect(selectedMatch?.size.sizeCm).toBe(154);
+  });
+
+  it("excludes a product when none of its available sizes are eligible", () => {
+    const product = createProduct({
+      slug: "no-eligible-sizes",
+      modelName: "No Eligible Sizes",
+      sizes: [
+        createSize({ sizeCm: 86, waistWidthMm: 180 }),
+        createSize({ sizeCm: 116, waistWidthMm: 205 }),
+      ],
+    });
+
+    const result = getRecommendation(baseInput, [product]);
+
+    expect(result.recommendedBoards).toHaveLength(0);
+    expect(result.avoidBoards).toHaveLength(0);
+  });
+
+  it("does not pad recommendations with below-threshold candidates", () => {
+    const strongBoard = createProduct({
+      slug: "single-strong-board",
+      modelName: "Single Strong Board",
+    });
+    const poorBoards = ["one", "two", "three"].map((suffix, index) =>
+      createProduct(
+        {
+          slug: `poor-candidate-${suffix}`,
+          modelName: `Poor Candidate ${suffix}`,
+          ridingStyle: "park",
+          skillLevel: "advanced",
+          flex: 10,
+          boardLine: "women",
+          shapeType: "directional",
+          camberProfile: "rocker",
+          dataStatus: "draft",
+          sourceName: null,
+          sourceUrl: null,
+          sourceCheckedAt: null,
+          affiliateUrl: `https://example.com/poor-${suffix}`,
+        },
+        { sizeCm: 148 + index },
+      ),
+    );
+
+    const result = getRecommendation(baseInput, [strongBoard, ...poorBoards]);
+
+    expect(result.recommendedBoards.map((match) => match.product.slug)).toEqual([
+      "single-strong-board",
+    ]);
+  });
+
+  it("keeps a plausible below-threshold fit as an alternative", () => {
+    const strongBoard = createProduct({
+      slug: "alternative-strong-board",
+      modelName: "Alternative Strong Board",
+    });
+    const plausibleBoard = createProduct(
+      {
+        slug: "plausible-alternative",
+        modelName: "Plausible Alternative",
+        ridingStyle: "park",
+        skillLevel: "advanced",
+        flex: 9,
+        shapeType: "twin",
+        dataStatus: "draft",
+        sourceName: null,
+        sourceUrl: null,
+        sourceCheckedAt: null,
+        affiliateUrl: "https://example.com/plausible-alternative",
+      },
+      { sizeCm: 150 },
+    );
+    const absurdBoard = createProduct(
+      {
+        slug: "alternative-absurd-board",
+        modelName: "Alternative Absurd Board",
+      },
+      { sizeCm: 86, waistWidthMm: 180 },
+    );
+
+    const result = getRecommendation(baseInput, [
+      strongBoard,
+      plausibleBoard,
+      absurdBoard,
+    ]);
+    const plausibleMatch = result.avoidBoards.find(
+      (match) => match.product.slug === "plausible-alternative",
+    );
+
+    expect(plausibleMatch?.score).toBeGreaterThanOrEqual(40);
+    expect(plausibleMatch?.score).toBeLessThan(56);
+    expect(
+      [...result.recommendedBoards, ...result.avoidBoards].some(
+        (match) => match.product.slug === "alternative-absurd-board",
+      ),
+    ).toBe(false);
+  });
+
+  it("does not expose an eligible candidate below the alternative floor", () => {
+    const lowValueBoard = createProduct(
+      {
+        slug: "below-alternative-floor",
+        modelName: "Below Alternative Floor",
+        ridingStyle: "park",
+        skillLevel: "advanced",
+        flex: 10,
+        boardLine: "women",
+        shapeType: "directional",
+        camberProfile: "rocker",
+        dataStatus: "draft",
+        sourceName: null,
+        sourceUrl: null,
+        sourceCheckedAt: null,
+        affiliateUrl: "https://example.com/below-floor",
+      },
+      { sizeCm: 148 },
+    );
+
+    const result = getRecommendation(baseInput, [lowValueBoard]);
+
+    expect(result.recommendedBoards).toHaveLength(0);
+    expect(result.avoidBoards).toHaveLength(0);
+  });
+
+  it("orders eligible alternatives from strongest to weakest", () => {
+    const boards = [154, 155, 153, 156, 152, 151, 150].map(
+      (sizeCm, index) =>
+        createProduct(
+          {
+            slug: `ordered-alternative-${index + 1}`,
+            modelName: `Ordered Alternative ${index + 1}`,
+          },
+          { sizeCm },
+        ),
+    );
+
+    const result = getRecommendation(baseInput, boards);
+    const alternativeScores = result.avoidBoards.map((match) => match.score);
+
+    expect(result.recommendedBoards).toHaveLength(4);
+    expect(result.avoidBoards).toHaveLength(3);
+    expect(alternativeScores).toEqual(
+      [...alternativeScores].sort((left, right) => right - left),
+    );
   });
 });
