@@ -89,7 +89,7 @@ const defaultBoards = [
 
 describe("getRecommendation", () => {
   it("reports the localized width-safety algorithm version", () => {
-    expect(ALGORITHM_VERSION).toBe("v1.6.2");
+    expect(ALGORITHM_VERSION).toBe("v1.6.3");
   });
 
   it("returns stable all-mountain length range for base input", () => {
@@ -124,6 +124,131 @@ describe("getRecommendation", () => {
     );
 
     expect(result.bootDragRisk).toBe("low");
+  });
+
+  it("keeps EU 43 neutral outside carving and promotes only carving intent", () => {
+    const balanced = getRecommendation(
+      {
+        ...baseInput,
+        bootSizeEu: 43,
+        terrainPriority: "balanced",
+      },
+      defaultBoards,
+    );
+    const carving = getRecommendation(
+      {
+        ...baseInput,
+        bootSizeEu: 43,
+        terrainPriority: "groomers-carving",
+      },
+      defaultBoards,
+    );
+    const widthRank = { regular: 0, "mid-wide": 1, wide: 2 } as const;
+
+    expect(balanced.recommendedWidthType).toBe("regular");
+    expect(balanced.targetWaistWidthMm).toBe(250);
+    expect(carving.recommendedWidthType).toBe("mid-wide");
+    expect(carving.targetWaistWidthMm).toBeGreaterThanOrEqual(257);
+    expect(carving.targetWaistWidthMm).toBeLessThanOrEqual(259);
+    expect(carving.targetWaistWidthMm).toBeGreaterThan(
+      balanced.targetWaistWidthMm,
+    );
+    expect(widthRank[carving.recommendedWidthType]).toBeGreaterThanOrEqual(
+      widthRank[balanced.recommendedWidthType],
+    );
+    expect(carving.bootDragRisk).toBe(balanced.bootDragRisk);
+    expect(carving.explanation.join(" ")).toContain("углах закантовки");
+    expect(balanced.explanation.join(" ")).not.toContain("углах закантовки");
+  });
+
+  it("adds only a modest carving buffer for EU 42 and keeps regular width", () => {
+    const balanced = getRecommendation(
+      {
+        ...baseInput,
+        bootSizeEu: 42,
+        terrainPriority: "balanced",
+      },
+      defaultBoards,
+    );
+    const carving = getRecommendation(
+      {
+        ...baseInput,
+        bootSizeEu: 42,
+        terrainPriority: "groomers-carving",
+      },
+      defaultBoards,
+    );
+
+    expect(balanced.targetWaistWidthMm).toBe(250);
+    expect(carving.recommendedWidthType).toBe("regular");
+    expect(carving.targetWaistWidthMm).toBeGreaterThan(
+      balanced.targetWaistWidthMm,
+    );
+    expect(carving.targetWaistWidthMm - balanced.targetWaistWidthMm).toBeLessThanOrEqual(
+      3,
+    );
+  });
+
+  it("preserves the EU 43.5 base and adds carving clearance", () => {
+    const balanced = getRecommendation(
+      {
+        ...baseInput,
+        bootSizeEu: 43.5,
+        terrainPriority: "balanced",
+      },
+      defaultBoards,
+    );
+    const carving = getRecommendation(
+      {
+        ...baseInput,
+        bootSizeEu: 43.5,
+        terrainPriority: "groomers-carving",
+      },
+      defaultBoards,
+    );
+
+    expect(balanced.recommendedWidthType).toBe("mid-wide");
+    expect(balanced.targetWaistWidthMm).toBe(257);
+    expect(carving.recommendedWidthType).toBe("mid-wide");
+    expect(carving.targetWaistWidthMm).toBeGreaterThanOrEqual(260);
+    expect(carving.targetWaistWidthMm).toBeLessThanOrEqual(262);
+  });
+
+  it("applies duck correction after carving clearance without erasing it", () => {
+    const standardCarving = getRecommendation(
+      {
+        ...baseInput,
+        bootSizeEu: 43.5,
+        terrainPriority: "groomers-carving",
+        stanceType: "standard",
+      },
+      defaultBoards,
+    );
+    const duckCarving = getRecommendation(
+      {
+        ...baseInput,
+        bootSizeEu: 43.5,
+        terrainPriority: "groomers-carving",
+        stanceType: "duck",
+      },
+      defaultBoards,
+    );
+    const duckBalanced = getRecommendation(
+      {
+        ...baseInput,
+        bootSizeEu: 43.5,
+        terrainPriority: "balanced",
+        stanceType: "duck",
+      },
+      defaultBoards,
+    );
+
+    expect(duckCarving.targetWaistWidthMm).toBeLessThan(
+      standardCarving.targetWaistWidthMm,
+    );
+    expect(duckCarving.targetWaistWidthMm).toBeGreaterThan(
+      duckBalanced.targetWaistWidthMm,
+    );
   });
 
   it("moves width recommendation to mid-wide for larger boots", () => {
@@ -376,6 +501,46 @@ describe("getRecommendation", () => {
 
     expect(result.recommendedBoards[0]?.product.slug).toBe(
       "balanced-width-board",
+    );
+  });
+
+  it("moves the width-fit ranking toward carving clearance only for carving", () => {
+    const narrowerBoard = createProduct(
+      {
+        slug: "neutral-width-board",
+        modelName: "Neutral Width Board",
+      },
+      { waistWidthMm: 251, widthType: "regular" },
+    );
+    const carvingWidthBoard = createProduct(
+      {
+        slug: "carving-width-board",
+        modelName: "Carving Width Board",
+      },
+      { waistWidthMm: 259, widthType: "mid-wide" },
+    );
+    const balanced = getRecommendation(
+      {
+        ...baseInput,
+        bootSizeEu: 43,
+        terrainPriority: "balanced",
+      },
+      [carvingWidthBoard, narrowerBoard],
+    );
+    const carving = getRecommendation(
+      {
+        ...baseInput,
+        bootSizeEu: 43,
+        terrainPriority: "groomers-carving",
+      },
+      [narrowerBoard, carvingWidthBoard],
+    );
+
+    expect(balanced.recommendedBoards[0]?.product.slug).toBe(
+      "neutral-width-board",
+    );
+    expect(carving.recommendedBoards[0]?.product.slug).toBe(
+      "carving-width-board",
     );
   });
 

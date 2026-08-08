@@ -35,7 +35,7 @@ import type {
   WidthType,
 } from "@/types/domain";
 
-export const ALGORITHM_VERSION = "v1.6.2";
+export const ALGORITHM_VERSION = "v1.6.3";
 
 type CompatibilitySeverity = "ideal" | "neutral" | "soft-mismatch" | "hard-mismatch";
 
@@ -44,6 +44,10 @@ const ALTERNATIVE_SCORE_THRESHOLD = 40;
 const CATASTROPHIC_LENGTH_DISTANCE_CM = 12;
 const CATASTROPHIC_WAIST_DEFICIT_MM = 12;
 const CATASTROPHIC_WEIGHT_DISTANCE_KG = 20;
+const CARVING_WAIST_ADJUSTMENT_MM = 3;
+const CARVING_MID_WIDE_BOOT_THRESHOLD_EU = 43;
+const STANDARD_MID_WIDE_BOOT_THRESHOLD_EU = 43.5;
+const CARVING_TRANSITION_TARGET_WAIST_MM = 258;
 
 const WEIGHT_LENGTH_RULES = [
   { min: 35, max: 44.99, range: { min: 138, max: 142 } },
@@ -111,19 +115,42 @@ function getAggressivenessAdjustment(
   }
 }
 
-function getWidthRecommendation(
-  bootSizeEu: number,
-  stanceType: QuizInput["stanceType"],
-) {
+function getBaseWidthRecommendation(bootSizeEu: number) {
   let recommendedWidthType: WidthType = "regular";
   let targetWaistWidthMm = bootSizeEu <= 38 ? 240 : 250;
 
   if (bootSizeEu >= 45.5) {
     recommendedWidthType = "wide";
     targetWaistWidthMm = bootSizeEu >= 48 ? 272 : 264;
-  } else if (bootSizeEu >= 43.5) {
+  } else if (bootSizeEu >= STANDARD_MID_WIDE_BOOT_THRESHOLD_EU) {
     recommendedWidthType = "mid-wide";
     targetWaistWidthMm = 257;
+  }
+
+  return {
+    recommendedWidthType,
+    targetWaistWidthMm,
+  };
+}
+
+function getWidthRecommendation(
+  bootSizeEu: number,
+  terrainPriority: QuizInput["terrainPriority"],
+  stanceType: QuizInput["stanceType"],
+) {
+  let { recommendedWidthType, targetWaistWidthMm } =
+    getBaseWidthRecommendation(bootSizeEu);
+
+  if (terrainPriority === "groomers-carving") {
+    if (
+      bootSizeEu >= CARVING_MID_WIDE_BOOT_THRESHOLD_EU &&
+      bootSizeEu < STANDARD_MID_WIDE_BOOT_THRESHOLD_EU
+    ) {
+      recommendedWidthType = "mid-wide";
+      targetWaistWidthMm = CARVING_TRANSITION_TARGET_WAIST_MM;
+    } else {
+      targetWaistWidthMm += CARVING_WAIST_ADJUSTMENT_MM;
+    }
   }
 
   if (stanceType === "duck") {
@@ -1294,12 +1321,16 @@ function buildExplanation(
 ) {
   const lengthTarget = getLengthTarget(lengthRange, input);
   const flexRange = getFlexPreferenceRange(input);
+  const carvingClearanceExplanation =
+    input.terrainPriority === "groomers-carving"
+      ? " Для carving-сценария мы оставили дополнительный запас по талии, чтобы снизить риск касания ботинком снега на больших углах закантовки."
+      : "";
 
   return [
     `Вес ${input.weightKg} кг даёт базовый диапазон ${weightRange.min}-${weightRange.max} см. Дальше мы мягко подправили его под рост ${input.heightCm} см, стиль ${ridingStyleLabels[input.ridingStyle]} и ваш ${aggressivenessLabels[input.aggressiveness]} темп катания.`,
     `Итоговый диапазон ${lengthRange.min}-${lengthRange.max} см остаётся рабочей зоной, но внутри неё сервис дополнительно ищет размер ближе к идеальной точке около ${lengthTarget.toFixed(1)} см, а не просто любую доску "в пределах".`,
     buildTerrainPriorityExplanation(input.terrainPriority),
-    `Размер ботинка EU ${input.bootSizeEu} и ${stanceLabels[input.stanceType]} выводят вас в категорию ${widthTypeLabels[recommendedWidthType]}. Мы ориентируемся на целевую талию около ${targetWaistWidthMm} мм и отдельно штрафуем варианты, которые становятся заметно шире нужного. ${widthTypeDescriptions[recommendedWidthType]}`,
+    `Размер ботинка EU ${input.bootSizeEu} и ${stanceLabels[input.stanceType]} выводят вас в категорию ${widthTypeLabels[recommendedWidthType]}. Мы ориентируемся на целевую талию около ${targetWaistWidthMm} мм и отдельно штрафуем варианты, которые становятся заметно шире нужного. ${widthTypeDescriptions[recommendedWidthType]}${carvingClearanceExplanation}`,
     `${shapeProfile.headline} Базовый ориентир здесь — ${boardShapeLabels[shapeProfile.primary]}. ${shapeProfile.description}`,
     `По жёсткости доски сейчас логичнее смотреть в диапазон ${flexRange.min}-${flexRange.max} из 10: это помогает не тянуть слишком дубовую модель в relaxed/park-сценарий и не опускаться слишком мягко в aggressive/freeride.`,
     `Риск boot drag сейчас оценивается как ${bootDragRiskLabels[bootDragRisk]}. Это не абсолютный приговор, а понятная подсказка: при выборе доски уже видно, где ширина безопасна, а где лучше не рисковать.`,
@@ -1354,6 +1385,7 @@ export function getRecommendation(
 
   const widthRecommendation = getWidthRecommendation(
     input.bootSizeEu,
+    input.terrainPriority,
     input.stanceType,
   );
   const shapeProfile = getRecommendationShapeProfile(input);
