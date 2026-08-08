@@ -1,6 +1,7 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { BoardCard } from "@/components/boards/board-card";
 import publicStyles from "@/components/public/public-ui.module.css";
 import {
@@ -14,21 +15,29 @@ import {
   getAvailableSizes,
 } from "@/lib/product-availability";
 import type {
-  BoardShape,
   Product,
-  RidingStyle,
-  SkillLevel,
   WidthType,
 } from "@/types/domain";
+import {
+  buildCatalogSearchParams,
+  CATALOG_DEFAULT_STATE,
+  getCatalogStateKey,
+  parseCatalogState,
+  type CatalogUrlState,
+} from "./catalog-state";
 import styles from "./catalog.module.css";
 
 interface CatalogViewProps {
   boards: Product[];
 }
 
-type SortKey = "default" | "price-asc" | "price-desc";
-
 const PAGE_SIZE = 24;
+const VISIBLE_COUNT_STORAGE_KEY = "edgefit:catalog-visible-count:v1";
+
+interface StoredVisibleCount {
+  stateKey: string;
+  visibleCount: number;
+}
 
 const boardLineLabels: Record<Product["boardLine"] | "all", string> = {
   all: "Любая линейка",
@@ -87,21 +96,44 @@ function compareByFeatured(left: Product, right: Product) {
   );
 }
 
-export function CatalogView({ boards }: CatalogViewProps) {
-  const [query, setQuery] = useState("");
-  const [brand, setBrand] = useState("all");
-  const [style, setStyle] = useState<"all" | RidingStyle>("all");
-  const [skill, setSkill] = useState<"all" | SkillLevel>("all");
-  const [shape, setShape] = useState<"all" | BoardShape>("all");
-  const [boardLine, setBoardLine] = useState<"all" | Product["boardLine"]>("all");
-  const [width, setWidth] = useState<"all" | WidthType>("all");
-  const [sort, setSort] = useState<SortKey>("default");
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const deferredQuery = useDeferredValue(query);
+function readStoredVisibleCount(): StoredVisibleCount | null {
+  try {
+    const rawValue = window.sessionStorage.getItem(VISIBLE_COUNT_STORAGE_KEY);
+    if (!rawValue) {
+      return null;
+    }
 
-  function resetVisibleCount() {
-    setVisibleCount(PAGE_SIZE);
+    const storedValue = JSON.parse(rawValue) as Partial<StoredVisibleCount>;
+    if (
+      typeof storedValue.stateKey !== "string" ||
+      !Number.isInteger(storedValue.visibleCount) ||
+      (storedValue.visibleCount ?? 0) < PAGE_SIZE
+    ) {
+      return null;
+    }
+
+    return storedValue as StoredVisibleCount;
+  } catch {
+    return null;
   }
+}
+
+function writeStoredVisibleCount(stateKey: string, visibleCount: number) {
+  try {
+    window.sessionStorage.setItem(
+      VISIBLE_COUNT_STORAGE_KEY,
+      JSON.stringify({ stateKey, visibleCount } satisfies StoredVisibleCount),
+    );
+  } catch {
+    // Catalog navigation remains functional when storage is unavailable.
+  }
+}
+
+export function CatalogView({ boards }: CatalogViewProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const serializedSearchParams = searchParams.toString();
 
   const brandOptions = useMemo(() => {
     const brands = Array.from(
@@ -113,6 +145,32 @@ export function CatalogView({ boards }: CatalogViewProps) {
       label: value,
     }))];
   }, [boards]);
+  const brandValues = useMemo(
+    () => brandOptions.slice(1).map((option) => option.value),
+    [brandOptions],
+  );
+  const urlCatalogState = useMemo(
+    () =>
+      parseCatalogState(
+        new URLSearchParams(serializedSearchParams),
+        brandValues,
+      ),
+    [brandValues, serializedSearchParams],
+  );
+  const urlStateSnapshot = `${serializedSearchParams}\u0000${brandValues.join("\u0000")}`;
+  const [catalogState, setCatalogState] = useState<CatalogUrlState>(urlCatalogState);
+  const [catalogStateSnapshot, setCatalogStateSnapshot] =
+    useState(urlStateSnapshot);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  if (catalogStateSnapshot !== urlStateSnapshot) {
+    setCatalogStateSnapshot(urlStateSnapshot);
+    setCatalogState(urlCatalogState);
+  }
+
+  const { q: query, brand, style, skill, shape, line: boardLine, width, sort } =
+    catalogState;
+  const deferredQuery = useDeferredValue(query);
 
   const filteredBoards = useMemo(() => {
     const normalizedQuery = deferredQuery.trim().toLowerCase();
@@ -163,6 +221,31 @@ export function CatalogView({ boards }: CatalogViewProps) {
     deferredQuery,
   ]);
 
+  const catalogStateKey = getCatalogStateKey(catalogState);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      const storedVisibleCount = readStoredVisibleCount();
+
+      if (storedVisibleCount?.stateKey !== catalogStateKey) {
+        setVisibleCount(PAGE_SIZE);
+        return;
+      }
+
+      const clampedVisibleCount = Math.min(
+        storedVisibleCount.visibleCount,
+        Math.max(PAGE_SIZE, filteredBoards.length),
+      );
+
+      setVisibleCount(clampedVisibleCount);
+      if (clampedVisibleCount !== storedVisibleCount.visibleCount) {
+        writeStoredVisibleCount(catalogStateKey, clampedVisibleCount);
+      }
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [catalogStateKey, filteredBoards.length]);
+
   const visibleBoards = filteredBoards.slice(0, visibleCount);
   const activeFilterCount = [
     query.trim().length > 0,
@@ -175,16 +258,42 @@ export function CatalogView({ boards }: CatalogViewProps) {
   ].filter(Boolean).length;
   const hasActiveFilters = activeFilterCount > 0 || sort !== "default";
 
+  function replaceCatalogState(nextState: CatalogUrlState) {
+    const nextSearchParams = buildCatalogSearchParams(
+      new URLSearchParams(serializedSearchParams),
+      nextState,
+    );
+    const normalizedState = parseCatalogState(nextSearchParams, brandValues);
+    const normalizedStateKey = getCatalogStateKey(normalizedState);
+    const nextSearch = nextSearchParams.toString();
+
+    setCatalogState(normalizedState);
+    setVisibleCount(PAGE_SIZE);
+    writeStoredVisibleCount(normalizedStateKey, PAGE_SIZE);
+
+    if (nextSearch !== serializedSearchParams) {
+      router.replace(nextSearch ? `${pathname}?${nextSearch}` : pathname, {
+        scroll: false,
+      });
+    }
+  }
+
+  function updateCatalogState(patch: Partial<CatalogUrlState>) {
+    replaceCatalogState({ ...catalogState, ...patch });
+  }
+
   function resetFilters() {
-    setQuery("");
-    setBrand("all");
-    setStyle("all");
-    setSkill("all");
-    setShape("all");
-    setBoardLine("all");
-    setWidth("all");
-    setSort("default");
-    resetVisibleCount();
+    replaceCatalogState({ ...CATALOG_DEFAULT_STATE });
+  }
+
+  function loadMoreBoards() {
+    const nextVisibleCount = Math.min(
+      visibleCount + PAGE_SIZE,
+      filteredBoards.length,
+    );
+
+    setVisibleCount(nextVisibleCount);
+    writeStoredVisibleCount(catalogStateKey, nextVisibleCount);
   }
 
   return (
@@ -211,10 +320,7 @@ export function CatalogView({ boards }: CatalogViewProps) {
             <input
               type="search"
               value={query}
-              onChange={(event) => {
-                setQuery(event.target.value);
-                resetVisibleCount();
-              }}
+              onChange={(event) => updateCatalogState({ q: event.target.value })}
               placeholder="Например, Jones Mountain Twin"
             />
           </label>
@@ -222,19 +328,13 @@ export function CatalogView({ boards }: CatalogViewProps) {
           <SelectField
             label="Бренд"
             value={brand}
-            onChange={(value) => {
-              setBrand(value);
-              resetVisibleCount();
-            }}
+            onChange={(value) => updateCatalogState({ brand: value })}
             options={brandOptions}
           />
           <SelectField
             label="Сортировка"
             value={sort}
-            onChange={(value) => {
-              setSort(value);
-              resetVisibleCount();
-            }}
+            onChange={(value) => updateCatalogState({ sort: value })}
             options={[
               { value: "default", label: "По умолчанию" },
               { value: "price-asc", label: "Сначала дешевле" },
@@ -247,10 +347,7 @@ export function CatalogView({ boards }: CatalogViewProps) {
           <SelectField
             label="Стиль"
             value={style}
-            onChange={(value) => {
-              setStyle(value);
-              resetVisibleCount();
-            }}
+            onChange={(value) => updateCatalogState({ style: value })}
             options={[
               { value: "all", label: "Все стили" },
               { value: "all-mountain", label: ridingStyleLabels["all-mountain"] },
@@ -261,10 +358,7 @@ export function CatalogView({ boards }: CatalogViewProps) {
           <SelectField
             label="Уровень"
             value={skill}
-            onChange={(value) => {
-              setSkill(value);
-              resetVisibleCount();
-            }}
+            onChange={(value) => updateCatalogState({ skill: value })}
             options={[
               { value: "all", label: "Любой уровень" },
               { value: "beginner", label: skillLevelLabels.beginner },
@@ -275,10 +369,7 @@ export function CatalogView({ boards }: CatalogViewProps) {
           <SelectField
             label="Линейка"
             value={boardLine}
-            onChange={(value) => {
-              setBoardLine(value);
-              resetVisibleCount();
-            }}
+            onChange={(value) => updateCatalogState({ line: value })}
             options={[
               { value: "all", label: boardLineLabels.all },
               { value: "men", label: boardLineLabels.men },
@@ -289,10 +380,7 @@ export function CatalogView({ boards }: CatalogViewProps) {
           <SelectField
             label="Форма"
             value={shape}
-            onChange={(value) => {
-              setShape(value);
-              resetVisibleCount();
-            }}
+            onChange={(value) => updateCatalogState({ shape: value })}
             options={[
               { value: "all", label: "Любая форма" },
               { value: "twin", label: boardShapeLabels.twin },
@@ -320,10 +408,7 @@ export function CatalogView({ boards }: CatalogViewProps) {
                     key={option}
                     type="button"
                     aria-pressed={width === option}
-                    onClick={() => {
-                      setWidth(option);
-                      resetVisibleCount();
-                    }}
+                    onClick={() => updateCatalogState({ width: option })}
                     className={styles.widthOption}
                   >
                     {option === "all"
@@ -402,7 +487,7 @@ export function CatalogView({ boards }: CatalogViewProps) {
                 </p>
                 <button
                   type="button"
-                  onClick={() => setVisibleCount((current) => current + PAGE_SIZE)}
+                  onClick={loadMoreBoards}
                   className={publicStyles.secondaryAction}
                 >
                   Показать ещё{" "}

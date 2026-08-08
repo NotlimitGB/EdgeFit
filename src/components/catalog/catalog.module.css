@@ -141,6 +141,7 @@
   overflow: hidden;
   border-radius: 1.25rem 0.45rem 1.25rem 1.25rem;
   padding: 1.1rem;
+  color-scheme: dark;
 }
 
 .filters::after {
@@ -241,6 +242,11 @@
 .field input::placeholder {
   color: var(--ef-muted);
   opacity: 0.78;
+}
+
+.field select option {
+  color: var(--ef-text);
+  background: var(--ef-surface-raised);
 }
 
 .field input:hover,
