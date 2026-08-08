@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { MountEvent } from "@/components/analytics/mount-event";
+import publicStyles from "@/components/public/public-ui.module.css";
 import { getSeoLandingPath, seoLandingPages } from "@/lib/seo-pages";
 
 const fitFactors = [
@@ -81,7 +82,7 @@ const processSteps = [
 
 export default function Home() {
   return (
-    <div className="edgefit-home">
+    <div className={`${publicStyles.theme} edgefit-home`}>
       <MountEvent eventName="home_viewed" />
       <div className="edgefit-home__atmosphere" aria-hidden="true" />
 
@@ -90,7 +91,9 @@ export default function Home() {
         aria-labelledby="home-title"
       >
         <div className="edgefit-home__hero-copy">
-          <p className="edgefit-home__kicker">EdgeFit / snowboard fit</p>
+          <p className={`${publicStyles.kicker} edgefit-home__kicker`}>
+            EdgeFit / snowboard fit
+          </p>
           <h1 id="home-title" className="edgefit-home__hero-title">
             Подберём сноуборд под рост, вес, ботинок и стиль катания.
           </h1>
@@ -106,24 +109,32 @@ export default function Home() {
           </p>
 
           <div className="edgefit-home__hero-actions">
-            <Link href="/quiz" className="edgefit-home__cta-primary">
+            <Link
+              href="/quiz"
+              className={`${publicStyles.primaryAction} edgefit-home__cta-primary`}
+            >
               Подобрать доску
               <span aria-hidden="true">→</span>
             </Link>
-            <Link href="/catalog" className="edgefit-home__cta-secondary">
+            <Link
+              href="/catalog"
+              className={`${publicStyles.secondaryAction} edgefit-home__cta-secondary`}
+            >
               Смотреть каталог
             </Link>
           </div>
         </div>
 
         <article
-          className="edgefit-home__result-preview"
+          className={`${publicStyles.raisedTechnicalSurface} edgefit-home__result-preview`}
           aria-labelledby="result-preview-title"
         >
           <div className="edgefit-home__preview-grid" aria-hidden="true" />
           <header className="edgefit-home__preview-header">
             <div>
-              <p className="edgefit-home__micro-label">Демонстрационный fit</p>
+              <p className={`${publicStyles.microLabel} edgefit-home__micro-label`}>
+                Демонстрационный fit
+              </p>
               <h2 id="result-preview-title">Пример результата</h2>
             </div>
             <span className="edgefit-home__coordinate" aria-hidden="true">
@@ -181,7 +192,9 @@ export default function Home() {
         aria-labelledby="fit-factors-title"
       >
         <div className="edgefit-home__section-intro">
-          <p className="edgefit-home__kicker">Что влияет на fit</p>
+          <p className={`${publicStyles.kicker} edgefit-home__kicker`}>
+            Что влияет на fit
+          </p>
           <h2 id="fit-factors-title">Смотрим на райдера целиком</h2>
           <p>
             Длина — только часть выбора. Ширина, сценарий и уровень не менее
@@ -207,7 +220,9 @@ export default function Home() {
       >
         <div className="container-shell">
           <div className="edgefit-home__comparison-intro">
-            <p className="edgefit-home__kicker">Не просто таблица ростовки</p>
+            <p className={`${publicStyles.kicker} edgefit-home__kicker`}>
+              Не просто таблица ростовки
+            </p>
             <h2 id="comparison-title">Почему «рост минус 20» недостаточно</h2>
             <p>
               Простое правило не видит вес, ботинок и то, как ты собираешься
@@ -244,7 +259,9 @@ export default function Home() {
         aria-labelledby="process-title"
       >
         <div className="edgefit-home__section-intro edgefit-home__section-intro--wide">
-          <p className="edgefit-home__kicker">Как это работает</p>
+          <p className={`${publicStyles.kicker} edgefit-home__kicker`}>
+            Как это работает
+          </p>
           <h2 id="process-title">От параметров — к понятному выбору</h2>
         </div>
 
@@ -260,7 +277,9 @@ export default function Home() {
         aria-labelledby="trust-title"
       >
         <div>
-          <p className="edgefit-home__kicker">Понятная методика</p>
+          <p className={`${publicStyles.kicker} edgefit-home__kicker`}>
+            Понятная методика
+          </p>
           <h2 id="trust-title">Не магическая цифра, а объяснимый ориентир</h2>
         </div>
 
@@ -287,7 +306,9 @@ export default function Home() {
         aria-labelledby="guides-title"
       >
         <div className="edgefit-home__section-intro">
-          <p className="edgefit-home__kicker">Разобраться глубже</p>
+          <p className={`${publicStyles.kicker} edgefit-home__kicker`}>
+            Разобраться глубже
+          </p>
           <h2 id="guides-title">Технический индекс выбора</h2>
           <p>
             Короткие разборы для тех, кто хочет отдельно проверить ростовку,
@@ -317,7 +338,9 @@ export default function Home() {
         <div className="container-shell">
           <div className="edgefit-home__final-cta">
             <div>
-              <p className="edgefit-home__kicker">Следующий шаг</p>
+              <p className={`${publicStyles.kicker} edgefit-home__kicker`}>
+                Следующий шаг
+              </p>
               <h2 id="final-cta-title">
                 Готов понять, какая доска подходит под твои параметры?
               </h2>
@@ -325,7 +348,10 @@ export default function Home() {
                 Получишь диапазон длины, ширину и понятное объяснение выбора.
               </p>
             </div>
-            <Link href="/quiz" className="edgefit-home__cta-primary">
+            <Link
+              href="/quiz"
+              className={`${publicStyles.primaryAction} edgefit-home__cta-primary`}
+            >
               Подобрать доску
               <span aria-hidden="true">→</span>
             </Link>

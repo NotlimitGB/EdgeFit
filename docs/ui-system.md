@@ -222,3 +222,36 @@ Catalog card показывает:
 - CSS gradients, topographic lines и technical grid допустимы без assets.
 - Heavy animation, CDN, новые fonts, canvas, WebGL и parallax требуют
   отдельного согласования.
+
+## 13. Общие primitives публичных premium-экранов
+
+Home, Quiz и Result используют локальный presentation-слой из
+`src/components/public/public-ui.module.css`. Он не является React-библиотекой и
+не меняет публичные интерфейсы компонентов.
+
+### Canonical primitives
+
+- `theme` задаёт scoped semantic tokens `--ef-*` для alpine background,
+  surfaces, snow text, ice accent, borders, focus и status colors;
+- `kicker` обозначает editorial section context с технической линией;
+- `microLabel` используется для коротких подписей метрик и технических ролей;
+- `primaryAction` и `secondaryAction` задают общую CTA-иерархию, touch target,
+  hover, disabled, `focus-visible` и reduced-motion states;
+- `raisedTechnicalSurface` задаёт только общие border, technical gradient и
+  shadow для одной доминирующей поверхности экрана.
+
+Применять primitives через явную композицию CSS Module классов. `theme`
+размещать на ближайшем wrapper публичного dark-alpine экрана; не переносить эти
+tokens в `:root` или `body`.
+
+### Локальные исключения
+
+Страница сохраняет собственные layout, spacing, radius, overflow, typography
+scale, атмосферные слои, responsive grids и смысловые состояния. Локальный
+modifier допустим для ширины action внутри конкретного layout или декора
+raised surface, но не должен повторно определять базовую роль primitive.
+
+Forms, radio cards, progress, risk states, recommendation cards, Catalog cards
+и Board Detail остаются самостоятельными patterns. Catalog и Board Detail не
+следует мигрировать на public primitives без отдельной задачи и визуальной
+проверки их светлого контекста.

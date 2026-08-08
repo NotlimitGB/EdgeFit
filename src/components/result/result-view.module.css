@@ -1,33 +1,15 @@
 .resultPage {
-  --result-bg: #071318;
-  --result-bg-soft: #0a1b22;
-  --result-surface: rgba(12, 31, 39, 0.86);
-  --result-surface-raised: #102832;
-  --result-surface-technical: rgba(13, 38, 47, 0.94);
-  --result-text: #edf7fa;
-  --result-text-soft: #c6d7de;
-  --result-muted: #96adb7;
-  --result-ice: #9edff0;
-  --result-ice-strong: #b9edf8;
-  --result-border: rgba(167, 220, 233, 0.16);
-  --result-border-strong: rgba(167, 220, 233, 0.28);
-  --result-calm: #8fcbd8;
-  --result-warning: #d7a45e;
-  --result-warning-strong: #edb15a;
-  --result-danger: #ffaaa3;
-  --result-success: #8bdac3;
   position: relative;
   isolation: isolate;
   overflow: hidden;
   min-width: 0;
-  color: var(--result-text);
   background:
     linear-gradient(
       180deg,
       #f7fbfd 0,
       rgba(7, 19, 24, 0.94) 5.5rem,
-      var(--result-bg) 9rem,
-      var(--result-bg) calc(100% - 10rem),
+      var(--ef-bg) 9rem,
+      var(--ef-bg) calc(100% - 10rem),
       rgba(7, 19, 24, 0.92) calc(100% - 5rem),
       #f7fbfd 100%
     );
@@ -110,36 +92,12 @@
     transform 0.2s ease;
 }
 
-.resultPage a:focus-visible,
-.resultPage button:focus-visible,
 .resultPage input:focus-visible,
-.resultPage summary:focus-visible {
-  outline: 3px solid var(--result-ice-strong);
+.resultPage summary:focus-visible,
+.textAction:focus-visible,
+.textActionStrong:focus-visible {
+  outline: 3px solid var(--ef-focus);
   outline-offset: 4px;
-}
-
-.kicker,
-.microLabel {
-  color: var(--result-ice);
-  font-size: 0.69rem;
-  font-weight: 800;
-  letter-spacing: 0.18em;
-  line-height: 1.4;
-  text-transform: uppercase;
-}
-
-.kicker {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-}
-
-.kicker::before {
-  width: 1.65rem;
-  height: 1px;
-  flex: 0 0 auto;
-  background: var(--result-ice);
-  content: "";
 }
 
 .inlineActions,
@@ -152,8 +110,6 @@
   align-items: center;
 }
 
-.primaryAction,
-.secondaryAction,
 .textAction,
 .textActionStrong {
   display: inline-flex;
@@ -170,53 +126,20 @@
   text-decoration: none;
 }
 
-.primaryAction {
-  border: 1px solid transparent;
-  background: var(--result-ice-strong);
-  color: #071318;
-  box-shadow: 0 14px 32px rgba(82, 184, 211, 0.12);
-}
-
-button.primaryAction {
-  cursor: pointer;
-}
-
-.primaryAction:hover {
-  transform: translateY(-2px);
-  background: #d5f6fc;
-}
-
-.primaryAction:disabled {
-  cursor: not-allowed;
-  transform: none;
-  opacity: 0.58;
-}
-
-.secondaryAction {
-  border: 1px solid var(--result-border-strong);
-  background: rgba(10, 27, 34, 0.7);
-  color: var(--result-text);
-}
-
-.secondaryAction:hover {
-  border-color: var(--result-ice);
-  background: rgba(158, 223, 240, 0.08);
-}
-
 .textAction,
 .textActionStrong {
   border: 1px solid transparent;
   padding-inline: 0.35rem;
-  color: var(--result-text-soft);
+  color: var(--ef-text-soft);
 }
 
 .textActionStrong {
-  color: var(--result-ice-strong);
+  color: var(--ef-accent-strong);
 }
 
 .textAction:hover,
 .textActionStrong:hover {
-  color: var(--result-ice-strong);
+  color: var(--ef-accent-strong);
 }
 
 .emptyResultPage {
@@ -224,16 +147,10 @@ button.primaryAction {
 }
 
 .emptyResult {
-  position: relative;
   width: min(100%, 48rem);
   overflow: hidden;
-  border: 1px solid var(--result-border-strong);
   border-radius: 1.15rem;
-  background:
-    linear-gradient(145deg, rgba(16, 40, 50, 0.98), rgba(8, 23, 29, 0.98)),
-    var(--result-surface-raised);
   padding: clamp(1.4rem, 5vw, 3.5rem);
-  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.28);
 }
 
 .emptyResult::after {
@@ -256,10 +173,10 @@ button.primaryAction {
   line-height: 0.97;
 }
 
-.emptyResult > p:not(.kicker) {
+.emptyResultLead {
   max-width: 39rem;
   margin-top: 1.35rem;
-  color: var(--result-text-soft);
+  color: var(--ef-text-soft);
   font-size: 0.96rem;
   line-height: 1.75;
 }
@@ -269,14 +186,8 @@ button.primaryAction {
 }
 
 .summary {
-  position: relative;
   overflow: hidden;
-  border: 1px solid var(--result-border-strong);
   border-radius: 1.2rem;
-  background:
-    linear-gradient(145deg, rgba(15, 40, 50, 0.98), rgba(7, 24, 30, 0.98)),
-    var(--result-surface-raised);
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.3);
 }
 
 .summaryGrid {
@@ -296,7 +207,7 @@ button.primaryAction {
   bottom: 0;
   width: min(38%, 24rem);
   height: 9px;
-  background: repeating-linear-gradient(90deg, var(--result-border-strong) 0 1px, transparent 1px 11px);
+  background: repeating-linear-gradient(90deg, var(--ef-border-strong) 0 1px, transparent 1px 11px);
   content: "";
   pointer-events: none;
 }
@@ -321,7 +232,7 @@ button.primaryAction {
 .summaryLead {
   max-width: 42rem;
   margin-top: 1rem !important;
-  color: var(--result-text-soft);
+  color: var(--ef-text-soft);
   font-size: 0.92rem;
   line-height: 1.7;
 }
@@ -329,7 +240,7 @@ button.primaryAction {
 .lengthMetric {
   margin-top: 1.55rem;
   padding-top: 1.1rem;
-  border-top: 1px solid var(--result-border);
+  border-top: 1px solid var(--ef-border);
 }
 
 .lengthValue {
@@ -343,7 +254,7 @@ button.primaryAction {
 
 .lengthValue strong {
   min-width: 0;
-  color: var(--result-text);
+  color: var(--ef-text);
   font-size: clamp(4.2rem, 19vw, 8rem);
   font-weight: 650;
   letter-spacing: -0.075em;
@@ -353,7 +264,7 @@ button.primaryAction {
 
 .lengthValue span {
   padding-bottom: 0.55rem;
-  color: var(--result-ice);
+  color: var(--ef-accent);
   font-family: var(--font-space-grotesk), sans-serif;
   font-size: clamp(1rem, 4vw, 1.45rem);
   font-weight: 700;
@@ -362,7 +273,7 @@ button.primaryAction {
 .lengthMetric > p:last-child {
   max-width: 34rem;
   margin-top: 0.75rem;
-  color: var(--result-muted);
+  color: var(--ef-muted);
   font-size: 0.82rem;
   line-height: 1.6;
 }
@@ -372,8 +283,8 @@ button.primaryAction {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0;
   margin-top: 1.35rem;
-  border-top: 1px solid var(--result-border);
-  border-bottom: 1px solid var(--result-border);
+  border-top: 1px solid var(--ef-border);
+  border-bottom: 1px solid var(--ef-border);
 }
 
 .summaryMetric {
@@ -384,20 +295,20 @@ button.primaryAction {
 .summaryMetric:nth-child(2) {
   padding-right: 0;
   padding-left: 0.8rem;
-  border-left: 1px solid var(--result-border);
+  border-left: 1px solid var(--ef-border);
 }
 
 .summaryMetric strong {
   display: block;
   margin-top: 0.45rem;
-  color: var(--result-text);
+  color: var(--ef-text);
   font-size: clamp(1.15rem, 5vw, 1.65rem);
   line-height: 1.15;
 }
 
 .summaryMetric > p:last-child {
   margin-top: 0.55rem;
-  color: var(--result-muted);
+  color: var(--ef-muted);
   font-size: 0.75rem;
   line-height: 1.55;
 }
@@ -405,7 +316,7 @@ button.primaryAction {
 .riskMetric {
   grid-column: 1 / -1;
   padding: 1rem 0;
-  border-top: 1px solid var(--result-border);
+  border-top: 1px solid var(--ef-border);
 }
 
 .riskMetric strong {
@@ -424,15 +335,15 @@ button.primaryAction {
 }
 
 .riskLow strong {
-  color: var(--result-calm);
+  color: var(--ef-calm);
 }
 
 .riskMedium strong {
-  color: var(--result-warning);
+  color: var(--ef-warning);
 }
 
 .riskHigh strong {
-  color: var(--result-warning-strong);
+  color: var(--ef-warning-strong);
 }
 
 .fitContext {
@@ -443,7 +354,7 @@ button.primaryAction {
 
 .fitContext > div {
   padding-left: 0.9rem;
-  border-left: 1px solid var(--result-border-strong);
+  border-left: 1px solid var(--ef-border-strong);
 }
 
 .fitContext strong {
@@ -455,7 +366,7 @@ button.primaryAction {
 
 .fitContext > div > p:last-child {
   margin-top: 0.45rem;
-  color: var(--result-muted);
+  color: var(--ef-muted);
   font-size: 0.78rem;
   line-height: 1.55;
 }
@@ -467,7 +378,7 @@ button.primaryAction {
 .inputContext {
   min-width: 0;
   margin-top: 1.5rem;
-  border-top: 1px solid var(--result-border-strong);
+  border-top: 1px solid var(--ef-border-strong);
   padding-top: 1.15rem;
 }
 
@@ -479,7 +390,7 @@ button.primaryAction {
 }
 
 .inputContextHeader > span {
-  color: var(--result-muted);
+  color: var(--ef-muted);
   font-family: var(--font-space-grotesk), sans-serif;
   font-size: 0.65rem;
   letter-spacing: 0.13em;
@@ -489,29 +400,29 @@ button.primaryAction {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-top: 0.9rem;
-  border-top: 1px solid var(--result-border);
+  border-top: 1px solid var(--ef-border);
 }
 
 .inputRail > div {
   min-width: 0;
   padding: 0.8rem 0.6rem 0.8rem 0;
-  border-bottom: 1px solid var(--result-border);
+  border-bottom: 1px solid var(--ef-border);
 }
 
 .inputRail > div:nth-child(even) {
   padding-right: 0;
   padding-left: 0.6rem;
-  border-left: 1px solid var(--result-border);
+  border-left: 1px solid var(--ef-border);
 }
 
 .inputRail dt {
-  color: var(--result-muted);
+  color: var(--ef-muted);
   font-size: 0.68rem;
 }
 
 .inputRail dd {
   margin: 0.2rem 0 0;
-  color: var(--result-text);
+  color: var(--ef-text);
   font-size: 0.78rem;
   font-weight: 700;
   line-height: 1.4;
@@ -546,7 +457,7 @@ button.primaryAction {
 .finalActions > div > p:last-child {
   max-width: 44rem;
   margin-top: 1rem;
-  color: var(--result-muted);
+  color: var(--ef-muted);
   font-size: 0.9rem;
   line-height: 1.7;
 }
@@ -555,7 +466,7 @@ button.primaryAction {
   display: grid;
   margin-top: 2rem;
   padding: 0;
-  border-top: 1px solid var(--result-border-strong);
+  border-top: 1px solid var(--ef-border-strong);
   list-style: none;
 }
 
@@ -564,20 +475,20 @@ button.primaryAction {
   grid-template-columns: 2.1rem minmax(0, 1fr);
   gap: 0.75rem;
   padding: 1rem 0;
-  border-bottom: 1px solid var(--result-border);
+  border-bottom: 1px solid var(--ef-border);
 }
 
 .reasonRail li > span,
 .decisionNumber,
 .comparisonRow > span {
-  color: var(--result-ice);
+  color: var(--ef-accent);
   font-family: var(--font-space-grotesk), sans-serif;
   font-size: 0.7rem;
   letter-spacing: 0.08em;
 }
 
 .reasonRail li p {
-  color: var(--result-text-soft);
+  color: var(--ef-text-soft);
   font-size: 0.88rem;
   line-height: 1.7;
 }
@@ -594,9 +505,9 @@ button.primaryAction {
   height: 100%;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--result-border);
+  border: 1px solid var(--ef-border);
   border-radius: 1rem;
-  background: var(--result-surface);
+  background: var(--ef-surface);
   box-shadow: 0 18px 45px rgba(0, 0, 0, 0.18);
 }
 
@@ -604,7 +515,7 @@ button.primaryAction {
   border-color: rgba(158, 223, 240, 0.42);
   background:
     linear-gradient(145deg, rgba(17, 48, 59, 0.98), rgba(8, 26, 33, 0.98)),
-    var(--result-surface-raised);
+    var(--ef-surface-raised);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
 }
 
@@ -620,13 +531,13 @@ button.primaryAction {
   border-color: rgba(215, 164, 94, 0.32);
   background:
     linear-gradient(145deg, rgba(48, 38, 25, 0.42), rgba(12, 28, 33, 0.9)),
-    var(--result-surface);
+    var(--ef-surface);
 }
 
 .recommendationCardHeader {
   position: relative;
   padding: 1.1rem;
-  border-bottom: 1px solid var(--result-border);
+  border-bottom: 1px solid var(--ef-border);
 }
 
 .recommendationCardFeatured .recommendationCardHeader {
@@ -641,7 +552,7 @@ button.primaryAction {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  color: var(--result-muted);
+  color: var(--ef-muted);
   font-family: var(--font-space-grotesk), sans-serif;
   font-size: 0.62rem;
   letter-spacing: 0.1em;
@@ -651,7 +562,7 @@ button.primaryAction {
   display: inline-flex;
   min-height: 1.7rem;
   align-items: center;
-  border: 1px solid var(--result-border);
+  border: 1px solid var(--ef-border);
   border-radius: 0.4rem;
   padding: 0.32rem 0.45rem;
   font-family: var(--font-manrope), sans-serif;
@@ -663,17 +574,17 @@ button.primaryAction {
 }
 
 .readinessReady {
-  color: var(--result-success);
+  color: var(--ef-success);
 }
 
 .readinessReview {
   border-color: rgba(215, 164, 94, 0.28);
-  color: var(--result-warning);
+  color: var(--ef-warning);
 }
 
 .recommendationRole {
   margin-top: 1rem !important;
-  color: var(--result-ice);
+  color: var(--ef-accent);
   font-size: 0.73rem;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -682,12 +593,12 @@ button.primaryAction {
 }
 
 .recommendationCardCareful .recommendationRole {
-  color: var(--result-warning);
+  color: var(--ef-warning);
 }
 
 .recommendationBrand {
   margin-top: 1.2rem !important;
-  color: var(--result-muted);
+  color: var(--ef-muted);
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -696,7 +607,7 @@ button.primaryAction {
 
 .recommendationCardHeader h3 {
   margin-top: 0.25rem;
-  color: var(--result-text);
+  color: var(--ef-text);
   font-size: clamp(1.75rem, 7vw, 2.6rem);
   letter-spacing: -0.045em;
   line-height: 1;
@@ -711,16 +622,16 @@ button.primaryAction {
 }
 
 .matchSummary strong {
-  color: var(--result-text-soft);
+  color: var(--ef-text-soft);
   font-family: var(--font-manrope), sans-serif;
   font-size: 0.84rem;
   line-height: 1.4;
 }
 
 .matchSummary span {
-  border-left: 1px solid var(--result-border-strong);
+  border-left: 1px solid var(--ef-border-strong);
   padding-left: 0.8rem;
-  color: var(--result-muted);
+  color: var(--ef-muted);
   font-size: 0.75rem;
 }
 
@@ -740,13 +651,13 @@ button.primaryAction {
   display: grid;
   grid-template-columns: 1.65rem minmax(0, 1fr);
   gap: 0.5rem;
-  color: var(--result-text-soft);
+  color: var(--ef-text-soft);
   font-size: 0.78rem;
   line-height: 1.55;
 }
 
 .recommendationReasons li > span {
-  color: var(--result-ice);
+  color: var(--ef-accent);
   font-family: var(--font-space-grotesk), sans-serif;
   font-size: 0.65rem;
 }
@@ -755,15 +666,15 @@ button.primaryAction {
   display: grid;
   gap: 0.9rem;
   margin-inline: 1.1rem;
-  border-top: 1px solid var(--result-border-strong);
-  border-bottom: 1px solid var(--result-border-strong);
+  border-top: 1px solid var(--ef-border-strong);
+  border-bottom: 1px solid var(--ef-border-strong);
   padding-block: 1rem;
 }
 
 .recommendedSize > div > strong {
   display: block;
   margin-top: 0.35rem;
-  color: var(--result-text);
+  color: var(--ef-text);
   font-size: 2.35rem;
   letter-spacing: -0.05em;
   line-height: 1;
@@ -777,14 +688,14 @@ button.primaryAction {
 
 .recommendedSize dt,
 .productFacts dt {
-  color: var(--result-muted);
+  color: var(--ef-muted);
   font-size: 0.64rem;
 }
 
 .recommendedSize dd,
 .productFacts dd {
   margin: 0.2rem 0 0;
-  color: var(--result-text-soft);
+  color: var(--ef-text-soft);
   font-size: 0.72rem;
   font-weight: 700;
   line-height: 1.35;
@@ -814,13 +725,13 @@ button.primaryAction {
 
 .commercialMeta > p:first-child span,
 .commercialMeta > p:last-child {
-  color: var(--result-muted);
+  color: var(--ef-muted);
   font-size: 0.68rem;
   line-height: 1.4;
 }
 
 .commercialMeta strong {
-  color: var(--result-text);
+  color: var(--ef-text);
   font-size: 1.25rem;
 }
 
@@ -839,8 +750,8 @@ button.primaryAction {
 
 .emptyRecommendations {
   margin-top: 2rem;
-  border-top: 1px solid var(--result-border-strong);
-  border-bottom: 1px solid var(--result-border-strong);
+  border-top: 1px solid var(--ef-border-strong);
+  border-bottom: 1px solid var(--ef-border-strong);
   padding: 1.5rem 0;
 }
 
@@ -852,10 +763,10 @@ button.primaryAction {
   line-height: 1.05;
 }
 
-.emptyRecommendations > p:not(.microLabel) {
+.emptyRecommendationsCopy {
   max-width: 42rem;
   margin-top: 0.9rem;
-  color: var(--result-muted);
+  color: var(--ef-muted);
   font-size: 0.85rem;
   line-height: 1.65;
 }
@@ -867,7 +778,7 @@ button.primaryAction {
 .decisionGuideGrid {
   display: grid;
   margin-top: 2rem;
-  border-top: 1px solid var(--result-border-strong);
+  border-top: 1px solid var(--ef-border-strong);
 }
 
 .decisionGuideItem {
@@ -875,12 +786,12 @@ button.primaryAction {
   grid-template-columns: 2rem minmax(0, 1fr);
   gap: 0.65rem;
   padding: 1.2rem 0;
-  border-bottom: 1px solid var(--result-border);
+  border-bottom: 1px solid var(--ef-border);
 }
 
-.decisionGuideItem > div > p:not(.microLabel, .decisionSize, .decisionHighlight) {
+.decisionGuideSummary {
   margin-top: 0.55rem;
-  color: var(--result-muted);
+  color: var(--ef-muted);
   font-size: 0.8rem;
   line-height: 1.6;
 }
@@ -894,17 +805,17 @@ button.primaryAction {
 .decisionSize {
   display: inline-flex;
   margin-top: 0.55rem !important;
-  border: 1px solid var(--result-border);
+  border: 1px solid var(--ef-border);
   border-radius: 0.4rem;
   padding: 0.25rem 0.45rem;
-  color: var(--result-ice);
+  color: var(--ef-accent);
   font-size: 0.68rem;
   font-weight: 800;
 }
 
 .decisionHighlight {
   margin-top: 0.8rem !important;
-  color: var(--result-text-soft);
+  color: var(--ef-text-soft);
   font-size: 0.78rem;
   line-height: 1.6;
 }
@@ -919,7 +830,7 @@ button.primaryAction {
 
 .comparison {
   margin-top: 2.5rem;
-  border-top: 1px solid var(--result-border-strong);
+  border-top: 1px solid var(--ef-border-strong);
 }
 
 .comparisonHeader {
@@ -928,12 +839,12 @@ button.primaryAction {
 
 .comparisonHeader > p:last-child {
   margin-top: 0.35rem;
-  color: var(--result-muted);
+  color: var(--ef-muted);
   font-size: 0.78rem;
 }
 
 .comparisonRows {
-  border-top: 1px solid var(--result-border);
+  border-top: 1px solid var(--ef-border);
 }
 
 .comparisonRow {
@@ -942,11 +853,11 @@ button.primaryAction {
   gap: 0.75rem;
   align-items: center;
   padding: 1rem 0;
-  border-bottom: 1px solid var(--result-border);
+  border-bottom: 1px solid var(--ef-border);
 }
 
 .comparisonRow > div:nth-child(2) > p {
-  color: var(--result-ice);
+  color: var(--ef-accent);
   font-size: 0.68rem;
   font-weight: 800;
 }
@@ -962,12 +873,12 @@ button.primaryAction {
   display: flex;
   flex-wrap: wrap;
   gap: 0.25rem 0.6rem;
-  color: var(--result-muted);
+  color: var(--ef-muted);
   font-size: 0.74rem;
 }
 
 .comparisonRow > p strong {
-  color: var(--result-text);
+  color: var(--ef-text);
   font-family: var(--font-manrope), sans-serif;
 }
 
@@ -979,11 +890,11 @@ button.primaryAction {
   display: grid;
   gap: 2rem;
   margin-top: 5rem;
-  border: 1px solid var(--result-border-strong);
+  border: 1px solid var(--ef-border-strong);
   border-radius: 1rem;
   background:
     linear-gradient(145deg, rgba(16, 40, 50, 0.9), rgba(8, 24, 30, 0.94)),
-    var(--result-surface-raised);
+    var(--ef-surface-raised);
   padding: 1.25rem;
 }
 
@@ -1000,7 +911,7 @@ button.primaryAction {
 .emailField label {
   display: block;
   margin-bottom: 0.5rem;
-  color: var(--result-text);
+  color: var(--ef-text);
   font-size: 0.8rem;
   font-weight: 800;
 }
@@ -1008,11 +919,11 @@ button.primaryAction {
 .emailField input {
   width: 100%;
   min-height: 3.1rem;
-  border: 1px solid var(--result-border-strong);
+  border: 1px solid var(--ef-border-strong);
   border-radius: 0.7rem;
   background: rgba(6, 18, 23, 0.78);
   padding: 0.8rem 0.9rem;
-  color: var(--result-text);
+  color: var(--ef-text);
   font: inherit;
   outline: none;
 }
@@ -1027,7 +938,7 @@ button.primaryAction {
 
 .emailField > p {
   margin-top: 0.45rem;
-  color: var(--result-muted);
+  color: var(--ef-muted);
   font-size: 0.68rem;
   line-height: 1.55;
 }
@@ -1037,10 +948,10 @@ button.primaryAction {
   grid-template-columns: 1.2rem minmax(0, 1fr);
   gap: 0.65rem;
   align-items: start;
-  border: 1px solid var(--result-border);
+  border: 1px solid var(--ef-border);
   border-radius: 0.7rem;
   padding: 0.85rem;
-  color: var(--result-text-soft);
+  color: var(--ef-text-soft);
   cursor: pointer;
   font-size: 0.75rem;
   line-height: 1.6;
@@ -1050,7 +961,7 @@ button.primaryAction {
   width: 1.05rem;
   height: 1.05rem;
   margin-top: 0.15rem;
-  accent-color: var(--result-ice);
+  accent-color: var(--ef-accent);
 }
 
 .formError,
@@ -1065,22 +976,22 @@ button.primaryAction {
 .formError {
   border-color: rgba(255, 170, 163, 0.35);
   background: rgba(129, 45, 42, 0.18);
-  color: var(--result-danger);
+  color: var(--ef-danger);
 }
 
 .formSuccess {
   border-color: rgba(139, 218, 195, 0.3);
   background: rgba(46, 115, 96, 0.16);
-  color: var(--result-success);
+  color: var(--ef-success);
 }
 
-.emailForm > .primaryAction {
+.emailSubmitAction {
   width: 100%;
 }
 
 .methodDisclosure {
-  border-top: 1px solid var(--result-border-strong);
-  border-bottom: 1px solid var(--result-border-strong);
+  border-top: 1px solid var(--ef-border-strong);
+  border-bottom: 1px solid var(--ef-border-strong);
 }
 
 .methodDisclosure summary {
@@ -1104,13 +1015,13 @@ button.primaryAction {
 }
 
 .methodDisclosure summary strong {
-  color: var(--result-text);
+  color: var(--ef-text);
   font-size: clamp(1.2rem, 5vw, 1.8rem);
   line-height: 1.15;
 }
 
 .methodDisclosure summary small {
-  color: var(--result-muted);
+  color: var(--ef-muted);
   font-size: 0.72rem;
   line-height: 1.5;
 }
@@ -1122,9 +1033,9 @@ button.primaryAction {
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--result-border-strong);
+  border: 1px solid var(--ef-border-strong);
   border-radius: 50%;
-  color: var(--result-ice);
+  color: var(--ef-accent);
   font-family: var(--font-space-grotesk), sans-serif;
   font-size: 1.2rem;
 }
@@ -1146,7 +1057,7 @@ button.primaryAction {
 
 .detailMetric {
   padding-left: 0.9rem;
-  border-left: 1px solid var(--result-border-strong);
+  border-left: 1px solid var(--ef-border-strong);
 }
 
 .detailMetric h3 {
@@ -1157,14 +1068,14 @@ button.primaryAction {
 
 .detailMetric > p:last-child {
   margin-top: 0.6rem;
-  color: var(--result-muted);
+  color: var(--ef-muted);
   font-size: 0.76rem;
   line-height: 1.6;
 }
 
 .fullExplanation {
   padding: 0;
-  border-top: 1px solid var(--result-border);
+  border-top: 1px solid var(--ef-border);
   list-style: none;
 }
 
@@ -1173,17 +1084,17 @@ button.primaryAction {
   grid-template-columns: 2rem minmax(0, 1fr);
   gap: 0.65rem;
   padding: 0.9rem 0;
-  border-bottom: 1px solid var(--result-border);
+  border-bottom: 1px solid var(--ef-border);
 }
 
 .fullExplanation li span {
-  color: var(--result-ice);
+  color: var(--ef-accent);
   font-family: var(--font-space-grotesk), sans-serif;
   font-size: 0.65rem;
 }
 
 .fullExplanation li p {
-  color: var(--result-text-soft);
+  color: var(--ef-text-soft);
   font-size: 0.76rem;
   line-height: 1.6;
 }
@@ -1191,7 +1102,7 @@ button.primaryAction {
 .trustSummary {
   display: grid;
   gap: 1.5rem;
-  border: 1px solid var(--result-border);
+  border: 1px solid var(--ef-border);
   background: rgba(15, 38, 46, 0.65);
   padding: 1rem;
 }
@@ -1202,9 +1113,9 @@ button.primaryAction {
   line-height: 1.25;
 }
 
-.trustSummary > div > p:not(.microLabel) {
+.trustSummaryDescription {
   margin-top: 0.55rem;
-  color: var(--result-muted);
+  color: var(--ef-muted);
   font-size: 0.75rem;
   line-height: 1.6;
 }
@@ -1217,7 +1128,7 @@ button.primaryAction {
 
 .trustSummary dl > div {
   padding-inline: 0.6rem;
-  border-left: 1px solid var(--result-border);
+  border-left: 1px solid var(--ef-border);
 }
 
 .trustSummary dl > div:first-child {
@@ -1226,13 +1137,13 @@ button.primaryAction {
 }
 
 .trustSummary dt {
-  color: var(--result-muted);
+  color: var(--ef-muted);
   font-size: 0.62rem;
 }
 
 .trustSummary dd {
   margin: 0.25rem 0 0;
-  color: var(--result-text);
+  color: var(--ef-text);
   font-family: var(--font-space-grotesk), sans-serif;
   font-size: 1.6rem;
   font-weight: 700;
@@ -1247,7 +1158,7 @@ button.primaryAction {
   display: grid;
   gap: 1.5rem;
   margin-top: 5rem;
-  border-top: 1px solid var(--result-border-strong);
+  border-top: 1px solid var(--ef-border-strong);
   padding-bottom: 4rem;
 }
 
@@ -1272,7 +1183,7 @@ button.primaryAction {
     grid-column: auto;
     padding: 1.1rem 1rem;
     border-top: 0;
-    border-left: 1px solid var(--result-border);
+    border-left: 1px solid var(--ef-border);
   }
 
   .summaryMetric:first-child {
@@ -1293,7 +1204,7 @@ button.primaryAction {
   .inputRail > div:nth-child(3n + 2),
   .inputRail > div:nth-child(3n + 3) {
     padding-left: 0.6rem;
-    border-left: 1px solid var(--result-border);
+    border-left: 1px solid var(--ef-border);
   }
 
   .fitContext,
@@ -1312,7 +1223,7 @@ button.primaryAction {
   .reasonRail li {
     display: block;
     padding: 1.1rem 1rem;
-    border-left: 1px solid var(--result-border);
+    border-left: 1px solid var(--ef-border);
   }
 
   .reasonRail li:first-child {
@@ -1378,7 +1289,7 @@ button.primaryAction {
   .decisionGuideItem:nth-child(even) {
     padding-right: 0;
     padding-left: 1rem;
-    border-left: 1px solid var(--result-border);
+    border-left: 1px solid var(--ef-border);
   }
 
   .recommendedSize {
@@ -1401,7 +1312,7 @@ button.primaryAction {
   .inputContext {
     margin-top: 0;
     border-top: 0;
-    border-left: 1px solid var(--result-border-strong);
+    border-left: 1px solid var(--ef-border-strong);
     padding-top: 0;
     padding-left: 1.5rem;
   }
@@ -1462,7 +1373,7 @@ button.primaryAction {
   .decisionGuideItem,
   .decisionGuideItem:nth-child(even) {
     padding: 1.25rem 1.2rem;
-    border-left: 1px solid var(--result-border);
+    border-left: 1px solid var(--ef-border);
   }
 
   .decisionGuideItem:first-child {
@@ -1488,7 +1399,6 @@ button.primaryAction {
     transition-duration: 0.01ms;
   }
 
-  .primaryAction:hover,
   .recommendationCardFeatured {
     transform: none;
   }

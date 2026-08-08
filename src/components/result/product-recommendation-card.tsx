@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { TrackedStoreLink } from "@/components/analytics/tracked-store-link";
+import publicStyles from "@/components/public/public-ui.module.css";
 import { getBoardSizeLabel } from "@/lib/board-size";
 import {
   boardShapeLabels,
@@ -107,7 +108,7 @@ export function ProductRecommendationCard({
       </header>
 
       <div className={styles.recommendationReasons}>
-        <p className={styles.microLabel}>Почему подходит</p>
+        <p className={publicStyles.microLabel}>Почему подходит</p>
         <ol>
           {reasons.map((reason, index) => (
             <li key={`${reason}-${index}`}>
@@ -120,7 +121,7 @@ export function ProductRecommendationCard({
 
       <div className={styles.recommendedSize}>
         <div>
-          <p className={styles.microLabel}>Рекомендованный размер</p>
+          <p className={publicStyles.microLabel}>Рекомендованный размер</p>
           <strong>{sizeLabel}</strong>
         </div>
         <dl>
@@ -161,14 +162,14 @@ export function ProductRecommendationCard({
       <div className={styles.recommendationActions}>
         <Link
           href={`/boards/${match.product.slug}`}
-          className={styles.secondaryAction}
+          className={publicStyles.secondaryAction}
         >
           О модели
         </Link>
         <TrackedStoreLink
           href={shopHref}
           analyticsPayload={shopAnalyticsPayload}
-          className={styles.primaryAction}
+          className={publicStyles.primaryAction}
         >
           В магазин <span aria-hidden="true">↗</span>
         </TrackedStoreLink>

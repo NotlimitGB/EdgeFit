@@ -1,0 +1,131 @@
+.theme {
+  --ef-bg: #071318;
+  --ef-bg-soft: #0a1b22;
+  --ef-surface: rgba(12, 31, 39, 0.86);
+  --ef-surface-raised: #102832;
+  --ef-surface-technical: rgba(13, 38, 47, 0.94);
+  --ef-text: #edf7fa;
+  --ef-text-soft: #c9dbe2;
+  --ef-muted: #96adb7;
+  --ef-accent: #9edff0;
+  --ef-accent-strong: #b9edf8;
+  --ef-border: rgba(167, 220, 233, 0.16);
+  --ef-border-strong: rgba(167, 220, 233, 0.28);
+  --ef-calm: #8fcbd8;
+  --ef-warning: #d7a45e;
+  --ef-warning-strong: #edb15a;
+  --ef-danger: #ffaaa3;
+  --ef-danger-surface: rgba(135, 56, 54, 0.16);
+  --ef-success: #8bdac3;
+  --ef-focus: var(--ef-accent-strong);
+
+  color: var(--ef-text);
+}
+
+.kicker,
+.microLabel {
+  color: var(--ef-accent);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.kicker {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.kicker::before {
+  width: 1.75rem;
+  height: 1px;
+  background: var(--ef-accent);
+  content: "";
+  flex: 0 0 auto;
+}
+
+.primaryAction,
+.secondaryAction {
+  display: inline-flex;
+  min-height: 3rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  border-radius: 0.75rem;
+  padding: 0.78rem 1.15rem;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background-color 160ms ease;
+}
+
+.primaryAction {
+  border: 1px solid transparent;
+  background: var(--ef-accent-strong);
+  color: #071318;
+}
+
+.secondaryAction {
+  border: 1px solid var(--ef-border-strong);
+  background: rgba(7, 19, 24, 0.36);
+  color: var(--ef-text);
+}
+
+.primaryAction:hover:not(:disabled),
+.secondaryAction:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+
+.primaryAction:hover:not(:disabled) {
+  background: #d0f6fc;
+}
+
+.secondaryAction:hover:not(:disabled) {
+  border-color: var(--ef-accent);
+  background: rgba(158, 223, 240, 0.08);
+}
+
+.primaryAction:focus-visible,
+.secondaryAction:focus-visible {
+  outline: 3px solid var(--ef-focus);
+  outline-offset: 3px;
+}
+
+.primaryAction:disabled,
+.secondaryAction:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+.raisedTechnicalSurface {
+  position: relative;
+  min-width: 0;
+  border: 1px solid var(--ef-border-strong);
+  background:
+    linear-gradient(145deg, rgba(16, 40, 50, 0.98), rgba(8, 24, 30, 0.98)),
+    var(--ef-surface-raised);
+  box-shadow:
+    0 2rem 5rem rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(220, 246, 252, 0.07);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .primaryAction,
+  .secondaryAction {
+    transition: none;
+  }
+
+  .primaryAction:hover:not(:disabled),
+  .secondaryAction:hover:not(:disabled) {
+    transform: none;
+  }
+}

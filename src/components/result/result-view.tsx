@@ -8,6 +8,7 @@ import {
   type FormEvent,
 } from "react";
 import { TrackedStoreLink } from "@/components/analytics/tracked-store-link";
+import publicStyles from "@/components/public/public-ui.module.css";
 import {
   ProductRecommendationCard,
   recommendationRoleLabels,
@@ -146,26 +147,28 @@ export function ResultView() {
 
   if (!recommendation) {
     return (
-      <div className={`${styles.resultPage} ${styles.emptyResultPage}`}>
+      <div
+        className={`${publicStyles.theme} ${styles.resultPage} ${styles.emptyResultPage}`}
+      >
         <div className={styles.atmosphere} aria-hidden="true" />
         <div className={styles.resultShell}>
           <section
-            className={styles.emptyResult}
+            className={`${publicStyles.raisedTechnicalSurface} ${styles.emptyResult}`}
             aria-labelledby="empty-result-title"
           >
-            <p className={styles.kicker}>Нет сохранённого результата</p>
+            <p className={publicStyles.kicker}>Нет сохранённого результата</p>
             <h1 id="empty-result-title">
               Сначала пройди квиз — здесь появится персональный fit
             </h1>
-            <p>
+            <p className={styles.emptyResultLead}>
               После квиза покажем рабочую ростовку, ширину, риск boot drag и
               модели, с которых разумно начать сравнение.
             </p>
             <div className={styles.inlineActions}>
-              <Link href="/quiz" className={styles.primaryAction}>
+              <Link href="/quiz" className={publicStyles.primaryAction}>
                 Пройти квиз <span aria-hidden="true">→</span>
               </Link>
-              <Link href="/catalog" className={styles.secondaryAction}>
+              <Link href="/catalog" className={publicStyles.secondaryAction}>
                 Открыть каталог
               </Link>
             </div>
@@ -249,14 +252,17 @@ export function ResultView() {
   }
 
   return (
-    <div className={styles.resultPage}>
+    <div className={`${publicStyles.theme} ${styles.resultPage}`}>
       <div className={styles.atmosphere} aria-hidden="true" />
       <div className={styles.resultShell}>
-        <section className={styles.summary} aria-labelledby="result-title">
+        <section
+          className={`${publicStyles.raisedTechnicalSurface} ${styles.summary}`}
+          aria-labelledby="result-title"
+        >
           <div className={styles.summaryGrid} aria-hidden="true" />
           <div className={styles.summaryLayout}>
             <div className={styles.summaryMain}>
-              <p className={styles.kicker}>Персональный snowboard fit</p>
+              <p className={publicStyles.kicker}>Персональный snowboard fit</p>
               <h1 id="result-title">Твой рабочий fit</h1>
               <p className={styles.summaryLead}>
                 Сначала — что искать. Ниже объясняем, почему диапазон и модели
@@ -264,7 +270,7 @@ export function ResultView() {
               </p>
 
               <div className={styles.lengthMetric}>
-                <p className={styles.microLabel}>Ростовка</p>
+                <p className={publicStyles.microLabel}>Ростовка</p>
                 <div className={styles.lengthValue}>
                   <strong>
                     {recommendation.lengthRange.min}–{recommendation.lengthRange.max}
@@ -278,14 +284,14 @@ export function ResultView() {
 
               <div className={styles.summaryMetrics}>
                 <div className={styles.summaryMetric}>
-                  <p className={styles.microLabel}>Ширина</p>
+                  <p className={publicStyles.microLabel}>Ширина</p>
                   <strong>
                     {widthTypeLabels[recommendation.recommendedWidthType]}
                   </strong>
                   <p>Категория под размер ботинка и стойку.</p>
                 </div>
                 <div className={styles.summaryMetric}>
-                  <p className={styles.microLabel}>Ориентир талии</p>
+                  <p className={publicStyles.microLabel}>Ориентир талии</p>
                   <strong>{recommendation.targetWaistWidthMm} мм</strong>
                   <p>Сверяй это значение у конкретного размера доски.</p>
                 </div>
@@ -294,7 +300,7 @@ export function ResultView() {
                     riskClasses[recommendation.bootDragRisk]
                   }`}
                 >
-                  <p className={styles.microLabel}>Boot drag</p>
+                  <p className={publicStyles.microLabel}>Boot drag</p>
                   <strong>
                     <span className={styles.riskDot} aria-hidden="true" />
                     {bootDragRiskLabels[recommendation.bootDragRisk]} риск
@@ -304,13 +310,13 @@ export function ResultView() {
               </div>
 
               <div className={styles.inlineActions}>
-                <a href="#recommended-models" className={styles.primaryAction}>
+                <a href="#recommended-models" className={publicStyles.primaryAction}>
                   Смотреть рекомендации <span aria-hidden="true">↓</span>
                 </a>
                 <Link
                   href="/quiz"
                   onClick={handleRecalculationStart}
-                  className={styles.secondaryAction}
+                  className={publicStyles.secondaryAction}
                 >
                   Пересчитать
                 </Link>
@@ -318,14 +324,14 @@ export function ResultView() {
 
               <div className={styles.fitContext}>
                 <div>
-                  <p className={styles.microLabel}>Подходящая форма</p>
+                  <p className={publicStyles.microLabel}>Подходящая форма</p>
                   <strong>
                     {boardShapeLabels[recommendation.shapeProfile.primary]}
                   </strong>
                   <p>{recommendation.shapeProfile.headline}</p>
                 </div>
                 <div>
-                  <p className={styles.microLabel}>Сценарий</p>
+                  <p className={publicStyles.microLabel}>Сценарий</p>
                   <strong>
                     {terrainPriorityLabels[recommendation.input.terrainPriority]}
                   </strong>
@@ -336,7 +342,7 @@ export function ResultView() {
 
             <aside className={styles.inputContext} aria-label="Ваши параметры">
               <div className={styles.inputContextHeader}>
-                <p className={styles.microLabel}>Контекст расчёта</p>
+                <p className={publicStyles.microLabel}>Контекст расчёта</p>
                 <span aria-hidden="true">EF / INPUT</span>
               </div>
               <dl className={styles.inputRail}>
@@ -430,12 +436,12 @@ export function ResultView() {
             </div>
           ) : (
             <div className={styles.emptyRecommendations}>
-              <p className={styles.microLabel}>Fit готов, каталог не совпал</p>
+              <p className={publicStyles.microLabel}>Fit готов, каталог не совпал</p>
               <h3>
                 Fit рассчитан, но в текущем каталоге подходящих вариантов не
                 нашли
               </h3>
-              <p>
+              <p className={styles.emptyRecommendationsCopy}>
                 Не подменяем результат случайными моделями. Можно изменить
                 вводные или посмотреть каталог самостоятельно.
               </p>
@@ -443,7 +449,7 @@ export function ResultView() {
                 <Link
                   href="/quiz"
                   onClick={handleRecalculationStart}
-                  className={styles.secondaryAction}
+                  className={publicStyles.secondaryAction}
                 >
                   Пересчитать подбор
                 </Link>
@@ -470,15 +476,15 @@ export function ResultView() {
                     {String(index + 1).padStart(2, "0")}
                   </span>
                   <div>
-                    <p className={styles.microLabel}>{item.title}</p>
-                    <p>{item.summary}</p>
+                    <p className={publicStyles.microLabel}>{item.title}</p>
+                    <p className={styles.decisionGuideSummary}>{item.summary}</p>
                     <h3>{item.boardTitle}</h3>
                     <p className={styles.decisionSize}>Размер {item.sizeLabel}</p>
                     <p className={styles.decisionHighlight}>{item.highlight}</p>
                     <div className={styles.compactActions}>
                       <Link
                         href={`/boards/${item.boardSlug}`}
-                        className={styles.secondaryAction}
+                        className={publicStyles.secondaryAction}
                       >
                         О модели
                       </Link>
@@ -494,7 +500,7 @@ export function ResultView() {
                           undefined,
                           item.sizeLabel,
                         )}
-                        className={styles.primaryAction}
+                        className={publicStyles.primaryAction}
                       >
                         В магазин
                       </TrackedStoreLink>
@@ -507,7 +513,7 @@ export function ResultView() {
             {comparisonBoards.length > 0 ? (
               <div className={styles.comparison}>
                 <div className={styles.comparisonHeader}>
-                  <p className={styles.microLabel}>Верхние варианты рядом</p>
+                  <p className={publicStyles.microLabel}>Верхние варианты рядом</p>
                   <p>Роль, размер и fit — без повторения полных карточек.</p>
                 </div>
                 <div className={styles.comparisonRows}>
@@ -567,7 +573,7 @@ export function ResultView() {
 
         <section className={styles.emailSection} aria-labelledby="email-title">
           <div>
-            <p className={styles.kicker}>Сохранить полезный результат</p>
+            <p className={publicStyles.kicker}>Сохранить полезный результат</p>
             <h2 id="email-title">
               Сохрани подбор, чтобы вернуться к нему позже
             </h2>
@@ -635,7 +641,7 @@ export function ResultView() {
             <button
               type="submit"
               disabled={isSubmittingEmail}
-              className={styles.primaryAction}
+              className={`${publicStyles.primaryAction} ${styles.emailSubmitAction}`}
             >
               {isSubmittingEmail ? "Сохраняем..." : "Отправить на почту"}
             </button>
@@ -646,7 +652,7 @@ export function ResultView() {
           <details className={styles.methodDisclosure}>
             <summary>
               <span>
-                <span className={styles.microLabel}>Подробности расчёта</span>
+                <span className={publicStyles.microLabel}>Подробности расчёта</span>
                 <strong>Как мы получили этот результат</strong>
                 <small>
                   Форма, сценарий, полное объяснение и статус данных каталога.
@@ -681,9 +687,11 @@ export function ResultView() {
               {trustSummary.totalCount > 0 ? (
                 <div className={styles.trustSummary}>
                   <div>
-                    <p className={styles.microLabel}>Что известно о данных</p>
+                    <p className={publicStyles.microLabel}>Что известно о данных</p>
                     <h3>{trustSummary.headline}</h3>
-                    <p>{trustSummary.description}</p>
+                    <p className={styles.trustSummaryDescription}>
+                      {trustSummary.description}
+                    </p>
                     <p>{trustSummary.reviewMessage}</p>
                   </div>
                   <dl>
@@ -780,7 +788,7 @@ export function ResultView() {
 
         <section className={styles.finalActions} aria-labelledby="final-action-title">
           <div>
-            <p className={styles.kicker}>Следующий шаг</p>
+            <p className={publicStyles.kicker}>Следующий шаг</p>
             <h2 id="final-action-title">Хочешь изменить вводные или посмотреть шире?</h2>
             <p>
               Пересчитай fit или перейди к каталогу — персональные модели выше
@@ -791,7 +799,7 @@ export function ResultView() {
             <Link
               href="/quiz"
               onClick={handleRecalculationStart}
-              className={styles.secondaryAction}
+              className={publicStyles.secondaryAction}
             >
               Пересчитать подбор
             </Link>
@@ -815,7 +823,7 @@ interface SectionHeaderProps {
 function SectionHeader({ kicker, title, description, id }: SectionHeaderProps) {
   return (
     <header className={styles.sectionHeader}>
-      <p className={styles.kicker}>{kicker}</p>
+      <p className={publicStyles.kicker}>{kicker}</p>
       <h2 id={id}>{title}</h2>
       <p>{description}</p>
     </header>
@@ -831,7 +839,7 @@ interface DetailMetricProps {
 function DetailMetric({ label, value, description }: DetailMetricProps) {
   return (
     <article className={styles.detailMetric}>
-      <p className={styles.microLabel}>{label}</p>
+      <p className={publicStyles.microLabel}>{label}</p>
       <h3>{value}</h3>
       <p>{description}</p>
     </article>

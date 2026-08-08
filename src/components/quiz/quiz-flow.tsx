@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import publicStyles from "@/components/public/public-ui.module.css";
 import { trackEvent } from "@/lib/analytics/client";
 import {
   defaultQuizDraft,
@@ -389,7 +390,10 @@ export function QuizFlow() {
 
   return (
     <div className={styles.quizLayout} aria-busy={isBusy}>
-      <section className={styles.quizCore} aria-labelledby="quiz-step-title">
+      <section
+        className={`${publicStyles.raisedTechnicalSurface} ${styles.quizCore}`}
+        aria-labelledby="quiz-step-title"
+      >
         <div
           className={styles.progress}
           role="progressbar"
@@ -417,7 +421,7 @@ export function QuizFlow() {
         </div>
 
         <header className={styles.stepHeader}>
-          <p className={styles.microLabel}>
+          <p className={publicStyles.microLabel}>
             Шаг {step + 1} / {stepFields.length} · {currentStep.eyebrow}
           </p>
           <h2 id="quiz-step-title" ref={stepHeadingRef} tabIndex={-1}>
@@ -548,7 +552,7 @@ export function QuizFlow() {
         <div className={styles.contextCoordinate} aria-hidden="true">
           EF / FIT 0{step + 1}
         </div>
-        <p className={styles.microLabel}>Что получится на выходе</p>
+        <p className={publicStyles.microLabel}>Что получится на выходе</p>
         <h2 id="quiz-output-title">Понятный fit, а не одна случайная цифра</h2>
         <dl className={styles.outputList}>
           {resultOutputs.map(([number, term, description]) => (
@@ -562,7 +566,7 @@ export function QuizFlow() {
           ))}
         </dl>
         <div className={styles.contextNote}>
-          <p className={styles.microLabel}>Зачем этот шаг</p>
+          <p className={publicStyles.microLabel}>Зачем этот шаг</p>
           <p>{currentStep.context}</p>
         </div>
         <p className={styles.contextDisclaimer}>
@@ -577,7 +581,7 @@ export function QuizFlow() {
             type="button"
             onClick={previousStep}
             disabled={isBusy}
-            className={styles.secondaryAction}
+            className={`${publicStyles.secondaryAction} ${styles.navigationAction}`}
           >
             <span aria-hidden="true">←</span>
             Назад
@@ -589,7 +593,7 @@ export function QuizFlow() {
             type="button"
             onClick={nextStep}
             disabled={isBusy}
-            className={styles.primaryAction}
+            className={`${publicStyles.primaryAction} ${styles.navigationAction}`}
           >
             Продолжить
             <span aria-hidden="true">→</span>
@@ -600,7 +604,7 @@ export function QuizFlow() {
             onClick={handleSubmit}
             disabled={isBusy}
             aria-busy={isBusy}
-            className={styles.primaryAction}
+            className={`${publicStyles.primaryAction} ${styles.navigationAction}`}
           >
             {isBusy ? "Подбираем доски…" : "Получить подбор"}
             {!isBusy ? <span aria-hidden="true">→</span> : null}
