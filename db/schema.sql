@@ -91,6 +91,54 @@ exception
   when duplicate_object then null;
 end $$;
 
+create table if not exists model_families (
+  id uuid primary key default gen_random_uuid(),
+  slug text not null,
+  identity_key text not null,
+  brand text not null,
+  model_name text not null,
+  season_label text not null,
+  description_short text,
+  description_full text,
+  riding_style riding_style_type,
+  skill_level skill_level_type,
+  flex smallint,
+  board_line board_line_type,
+  shape_type board_shape_type,
+  camber_profile camber_profile_type,
+  canonical_source_kind text,
+  canonical_source_name text,
+  canonical_source_url text,
+  canonical_source_checked_at date,
+  canonical_data_status product_data_status_type not null default 'draft',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint uq_model_families_slug unique (slug),
+  constraint uq_model_families_identity_key unique (identity_key),
+  constraint chk_model_families_flex
+    check (flex is null or flex between 1 and 10),
+  constraint chk_model_families_slug_not_blank
+    check (length(trim(slug)) > 0),
+  constraint chk_model_families_identity_key_not_blank
+    check (length(trim(identity_key)) > 0),
+  constraint chk_model_families_brand_not_blank
+    check (length(trim(brand)) > 0),
+  constraint chk_model_families_model_name_not_blank
+    check (length(trim(model_name)) > 0),
+  constraint chk_model_families_season_label_not_blank
+    check (length(trim(season_label)) > 0),
+  constraint chk_model_families_canonical_source_kind
+    check (
+      canonical_source_kind is null
+      or canonical_source_kind in (
+        'verified-official',
+        'manual',
+        'trusted-member',
+        'fallback-member'
+      )
+    )
+);
+
 create table if not exists products (
   id uuid primary key default gen_random_uuid(),
   slug text not null unique,
@@ -114,6 +162,13 @@ create table if not exists products (
   source_name text,
   source_url text,
   source_checked_at date,
+  family_id uuid,
+  family_member_role text,
+  family_match_method text,
+  family_match_confidence text,
+  family_manual_override boolean not null default false,
+  family_match_reason text,
+  family_matched_at timestamptz,
   scenarios jsonb not null default '[]'::jsonb,
   not_ideal_for jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now(),
@@ -143,6 +198,104 @@ alter table products
 
 alter table products
   add column if not exists source_checked_at date;
+
+alter table products
+  add column if not exists family_id uuid;
+
+alter table products
+  add column if not exists family_member_role text;
+
+alter table products
+  add column if not exists family_match_method text;
+
+alter table products
+  add column if not exists family_match_confidence text;
+
+alter table products
+  add column if not exists family_manual_override boolean not null default false;
+
+alter table products
+  add column if not exists family_match_reason text;
+
+alter table products
+  add column if not exists family_matched_at timestamptz;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'products'::regclass
+      and conname = 'fk_products_family_id'
+  ) then
+    alter table products
+      add constraint fk_products_family_id
+      foreign key (family_id)
+      references model_families(id)
+      on delete set null;
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'products'::regclass
+      and conname = 'chk_products_family_member_role'
+  ) then
+    alter table products
+      add constraint chk_products_family_member_role
+      check (
+        family_member_role is null
+        or family_member_role in ('base', 'wide', 'other')
+      );
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'products'::regclass
+      and conname = 'chk_products_family_match_confidence'
+  ) then
+    alter table products
+      add constraint chk_products_family_match_confidence
+      check (
+        family_match_confidence is null
+        or family_match_confidence in ('high', 'reviewed')
+      );
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'products'::regclass
+      and conname = 'chk_products_family_membership_coherence'
+  ) then
+    alter table products
+      add constraint chk_products_family_membership_coherence
+      check (
+        (
+          family_id is null
+          and family_member_role is null
+        )
+        or
+        (
+          family_id is not null
+          and family_member_role is not null
+          and family_match_method is not null
+          and family_match_confidence is not null
+          and family_matched_at is not null
+        )
+      );
+  end if;
+end $$;
 
 create table if not exists product_sizes (
   id uuid primary key default gen_random_uuid(),
@@ -212,6 +365,11 @@ create index if not exists idx_products_active on products(is_active);
 create index if not exists idx_products_style_level on products(riding_style, skill_level);
 create index if not exists idx_products_shape on products(shape_type);
 create index if not exists idx_products_status on products(data_status, is_active);
+create index if not exists idx_products_family_id on products(family_id);
+create unique index if not exists uq_products_one_base_per_family
+  on products(family_id)
+  where family_id is not null
+    and family_member_role = 'base';
 create index if not exists idx_product_sizes_product on product_sizes(product_id);
 create index if not exists idx_product_sizes_lookup on product_sizes(size_cm, waist_width_mm, width_type);
 create index if not exists idx_quiz_results_created_at on quiz_results(created_at desc);
