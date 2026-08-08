@@ -1,0 +1,454 @@
+.galleryFrame {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--ef-border-strong);
+  border-radius: 1.25rem;
+  background:
+    linear-gradient(145deg, rgb(16 40 50 / 96%), rgb(7 19 24 / 98%)),
+    var(--ef-technical);
+  box-shadow: 0 1.4rem 4rem rgb(0 0 0 / 22%);
+}
+
+.measurementGrid {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.55;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent calc(12.5% - 1px),
+      rgb(167 220 233 / 7%) calc(12.5% - 1px),
+      rgb(167 220 233 / 7%) 12.5%
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0,
+      transparent calc(20% - 1px),
+      rgb(167 220 233 / 5%) calc(20% - 1px),
+      rgb(167 220 233 / 5%) 20%
+    );
+}
+
+.mainImageButton {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  color: inherit;
+  text-align: inherit;
+  cursor: zoom-in;
+  border: 0;
+  background: transparent;
+}
+
+.imageCanvas {
+  display: grid;
+  min-height: 23rem;
+  padding: clamp(1.25rem, 6vw, 3rem);
+  place-items: center;
+  background:
+    radial-gradient(circle at 50% 48%, rgb(237 247 250 / 8%), transparent 48%),
+    linear-gradient(180deg, rgb(237 247 250 / 4%), transparent);
+}
+
+.mainImage {
+  display: block;
+  width: 100%;
+  height: 21rem;
+  object-fit: contain;
+  filter: drop-shadow(0 1.2rem 1rem rgb(0 0 0 / 26%));
+  transition: transform 180ms ease;
+}
+
+.mainImageButton:hover .mainImage {
+  transform: scale(1.018);
+}
+
+.imageMeta {
+  position: relative;
+  display: flex;
+  min-height: 3.25rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  color: var(--ef-muted);
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  border-top: 1px solid var(--ef-border);
+  background: rgb(7 19 24 / 68%);
+}
+
+.openAffordance {
+  color: var(--ef-accent);
+  text-align: right;
+}
+
+.thumbnails,
+.viewerThumbnails {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  padding: 0.75rem 1rem 1rem;
+  border-top: 1px solid var(--ef-border);
+}
+
+.thumbnailButton,
+.viewerThumbnailButton {
+  width: 3.25rem;
+  height: 3.25rem;
+  flex: 0 0 auto;
+  padding: 0.2rem;
+  overflow: hidden;
+  cursor: pointer;
+  border: 1px solid var(--ef-border);
+  border-radius: 0.45rem;
+  background: rgb(237 247 250 / 5%);
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    transform 160ms ease;
+}
+
+.thumbnailButton:hover,
+.viewerThumbnailButton:hover {
+  border-color: var(--ef-border-strong);
+  transform: translateY(-1px);
+}
+
+.thumbnailButton[aria-pressed="true"],
+.viewerThumbnailButton[aria-pressed="true"] {
+  border-color: var(--ef-accent);
+  background: rgb(158 223 240 / 12%);
+  box-shadow: inset 0 0 0 1px var(--ef-accent);
+}
+
+.thumbnailButton img,
+.viewerThumbnailButton img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.fallbackFrame {
+  display: grid;
+  min-height: 29rem;
+  padding: clamp(1.25rem, 6vw, 3rem);
+  grid-template-rows: 1fr auto;
+  isolation: isolate;
+}
+
+.fallbackGrid {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.7;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent calc(12.5% - 1px),
+      rgb(167 220 233 / 8%) calc(12.5% - 1px),
+      rgb(167 220 233 / 8%) 12.5%
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0,
+      transparent calc(16.666% - 1px),
+      rgb(167 220 233 / 6%) calc(16.666% - 1px),
+      rgb(167 220 233 / 6%) 16.666%
+    );
+}
+
+.fallbackIdentity {
+  align-self: end;
+  max-width: 30rem;
+}
+
+.fallbackIdentity p,
+.fallbackIdentity span {
+  margin: 0;
+}
+
+.fallbackIdentity > p:first-child {
+  color: var(--ef-accent);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.fallbackModel {
+  margin-top: 0.55rem;
+  color: var(--ef-text);
+  font-family: var(--font-display), sans-serif;
+  font-size: clamp(2rem, 8vw, 4rem);
+  line-height: 0.95;
+  letter-spacing: -0.05em;
+  overflow-wrap: anywhere;
+}
+
+.fallbackIdentity span {
+  display: block;
+  margin-top: 1.2rem;
+  color: var(--ef-soft);
+  font-weight: 680;
+}
+
+.fallbackIdentity > p:last-child {
+  max-width: 48ch;
+  margin-top: 0.55rem;
+  color: var(--ef-muted);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.fallbackMeasurement {
+  position: absolute;
+  top: clamp(1.2rem, 5vw, 2.5rem);
+  right: clamp(1.2rem, 6vw, 4rem);
+  width: clamp(4.5rem, 17vw, 7rem);
+  height: 58%;
+  pointer-events: none;
+}
+
+.fallbackMeasurement::before {
+  position: absolute;
+  inset: 0 40%;
+  content: "";
+  border: 1px solid rgb(158 223 240 / 30%);
+  border-radius: 999px 999px 34% 34%;
+  background:
+    linear-gradient(90deg, transparent 49%, rgb(158 223 240 / 18%) 50% 51%, transparent 52%),
+    rgb(158 223 240 / 5%);
+  box-shadow: 0 0 0 0.55rem rgb(158 223 240 / 2%);
+}
+
+.fallbackMeasurement span {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: rgb(158 223 240 / 34%);
+}
+
+.fallbackMeasurement span::before,
+.fallbackMeasurement span::after {
+  position: absolute;
+  top: -0.25rem;
+  width: 1px;
+  height: 0.5rem;
+  content: "";
+  background: rgb(158 223 240 / 34%);
+}
+
+.fallbackMeasurement span::before {
+  left: 0;
+}
+
+.fallbackMeasurement span::after {
+  right: 0;
+}
+
+.viewerBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  min-width: 0;
+  padding: clamp(0.5rem, 2vw, 1.5rem);
+  overflow: auto;
+  place-items: center;
+  background: rgb(2 8 11 / 92%);
+  backdrop-filter: blur(0.7rem);
+}
+
+.viewerPanel {
+  width: min(100%, 88rem);
+  min-width: 0;
+  max-height: calc(100dvh - 1rem);
+  overflow: auto;
+  border: 1px solid var(--ef-border-strong);
+  border-radius: 1rem;
+  background: var(--ef-bg);
+  box-shadow: 0 2rem 7rem rgb(0 0 0 / 55%);
+}
+
+.viewerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0.8rem 0.75rem 1rem;
+  border-bottom: 1px solid var(--ef-border);
+}
+
+.viewerHeader p,
+.viewerHeader h2 {
+  margin: 0;
+}
+
+.viewerHeader p {
+  color: var(--ef-accent);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.viewerHeader h2 {
+  margin-top: 0.2rem;
+  color: var(--ef-text);
+  font-family: var(--font-display), sans-serif;
+  font-size: clamp(1rem, 3vw, 1.35rem);
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.viewerClose,
+.viewerArrow {
+  min-width: 44px;
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--ef-text);
+  border: 1px solid var(--ef-border-strong);
+  background: rgb(16 40 50 / 88%);
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease;
+}
+
+.viewerClose {
+  padding: 0.65rem 0.9rem;
+  border-radius: 0.65rem;
+  font-weight: 700;
+}
+
+.viewerClose:hover,
+.viewerArrow:hover {
+  color: var(--ef-accent-strong);
+  border-color: var(--ef-accent);
+  background: rgb(16 40 50 / 100%);
+}
+
+.viewerStage {
+  position: relative;
+  display: grid;
+  min-height: min(67dvh, 46rem);
+  place-items: center;
+  background:
+    radial-gradient(circle at center, rgb(237 247 250 / 7%), transparent 50%),
+    rgb(7 19 24 / 80%);
+}
+
+.viewerCanvas {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: min(67dvh, 46rem);
+  padding: clamp(1rem, 5vw, 3rem);
+  place-items: center;
+}
+
+.viewerImage {
+  display: block;
+  width: 100%;
+  height: min(67dvh, 43rem);
+  object-fit: contain;
+  filter: drop-shadow(0 1.5rem 1rem rgb(0 0 0 / 28%));
+}
+
+.viewerArrow {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  font-size: 1.65rem;
+  line-height: 1;
+  border-radius: 50%;
+  transform: translateY(-50%);
+}
+
+.viewerArrowPrevious {
+  left: 0.55rem;
+}
+
+.viewerArrowNext {
+  right: 0.55rem;
+}
+
+.viewerThumbnails {
+  justify-content: center;
+  background: rgb(7 19 24 / 76%);
+}
+
+.viewerThumbnailButton {
+  width: 3.5rem;
+  height: 3.5rem;
+}
+
+.galleryFrame :is(button):focus-visible,
+.viewerBackdrop :is(button):focus-visible {
+  outline: 3px solid var(--ef-focus);
+  outline-offset: 3px;
+}
+
+@media (min-width: 40rem) {
+  .imageCanvas {
+    min-height: 31rem;
+  }
+
+  .mainImage {
+    height: 28rem;
+  }
+
+  .fallbackFrame {
+    min-height: 36rem;
+  }
+
+  .thumbnailButton {
+    width: 3.75rem;
+    height: 3.75rem;
+  }
+}
+
+@media (min-width: 73.75rem) {
+  .galleryFrame {
+    height: 100%;
+  }
+
+  .imageCanvas {
+    min-height: 34rem;
+  }
+
+  .mainImage {
+    height: 32rem;
+  }
+
+  .fallbackFrame {
+    min-height: 42rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mainImage,
+  .thumbnailButton,
+  .viewerThumbnailButton,
+  .viewerClose,
+  .viewerArrow {
+    transition-duration: 0.01ms !important;
+  }
+}

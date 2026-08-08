@@ -4,9 +4,10 @@ import { notFound } from "next/navigation";
 import { TrackedStoreLink } from "@/components/analytics/tracked-store-link";
 import { BoardCard } from "@/components/boards/board-card";
 import { BoardGallery } from "@/components/boards/board-gallery";
+import publicStyles from "@/components/public/public-ui.module.css";
 import { getBoardSizeLabel } from "@/lib/board-size";
 import { hasTrustedFlex } from "@/lib/catalog-readiness";
-import { formatCatalogCheckedDate } from "@/lib/catalog-trust";
+import { getProductTrustDetails } from "@/lib/catalog-trust";
 import {
   boardShapeLabels,
   camberProfileLabels,
@@ -27,6 +28,7 @@ import {
 } from "@/lib/products";
 import { buildStoreRedirectHref } from "@/lib/store-redirect";
 import { formatRecommendedWeightRange } from "@/lib/weight-range";
+import styles from "./board-detail.module.css";
 
 interface BoardPageProps {
   params: Promise<{ slug: string }>;
@@ -79,16 +81,60 @@ export default async function BoardPage({ params }: BoardPageProps) {
   }
 
   const relatedBoards = await getRelatedProducts(slug);
-  const sourceCheckedAtLabel = formatCatalogCheckedDate(board.sourceCheckedAt);
+  const trustDetails = getProductTrustDetails(board);
   const availabilityHeadline = getAvailabilityHeadline(board);
   const availabilityDescription = getAvailabilityDescription(board);
   const availableSizes = getAvailableSizes(board);
   const hasAvailableSizes = availableSizes.length > 0;
+  const introDescription =
+    board.descriptionShort.trim() || board.descriptionFull.trim();
+  const fullDescription = board.descriptionFull.trim();
+  const showModelCharacter =
+    fullDescription.length > 0 && fullDescription !== introDescription;
+  const showScenarios =
+    board.scenarios.length > 0 || board.notIdealFor.length > 0;
+  const coreFacts = [
+    {
+      label: "Стиль",
+      value: ridingStyleLabels[board.ridingStyle],
+    },
+    {
+      label: "Уровень",
+      value: skillLevelLabels[board.skillLevel],
+    },
+    {
+      label: "Линейка",
+      value: getBoardLineLabel(board.boardLine),
+    },
+    {
+      label: "Форма",
+      value: board.shapeType ? boardShapeLabels[board.shapeType] : "Уточняется",
+    },
+    {
+      label: "Прогиб",
+      value: board.camberProfile
+        ? camberProfileLabels[board.camberProfile]
+        : "Уточняется",
+    },
+    {
+      label: "Жёсткость",
+      value: getBoardStiffnessValue(board),
+      caption: getBoardStiffnessCaption(board),
+    },
+  ];
 
   return (
-    <div className="container-shell py-12 sm:py-16">
-      <section className="grid gap-8 xl:grid-cols-[1fr_0.95fr]">
-        <div className="space-y-5">
+    <div className={`${publicStyles.theme} ${styles.boardDetailPage}`}>
+      <div className={styles.atmosphere} aria-hidden="true" />
+
+      <div className={`container-shell ${styles.boardDetailShell}`}>
+        <nav className={styles.breadcrumb} aria-label="Навигация по каталогу">
+          <Link href="/catalog">← Вернуться в каталог</Link>
+          <span aria-hidden="true">/</span>
+          <span>{board.brand} {board.modelName}</span>
+        </nav>
+
+        <section className={styles.hero} aria-labelledby="board-title">
           <BoardGallery
             primaryImage={board.imageUrl}
             galleryImages={board.galleryImages}
@@ -96,50 +142,69 @@ export default async function BoardPage({ params }: BoardPageProps) {
             modelName={board.modelName}
           />
 
-          <section className="panel overflow-hidden p-6 sm:p-8">
-            <span className="eyebrow">{board.brand}</span>
-            <h1 className="heading-display mt-4 text-4xl font-bold text-balance sm:text-5xl">
-              {board.modelName}
-            </h1>
-            {board.seasonLabel ? (
-              <div className="mt-4">
-                <span className="inline-flex items-center rounded-full border border-[var(--color-border)] bg-[rgba(74,136,170,0.08)] px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-[var(--color-sky-deep)]">
-                  Сезон {board.seasonLabel}
+          <section
+            className={`${publicStyles.raisedTechnicalSurface} ${styles.decisionPanel}`}
+          >
+            <div className={styles.identityMeta}>
+              <p className={publicStyles.kicker}>{board.brand}</p>
+              <div className={styles.identityBadges}>
+                {board.seasonLabel ? <span>{board.seasonLabel}</span> : null}
+                <span
+                  className={
+                    trustDetails.isReady
+                      ? styles.trustBadgeReady
+                      : styles.trustBadgeReview
+                  }
+                >
+                  {trustDetails.badgeLabel}
                 </span>
               </div>
-            ) : null}
-            <p className="mt-4 text-base leading-8 text-[var(--color-muted)] sm:text-lg">
-              {board.descriptionFull}
-            </p>
-
-            <div className="mt-8 grid gap-4 sm:grid-cols-2">
-              <InfoCard label="Стиль" value={ridingStyleLabels[board.ridingStyle]} />
-              <InfoCard label="Уровень" value={skillLevelLabels[board.skillLevel]} />
-              <InfoCard
-                label="Форма"
-                value={
-                  board.shapeType
-                    ? boardShapeLabels[board.shapeType]
-                    : "Уточняется"
-                }
-              />
-              <InfoCard
-                label="Прогиб"
-                value={
-                  board.camberProfile
-                    ? camberProfileLabels[board.camberProfile]
-                    : "Уточняется"
-                }
-              />
-              <InfoCard
-                label="Жёсткость доски"
-                value={getBoardStiffnessValue(board)}
-                caption={getBoardStiffnessCaption(board)}
-              />
-              <InfoCard label="Цена от" value={formatMoney(board.priceFrom)} />
             </div>
 
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <h1 id="board-title" className={styles.boardTitle}>
+              {board.modelName}
+            </h1>
+            {introDescription ? (
+              <p className={styles.heroDescription}>{introDescription}</p>
+            ) : null}
+
+            <dl className={styles.coreFacts}>
+              {coreFacts.map((fact) => (
+                <div key={fact.label}>
+                  <dt>{fact.label}</dt>
+                  <dd>{fact.value}</dd>
+                  {fact.caption ? <p>{fact.caption}</p> : null}
+                </div>
+              ))}
+            </dl>
+
+            <div className={styles.commercialSummary}>
+              <div className={styles.priceBlock}>
+                <p className={publicStyles.microLabel}>Цена от</p>
+                <strong>{formatMoney(board.priceFrom)}</strong>
+              </div>
+              <div className={styles.availabilityBlock}>
+                <div className={styles.availabilityHeading}>
+                  <p className={publicStyles.microLabel}>Наличие</p>
+                  <span
+                    className={
+                      hasAvailableSizes
+                        ? styles.availabilityReady
+                        : styles.availabilityReview
+                    }
+                  >
+                    {hasAvailableSizes ? "Доступно сейчас" : "Нужно уточнение"}
+                  </span>
+                </div>
+                <strong>{availabilityHeadline}</strong>
+              </div>
+            </div>
+
+            <p className={styles.availabilityDescription}>
+              {availabilityDescription}
+            </p>
+
+            <div className={styles.heroActions}>
               <TrackedStoreLink
                 href={buildStoreRedirectHref(board.slug, {
                   from: "board-page",
@@ -148,171 +213,251 @@ export default async function BoardPage({ params }: BoardPageProps) {
                   board_slug: board.slug,
                   placement: "board-page",
                 }}
-                className="inline-flex items-center justify-center rounded-full bg-[var(--color-pine)] px-6 py-4 text-sm font-bold text-white hover:-translate-y-0.5 hover:bg-[var(--color-sky-deep)]"
+                className={`${publicStyles.primaryAction} ${styles.heroAction}`}
               >
                 Перейти в магазин
               </TrackedStoreLink>
               <Link
                 href="/quiz"
-                className="inline-flex items-center justify-center rounded-full border border-[var(--color-border)] bg-white px-6 py-4 text-sm font-bold text-[var(--color-pine)] hover:border-[var(--color-sky)]"
+                className={`${publicStyles.secondaryAction} ${styles.heroAction}`}
               >
                 Проверить по своим параметрам
               </Link>
             </div>
+            <p className={styles.fitBoundary}>
+              Характеристики модели не определяют персональный fit. Квиз
+              учитывает вес, ботинок, стойку и сценарий катания.
+            </p>
           </section>
-        </div>
+        </section>
 
-        <div className="space-y-5">
-          <section className="panel p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <p className="text-sm font-bold uppercase tracking-[0.18em] text-[var(--color-sky-deep)]">
-                  Наличие
-                </p>
-                <p className="mt-4 text-2xl font-bold text-[var(--color-ink)]">
-                  {availabilityHeadline}
-                </p>
-                <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--color-muted)]">
-                  {availabilityDescription}
-                </p>
-              </div>
-
-              <span
-                className={`inline-flex w-fit items-center justify-center rounded-full px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] ${
-                  hasAvailableSizes
-                    ? "bg-[rgba(21,94,65,0.10)] text-[var(--color-pine)]"
-                    : "bg-[rgba(160,92,45,0.12)] text-[rgb(142,76,28)]"
-                }`}
-              >
-                {hasAvailableSizes ? "Доступно сейчас" : "Нужно уточнение"}
-              </span>
+        {showModelCharacter ? (
+          <section className={`${styles.contentSection} ${styles.characterSection}`}>
+            <div className={styles.sectionHeading}>
+              <p className={publicStyles.kicker}>Характер модели</p>
+              <h2>Что важно знать об этой доске</h2>
             </div>
+            <p className={styles.characterCopy}>{fullDescription}</p>
           </section>
+        ) : null}
 
-          <section className="panel p-6">
-            <p className="text-sm font-bold uppercase tracking-[0.18em] text-[var(--color-sky-deep)]">
-              Размерная сетка
+        <section className={`${styles.contentSection} ${styles.sizesSection}`}>
+          <div className={styles.sectionHeadingRow}>
+            <div className={styles.sectionHeading}>
+              <p className={publicStyles.kicker}>Геометрия модели</p>
+              <h2>Размеры и ширина</h2>
+            </div>
+            <p>
+              Таблица показывает всю размерную сетку и отдельно отмечает
+              текущую доступность. Это данные модели, а не персональный подбор.
             </p>
-            <p className="mt-3 text-sm leading-7 text-[var(--color-muted)]">
-              Показываем всю размерную сетку модели и отдельно отмечаем, какие
-              размеры действительно доступны в магазине сейчас.
-            </p>
-            <div className="mt-5 overflow-x-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead className="text-[var(--color-muted)]">
-                  <tr>
-                    <th className="pb-3 pr-6 font-semibold">Размер</th>
-                    <th className="pb-3 pr-6 font-semibold">Ширина талии</th>
-                    <th className="pb-3 pr-6 font-semibold">Ширина</th>
-                    <th className="pb-3 pr-6 font-semibold">Вес райдера</th>
-                    <th className="pb-3 font-semibold">Наличие</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {board.sizes.map((size) => (
-                    <tr
-                      key={`${board.id}-${getBoardSizeLabel(size)}`}
-                      className="border-t border-[var(--color-border)]"
-                    >
-                      <td className="py-3 pr-6 font-semibold">
-                        {getBoardSizeLabel(size)}
-                      </td>
-                      <td className="py-3 pr-6">{size.waistWidthMm} мм</td>
-                      <td className="py-3 pr-6">{widthTypeLabels[size.widthType]}</td>
-                      <td className="py-3 pr-6">
-                        {formatRecommendedWeightRange(size)}
-                      </td>
-                      <td className="py-3">
-                        <span
-                          className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${
-                            size.isAvailable
-                              ? "bg-[rgba(21,94,65,0.10)] text-[var(--color-pine)]"
-                              : "bg-[rgba(160,92,45,0.12)] text-[rgb(142,76,28)]"
-                          }`}
-                        >
-                          {size.isAvailable ? "в наличии" : "нет сейчас"}
-                        </span>
-                      </td>
+          </div>
+
+          {board.sizes.length > 0 ? (
+            <>
+              <p className={styles.mobileTableHint}>
+                Прокрути таблицу по горизонтали
+              </p>
+              <div
+                className={styles.tableScroller}
+                role="region"
+                aria-label={`Размеры и ширина ${board.brand} ${board.modelName}`}
+                tabIndex={0}
+              >
+                <table className={styles.sizeTable}>
+                  <caption>
+                    Полная размерная сетка {board.brand} {board.modelName}
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Размер</th>
+                      <th scope="col">Ширина талии</th>
+                      <th scope="col">Ширина</th>
+                      <th scope="col">Вес райдера</th>
+                      <th scope="col">Наличие</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {board.sizes.map((size) => (
+                      <tr
+                        key={`${board.id}-${getBoardSizeLabel(size)}`}
+                        className={
+                          size.isAvailable
+                            ? styles.availableRow
+                            : styles.unavailableRow
+                        }
+                      >
+                        <td>{getBoardSizeLabel(size)}</td>
+                        <td>{size.waistWidthMm} мм</td>
+                        <td>{widthTypeLabels[size.widthType]}</td>
+                        <td>{formatRecommendedWeightRange(size)}</td>
+                        <td>
+                          <span
+                            className={
+                              size.isAvailable
+                                ? styles.sizeAvailable
+                                : styles.sizeUnavailable
+                            }
+                          >
+                            {size.isAvailable ? "в наличии" : "нет сейчас"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <div className={styles.emptySizes}>
+              <h3>Размерная сетка пока не опубликована</h3>
+              <p>
+                Проверь характеристики в источнике или магазине перед покупкой.
+              </p>
+            </div>
+          )}
+
+          <aside className={styles.sizeFitNote}>
+            <div>
+              <p className={publicStyles.microLabel}>Не уверен в ростовке?</p>
+              <h3>Проверь длину и ширину по своим параметрам</h3>
+              <p>
+                EdgeFit учитывает вес, ботинок, стойку и сценарий катания.
+              </p>
+            </div>
+            <Link
+              href="/quiz"
+              className={`${publicStyles.secondaryAction} ${styles.fitNoteAction}`}
+            >
+              Проверить мой размер
+            </Link>
+          </aside>
+        </section>
+
+        {showScenarios ? (
+          <section className={`${styles.contentSection} ${styles.scenariosSection}`}>
+            <div className={styles.sectionHeading}>
+              <p className={publicStyles.kicker}>Сценарий катания</p>
+              <h2>Где модель раскрывается лучше</h2>
+            </div>
+            <div className={styles.scenarioGrid}>
+              {board.scenarios.length > 0 ? (
+                <article className={styles.positiveScenario}>
+                  <p className={publicStyles.microLabel}>Хорошо для</p>
+                  <ul>
+                    {board.scenarios.map((scenario) => (
+                      <li key={scenario}>{scenario}</li>
+                    ))}
+                  </ul>
+                </article>
+              ) : null}
+              {board.notIdealFor.length > 0 ? (
+                <article className={styles.carefulScenario}>
+                  <p className={publicStyles.microLabel}>Не лучший сценарий</p>
+                  <ul>
+                    {board.notIdealFor.map((scenario) => (
+                      <li key={scenario}>{scenario}</li>
+                    ))}
+                  </ul>
+                </article>
+              ) : null}
             </div>
           </section>
+        ) : null}
 
-          <section className="panel p-6">
-            <p className="text-sm font-bold uppercase tracking-[0.18em] text-[var(--color-sky-deep)]">
-              Кому подойдёт
+        <section className={`${styles.contentSection} ${styles.trustSection}`}>
+          <div className={styles.trustSummary}>
+            <p className={publicStyles.kicker}>Проверка характеристик</p>
+            <h2>Доверие к данным</h2>
+            <span
+              className={
+                trustDetails.isReady
+                  ? styles.trustStateReady
+                  : styles.trustStateReview
+              }
+            >
+              {trustDetails.badgeLabel}
+            </span>
+            <p>
+              {trustDetails.isReady
+                ? trustDetails.badgeDescription
+                : trustDetails.issueLabel ?? trustDetails.badgeDescription}
             </p>
-            <ul className="mt-4 space-y-3 text-sm leading-7 text-[var(--color-muted)]">
-              {board.scenarios.map((scenario) => (
-                <li key={scenario}>{scenario}</li>
-              ))}
-            </ul>
-          </section>
+          </div>
 
-          <section className="panel p-6">
-            <p className="text-sm font-bold uppercase tracking-[0.18em] text-[var(--color-sky-deep)]">
-              Кому не подойдёт
-            </p>
-            <ul className="mt-4 space-y-3 text-sm leading-7 text-[var(--color-muted)]">
-              {board.notIdealFor.map((scenario) => (
-                <li key={scenario}>{scenario}</li>
-              ))}
-            </ul>
-          </section>
+          <div className={styles.sourceSummary}>
+            {trustDetails.sourceLabel && trustDetails.sourceUrl ? (
+              <>
+                <p className={publicStyles.microLabel}>Источник</p>
+                <h3>{trustDetails.sourceLabel}</h3>
+                {trustDetails.checkedAtLabel ? (
+                  <p>Последняя проверка: {trustDetails.checkedAtLabel}</p>
+                ) : (
+                  <p>Дата последней проверки не указана.</p>
+                )}
+                <a
+                  href={trustDetails.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={`${publicStyles.secondaryAction} ${styles.sourceAction}`}
+                >
+                  Открыть источник
+                </a>
+              </>
+            ) : (
+              <>
+                <p className={publicStyles.microLabel}>Источник</p>
+                <h3>Источник не указан</h3>
+                <p>{trustDetails.badgeDescription}</p>
+              </>
+            )}
+          </div>
+        </section>
 
-          {board.sourceName && board.sourceUrl ? (
-            <section className="panel p-6">
-              <p className="text-sm font-bold uppercase tracking-[0.18em] text-[var(--color-sky-deep)]">
-                Источник характеристик
+        {relatedBoards.length > 0 ? (
+          <section className={`${styles.contentSection} ${styles.relatedSection}`}>
+            <div className={styles.sectionHeadingRow}>
+              <div className={styles.sectionHeading}>
+                <p className={publicStyles.kicker}>Похожие модели</p>
+                <h2>Что ещё стоит сравнить</h2>
+              </div>
+              <p>
+                Это модели с близким каталоговым сценарием, а не персональные
+                альтернативы.
               </p>
-              <p className="mt-4 text-sm leading-7 text-[var(--color-muted)]">
-                Размеры и ширина сверялись с источником:
-                {" "}
-                {board.sourceName}
-                {sourceCheckedAtLabel
-                  ? `, проверка от ${sourceCheckedAtLabel}`
-                  : ""}
-              </p>
-              <a
-                href={board.sourceUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-4 inline-flex items-center justify-center rounded-full border border-[var(--color-border)] bg-white px-4 py-3 text-sm font-bold text-[var(--color-pine)] hover:border-[var(--color-sky)]"
-              >
-                Открыть источник
-              </a>
-            </section>
-          ) : null}
-        </div>
-      </section>
-
-      <section className="mt-12">
-        <div className="mb-6">
-          <span className="eyebrow">Похожие модели</span>
-          <h2 className="heading-display mt-4 text-3xl font-bold sm:text-4xl">
-            Что ещё стоит посмотреть
-          </h2>
-        </div>
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {relatedBoards.map((relatedBoard) => (
-            <BoardCard
-              key={relatedBoard.id}
-              product={relatedBoard}
-              shopHref={buildStoreRedirectHref(relatedBoard.slug, {
-                from: "board-related",
-              })}
-              shopAnalyticsPayload={{
-                board_slug: relatedBoard.slug,
-                placement: "board-related",
-              }}
-            />
-          ))}
-        </div>
-      </section>
+            </div>
+            <div className={styles.relatedGrid}>
+              {relatedBoards.map((relatedBoard) => (
+                <BoardCard
+                  key={relatedBoard.id}
+                  product={relatedBoard}
+                  variant="catalog"
+                  shopHref={buildStoreRedirectHref(relatedBoard.slug, {
+                    from: "board-related",
+                  })}
+                  shopAnalyticsPayload={{
+                    board_slug: relatedBoard.slug,
+                    placement: "board-related",
+                  }}
+                />
+              ))}
+            </div>
+          </section>
+        ) : null}
+      </div>
     </div>
   );
+}
+
+function getBoardLineLabel(boardLine: BoardPageProduct["boardLine"]) {
+  switch (boardLine) {
+    case "men":
+      return "Мужская";
+    case "women":
+      return "Женская";
+    default:
+      return "Унисекс";
+  }
 }
 
 function getBoardStiffnessValue(board: BoardPageProduct) {
@@ -329,26 +474,4 @@ function getBoardStiffnessCaption(board: BoardPageProduct) {
   }
 
   return "По этой модели магазин не даёт надёжной точной оценки, поэтому не показываем жёсткость как конкретный балл.";
-}
-
-function InfoCard({
-  label,
-  value,
-  caption,
-}: {
-  label: string;
-  value: string;
-  caption?: string | null;
-}) {
-  return (
-    <div className="rounded-[1.2rem] border border-[var(--color-border)] bg-white/82 p-4">
-      <p className="text-sm text-[var(--color-muted)]">{label}</p>
-      <p className="mt-2 text-lg font-bold">{value}</p>
-      {caption ? (
-        <p className="mt-2 text-xs leading-6 text-[var(--color-muted)]">
-          {caption}
-        </p>
-      ) : null}
-    </div>
-  );
 }
