@@ -2,6 +2,7 @@
 
 import { useDeferredValue, useMemo, useState } from "react";
 import { BoardCard } from "@/components/boards/board-card";
+import publicStyles from "@/components/public/public-ui.module.css";
 import {
   boardShapeLabels,
   ridingStyleLabels,
@@ -19,6 +20,7 @@ import type {
   SkillLevel,
   WidthType,
 } from "@/types/domain";
+import styles from "./catalog.module.css";
 
 interface CatalogViewProps {
   boards: Product[];
@@ -162,15 +164,16 @@ export function CatalogView({ boards }: CatalogViewProps) {
   ]);
 
   const visibleBoards = filteredBoards.slice(0, visibleCount);
-  const hasActiveFilters =
-    query.trim().length > 0 ||
-    brand !== "all" ||
-    style !== "all" ||
-    skill !== "all" ||
-    shape !== "all" ||
-    boardLine !== "all" ||
-    width !== "all" ||
-    sort !== "default";
+  const activeFilterCount = [
+    query.trim().length > 0,
+    brand !== "all",
+    style !== "all",
+    skill !== "all",
+    shape !== "all",
+    boardLine !== "all",
+    width !== "all",
+  ].filter(Boolean).length;
+  const hasActiveFilters = activeFilterCount > 0 || sort !== "default";
 
   function resetFilters() {
     setQuery("");
@@ -185,19 +188,34 @@ export function CatalogView({ boards }: CatalogViewProps) {
   }
 
   return (
-    <div className="space-y-8">
-      <section className="panel p-5 sm:p-6">
-        <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr_0.8fr_0.8fr]">
-          <label className="xl:col-span-1">
-            <span className="mb-2 block text-sm font-semibold">Поиск по каталогу</span>
+    <div className={styles.catalogView}>
+      <section
+        className={`${publicStyles.raisedTechnicalSurface} ${styles.filters}`}
+        aria-labelledby="catalog-filters-title"
+      >
+        <div className={styles.filtersHeader}>
+          <div>
+            <p className={publicStyles.microLabel}>Фильтры моделей</p>
+            <h2 id="catalog-filters-title">Сузь каталог до нужного сценария</h2>
+          </div>
+          <p className={styles.activeFilterCount}>
+            {activeFilterCount > 0
+              ? `Активных фильтров: ${activeFilterCount}`
+              : "Без ограничений"}
+          </p>
+        </div>
+
+        <div className={styles.primaryFilters}>
+          <label className={`${styles.field} ${styles.searchField}`}>
+            <span>Поиск по каталогу</span>
             <input
+              type="search"
               value={query}
               onChange={(event) => {
                 setQuery(event.target.value);
                 resetVisibleCount();
               }}
               placeholder="Например, Jones Mountain Twin"
-              className="w-full rounded-2xl border border-[var(--color-border)] bg-white px-4 py-3 outline-none focus:border-[var(--color-sky)]"
             />
           </label>
 
@@ -209,20 +227,6 @@ export function CatalogView({ boards }: CatalogViewProps) {
               resetVisibleCount();
             }}
             options={brandOptions}
-          />
-          <SelectField
-            label="Стиль"
-            value={style}
-            onChange={(value) => {
-              setStyle(value);
-              resetVisibleCount();
-            }}
-            options={[
-              { value: "all", label: "Все стили" },
-              { value: "all-mountain", label: ridingStyleLabels["all-mountain"] },
-              { value: "park", label: ridingStyleLabels.park },
-              { value: "freeride", label: ridingStyleLabels.freeride },
-            ]}
           />
           <SelectField
             label="Сортировка"
@@ -239,7 +243,21 @@ export function CatalogView({ boards }: CatalogViewProps) {
           />
         </div>
 
-        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className={styles.secondaryFilters}>
+          <SelectField
+            label="Стиль"
+            value={style}
+            onChange={(value) => {
+              setStyle(value);
+              resetVisibleCount();
+            }}
+            options={[
+              { value: "all", label: "Все стили" },
+              { value: "all-mountain", label: ridingStyleLabels["all-mountain"] },
+              { value: "park", label: ridingStyleLabels.park },
+              { value: "freeride", label: ridingStyleLabels.freeride },
+            ]}
+          />
           <SelectField
             label="Уровень"
             value={skill}
@@ -292,94 +310,106 @@ export function CatalogView({ boards }: CatalogViewProps) {
           />
         </div>
 
-        <div className="mt-5 flex flex-wrap gap-3">
-          {(["all", "regular", "mid-wide", "wide"] as const).map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => {
-                setWidth(option);
-                resetVisibleCount();
-              }}
-              className={`rounded-full px-4 py-2 text-sm font-semibold ${
-                width === option
-                  ? "bg-[var(--color-pine)] text-white"
-                  : "border border-[var(--color-border)] bg-white text-[var(--color-muted)] hover:border-[var(--color-sky)] hover:text-[var(--color-sky-deep)]"
-              }`}
-            >
-              {option === "all" ? "Все по ширине" : widthTypeLabels[option]}
-            </button>
-          ))}
+        <fieldset className={styles.widthFieldset}>
+          <legend>Ширина</legend>
+          <div className={styles.widthControls}>
+            <div className={styles.widthOptions}>
+              {(["all", "regular", "mid-wide", "wide"] as const).map(
+                (option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    aria-pressed={width === option}
+                    onClick={() => {
+                      setWidth(option);
+                      resetVisibleCount();
+                    }}
+                    className={styles.widthOption}
+                  >
+                    {option === "all"
+                      ? "Все по ширине"
+                      : widthTypeLabels[option]}
+                  </button>
+                ),
+              )}
+            </div>
 
-          {hasActiveFilters ? (
-            <button
-              type="button"
-              onClick={resetFilters}
-              className="rounded-full border border-[var(--color-border)] bg-white px-4 py-2 text-sm font-semibold text-[var(--color-pine)] hover:border-[var(--color-sky)] hover:text-[var(--color-sky-deep)]"
-            >
-              Сбросить всё
-            </button>
-          ) : null}
-        </div>
+            {hasActiveFilters ? (
+              <button
+                type="button"
+                onClick={resetFilters}
+                className={styles.resetButton}
+              >
+                Сбросить всё
+              </button>
+            ) : null}
+          </div>
+        </fieldset>
       </section>
 
-      <section>
-        <div className="mb-4 flex items-end justify-between gap-4">
+      <section className={styles.results} aria-labelledby="catalog-results-title">
+        <div className={styles.resultsHeader}>
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--color-sky-deep)]">
-              Каталог
-            </p>
-            <h2 className="heading-display mt-2 text-3xl font-bold sm:text-4xl">
-              {filteredBoards.length} моделей в рабочей выдаче
+            <p className={publicStyles.kicker}>Выдача каталога</p>
+            <h2 id="catalog-results-title">
+              <span aria-live="polite" aria-atomic="true">
+                {filteredBoards.length}
+              </span>{" "}
+              моделей для сравнения
             </h2>
           </div>
-          <p className="hidden max-w-md text-right text-sm leading-6 text-[var(--color-muted)] md:block">
-            Можно отфильтровать каталог по бренду, стилю, форме и ширине, а из
-            сортировки оставить только базовый порядок и цену.
+          <p>
+            Сравнивай свойства самих досок. Подходящую именно тебе ростовку и
+            ширину проверяй через персональный подбор.
           </p>
         </div>
 
         {filteredBoards.length === 0 ? (
-          <div className="panel p-8">
-            <p className="text-lg font-bold text-[var(--color-ink)]">
-              Ничего не нашлось под текущие фильтры
-            </p>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--color-muted)]">
-              Попробуйте убрать часть ограничений или начать с поиска только по
-              бренду и стилю. Сейчас пустой экран обычно означает, что фильтры
-              стали слишком узкими.
+          <div
+            className={`${publicStyles.raisedTechnicalSurface} ${styles.emptyState}`}
+          >
+            <p className={publicStyles.microLabel}>Нулевая выдача</p>
+            <h3>Под текущие фильтры моделей не нашлось</h3>
+            <p>
+              Убери часть ограничений или начни с одного параметра — например,
+              бренда или стиля. Это не означает, что подходящих досок нет вообще.
             </p>
             <button
               type="button"
               onClick={resetFilters}
-              className="mt-5 inline-flex items-center justify-center rounded-full bg-[var(--color-pine)] px-5 py-3 text-sm font-bold text-white hover:-translate-y-0.5 hover:bg-[var(--color-sky-deep)]"
+              className={publicStyles.primaryAction}
             >
               Сбросить фильтры
             </button>
           </div>
         ) : (
           <>
-            <div className="grid gap-5 md:grid-cols-2 2xl:grid-cols-3">
+            <div className={styles.boardGrid}>
               {visibleBoards.map((board) => (
                 <BoardCard
                   key={board.id}
                   product={board}
                   eyebrow={widthTypeLabels[getPrimaryWidthType(board)]}
+                  variant="catalog"
                 />
               ))}
             </div>
 
             {visibleBoards.length < filteredBoards.length ? (
-              <div className="mt-8 flex flex-col items-center gap-3">
-                <p className="text-sm leading-6 text-[var(--color-muted)]">
+              <div className={styles.loadMore}>
+                <p>
                   Показано {visibleBoards.length} из {filteredBoards.length}
                 </p>
                 <button
                   type="button"
                   onClick={() => setVisibleCount((current) => current + PAGE_SIZE)}
-                  className="inline-flex items-center justify-center rounded-full border border-[var(--color-border)] bg-white px-5 py-3 text-sm font-bold text-[var(--color-pine)] hover:border-[var(--color-sky)] hover:text-[var(--color-sky-deep)]"
+                  className={publicStyles.secondaryAction}
                 >
-                  Показать ещё {Math.min(PAGE_SIZE, filteredBoards.length - visibleBoards.length)}
+                  Показать ещё{" "}
+                  {Math.min(
+                    PAGE_SIZE,
+                    filteredBoards.length - visibleBoards.length,
+                  )}
                 </button>
               </div>
             ) : null}
@@ -404,12 +434,11 @@ function SelectField<T extends string>({
   options,
 }: SelectFieldProps<T>) {
   return (
-    <label>
-      <span className="mb-2 block text-sm font-semibold">{label}</span>
+    <label className={styles.field}>
+      <span>{label}</span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value as T)}
-        className="w-full rounded-2xl border border-[var(--color-border)] bg-white px-4 py-3 outline-none focus:border-[var(--color-sky)]"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>

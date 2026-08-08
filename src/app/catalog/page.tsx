@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { CatalogView } from "@/components/catalog/catalog-view";
+import publicStyles from "@/components/public/public-ui.module.css";
 import { getAllProducts } from "@/lib/products";
+import styles from "@/components/catalog/catalog.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -14,20 +17,50 @@ export default async function CatalogPage() {
   const boards = await getAllProducts();
 
   return (
-    <div className="container-shell py-12 sm:py-16">
-      <div className="mb-8 max-w-3xl">
-        <span className="eyebrow">Каталог</span>
-        <h1 className="heading-display mt-4 text-4xl font-bold text-balance sm:text-5xl">
-          Все модели в каталоге EdgeFit
-        </h1>
-        <p className="mt-4 text-base leading-8 text-[var(--color-muted)] sm:text-lg">
-          Здесь можно спокойно смотреть доски без квиза: фильтровать по бренду,
-          стилю, форме и ширине, сравнивать карточки и при необходимости
-          отсортировать каталог по цене.
-        </p>
-      </div>
+    <div className={`${publicStyles.theme} ${styles.catalogPage}`}>
+      <div className={styles.atmosphere} aria-hidden="true" />
 
-      <CatalogView boards={boards} />
+      <div className={`container-shell ${styles.catalogShell}`}>
+        <section className={styles.hero} aria-labelledby="catalog-title">
+          <div className={styles.heroCopy}>
+            <p className={publicStyles.kicker}>EdgeFit / каталог</p>
+            <h1 id="catalog-title" className={styles.heroTitle}>
+              Сравни сноуборды по геометрии и сценарию
+            </h1>
+            <p className={styles.heroLead}>
+              Фильтруй модели по стилю, форме и ширине, сравнивай
+              характеристики, наличие и цену. Каталог показывает данные досок,
+              а персональный fit появляется после квиза.
+            </p>
+            <Link
+              href="/quiz"
+              className={`${publicStyles.secondaryAction} ${styles.heroAction}`}
+            >
+              Подобрать под себя
+            </Link>
+          </div>
+
+          <aside className={styles.heroGuide} aria-label="Как читать каталог">
+            <p className={publicStyles.microLabel}>Каталог ≠ персональный fit</p>
+            <dl className={styles.heroGuideList}>
+              <div>
+                <dt>Геометрия</dt>
+                <dd>Форма, прогиб и варианты ширины</dd>
+              </div>
+              <div>
+                <dt>Наличие</dt>
+                <dd>Размеры, подтверждённые в текущих данных</dd>
+              </div>
+              <div>
+                <dt>Твой fit</dt>
+                <dd>Рабочая ростовка и ширина — после квиза</dd>
+              </div>
+            </dl>
+          </aside>
+        </section>
+
+        <CatalogView boards={boards} />
+      </div>
     </div>
   );
 }
