@@ -9,6 +9,7 @@ import {
 import { получитьКлиентБазы } from "@/lib/database/client";
 import { базаНастроена } from "@/lib/database/config";
 import { getProductColumnSupport } from "@/lib/database/product-column-support";
+import type { CanonicalCatalogItem } from "@/types/canonical-catalog";
 
 const SCHEMA_ERROR =
   "Canonical catalog requires complete model-family schema support.";
@@ -19,9 +20,26 @@ export interface CanonicalOfferIdentity {
   familyId: string | null;
 }
 
+export type CanonicalBoardRouteResolution =
+  | {
+      kind: "render";
+      item: CanonicalCatalogItem;
+    }
+  | {
+      kind: "redirect";
+      item: CanonicalCatalogItem;
+      canonicalSlug: string;
+    };
+
 interface CanonicalOfferIdentityRow {
   offerSlug: string;
   familyId: string | null;
+  familySlug: string | null;
+}
+
+interface CanonicalBoardAliasRow {
+  offerSlug: string;
+  familyId: string;
   familySlug: string | null;
 }
 
@@ -250,6 +268,33 @@ const loadCanonicalCatalogItemBySlugFromDatabase = cache(
   },
 );
 
+const loadCanonicalBoardAliasBySlugFromDatabase = cache(
+  async (slug: string): Promise<CanonicalBoardAliasRow | undefined> => {
+    const sql = получитьКлиентБазы();
+    await assertCanonicalCatalogSupport(sql);
+
+    const [alias] = await sql<CanonicalBoardAliasRow[]>`
+      select
+        p.slug as "offerSlug",
+        p.family_id::text as "familyId",
+        mf.slug as "familySlug"
+      from products p
+      left join model_families mf on mf.id = p.family_id
+      where p.slug = ${slug}
+        and p.family_id is not null
+      limit 1
+    `;
+
+    if (alias && alias.familySlug == null) {
+      throw new Error(
+        `Canonical board alias ${alias.offerSlug} references missing family ${alias.familyId}.`,
+      );
+    }
+
+    return alias;
+  },
+);
+
 const loadCanonicalOfferIdentityBySlugFromDatabase = cache(
   async (slug: string): Promise<CanonicalOfferIdentity | undefined> => {
     const sql = получитьКлиентБазы();
@@ -318,6 +363,46 @@ export const getCanonicalCatalogItemBySlug = cache(async (slug: string) => {
 
   return loadCanonicalCatalogItemBySlugFromDatabase(slug);
 });
+
+export const getAllCanonicalBoardSlugs = cache(async () => {
+  const items = await getAllCanonicalCatalogItems();
+  return items.map((item) => item.slug);
+});
+
+export const resolveCanonicalBoardRouteBySlug = cache(
+  async (slug: string): Promise<CanonicalBoardRouteResolution | undefined> => {
+    const exactItem = await getCanonicalCatalogItemBySlug(slug);
+
+    if (exactItem) {
+      return {
+        kind: "render",
+        item: exactItem,
+      };
+    }
+
+    if (!базаНастроена()) {
+      return undefined;
+    }
+
+    const alias = await loadCanonicalBoardAliasBySlugFromDatabase(slug);
+    if (!alias?.familySlug) {
+      return undefined;
+    }
+
+    const familyItem = await loadCanonicalCatalogItemBySlugFromDatabase(
+      alias.familySlug,
+    );
+    if (!familyItem) {
+      return undefined;
+    }
+
+    return {
+      kind: "redirect",
+      item: familyItem,
+      canonicalSlug: familyItem.slug,
+    };
+  },
+);
 
 export const getCanonicalOfferIdentityBySlug = cache(async (slug: string) => {
   if (!базаНастроена()) {

@@ -372,7 +372,7 @@
 
 .sizeTable {
   width: 100%;
-  min-width: 48rem;
+  min-width: 56rem;
   border-collapse: collapse;
   color: var(--ef-text-soft);
   font-size: 0.82rem;
@@ -420,6 +420,18 @@
 
 .unavailableRow td:not(:last-child) {
   color: color-mix(in srgb, var(--ef-muted) 75%, transparent);
+}
+
+.sizeStoreAction {
+  width: auto;
+  min-height: 2.75rem;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.noSizeAction {
+  color: var(--ef-muted);
 }
 
 .emptySizes {
@@ -624,6 +636,10 @@
 
   .heroActions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .heroActions.heroActionsSingle {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .mobileTableHint {

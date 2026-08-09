@@ -22,6 +22,8 @@ import catalogStyles from "./catalog.module.css";
 
 interface CanonicalBoardCardProps {
   board: CanonicalCatalogItem;
+  storeFrom?: string;
+  storePlacement?: string;
 }
 
 const boardLineLabels: Record<
@@ -83,7 +85,11 @@ function getImageCandidates(board: CanonicalCatalogItem) {
   );
 }
 
-export function CanonicalBoardCard({ board }: CanonicalBoardCardProps) {
+export function CanonicalBoardCard({
+  board,
+  storeFrom = "catalog-card",
+  storePlacement = "catalog",
+}: CanonicalBoardCardProps) {
   const [failedImageUrls, setFailedImageUrls] = useState<string[]>([]);
   const imageCandidates = getImageCandidates(board);
   const activeImageUrl = imageCandidates.find(
@@ -115,8 +121,8 @@ export function CanonicalBoardCard({ board }: CanonicalBoardCardProps) {
   ];
   const shopHref = board.defaultOfferSlug
     ? buildStoreRedirectHref(board.defaultOfferSlug, {
-        from: "catalog-card",
-        placement: "catalog",
+        from: storeFrom,
+        placement: storePlacement,
       })
     : null;
 
@@ -213,7 +219,7 @@ export function CanonicalBoardCard({ board }: CanonicalBoardCardProps) {
               href={shopHref}
               analyticsPayload={{
                 board_slug: board.slug,
-                placement: "catalog",
+                placement: storePlacement,
               }}
               className={`${publicStyles.primaryAction} ${boardCardStyles.cardAction}`}
             >

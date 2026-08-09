@@ -1,31 +1,36 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { TrackedStoreLink } from "@/components/analytics/tracked-store-link";
-import { BoardCard } from "@/components/boards/board-card";
 import { BoardGallery } from "@/components/boards/board-gallery";
+import { CanonicalBoardCard } from "@/components/catalog/canonical-board-card";
 import publicStyles from "@/components/public/public-ui.module.css";
-import { getBoardSizeLabel } from "@/lib/board-size";
-import { hasTrustedFlex } from "@/lib/catalog-readiness";
-import { getProductTrustDetails } from "@/lib/catalog-trust";
+import {
+  getCanonicalBoardAvailabilityDescription,
+  getCanonicalBoardAvailabilityHeadline,
+  getCanonicalBoardLineLabel,
+  getCanonicalBoardPricePresentation,
+  getCanonicalBoardTrustDetails,
+  getCanonicalCurrentAvailableSizes,
+  getCanonicalFlexPresentation,
+  getCanonicalNarrativeOfferSlug,
+  getCanonicalSizeStoreAction,
+  getRelatedCanonicalBoards,
+  isCanonicalSizeCurrentlyAvailable,
+} from "@/lib/canonical-board-detail";
+import {
+  getAllCanonicalBoardSlugs,
+  getAllCanonicalCatalogItems,
+  resolveCanonicalBoardRouteBySlug,
+} from "@/lib/canonical-catalog";
 import {
   boardShapeLabels,
   camberProfileLabels,
-  formatMoney,
   ridingStyleLabels,
   skillLevelLabels,
   widthTypeLabels,
 } from "@/lib/content";
-import {
-  getAvailabilityDescription,
-  getAvailabilityHeadline,
-  getAvailableSizes,
-} from "@/lib/product-availability";
-import {
-  getAllProducts,
-  getProductBySlug,
-  getRelatedProducts,
-} from "@/lib/products";
+import { getProductBySlug } from "@/lib/products";
 import { buildStoreRedirectHref } from "@/lib/store-redirect";
 import { formatRecommendedWeightRange } from "@/lib/weight-range";
 import styles from "./board-detail.module.css";
@@ -33,10 +38,6 @@ import styles from "./board-detail.module.css";
 interface BoardPageProps {
   params: Promise<{ slug: string }>;
 }
-
-type BoardPageProduct = NonNullable<
-  Awaited<ReturnType<typeof getProductBySlug>>
->;
 
 export const revalidate = 3600;
 
@@ -47,81 +48,113 @@ export async function generateStaticParams() {
     return [];
   }
 
-  const models = await getAllProducts();
-
-  return models.map((model) => ({
-    slug: model.slug,
-  }));
+  const slugs = await getAllCanonicalBoardSlugs();
+  return slugs.map((slug) => ({ slug }));
 }
 
 export async function generateMetadata({
   params,
 }: BoardPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const board = await getProductBySlug(slug);
+  const resolution = await resolveCanonicalBoardRouteBySlug(slug);
 
-  if (!board) {
+  if (!resolution) {
     return {
       title: "Модель не найдена",
     };
   }
 
+  const board = resolution.item;
+  const description =
+    board.canonicalSpecs.descriptionShort?.trim() ||
+    board.canonicalSpecs.descriptionFull?.trim() ||
+    `Характеристики, размеры и доступность ${board.brand} ${board.modelName} в каталоге EdgeFit.`;
+
   return {
     title: `${board.brand} ${board.modelName}`,
-    description: board.descriptionShort,
+    description,
+    alternates: {
+      canonical: `/boards/${board.slug}`,
+    },
   };
 }
 
 export default async function BoardPage({ params }: BoardPageProps) {
   const { slug } = await params;
-  const board = await getProductBySlug(slug);
+  const resolution = await resolveCanonicalBoardRouteBySlug(slug);
 
-  if (!board) {
+  if (!resolution) {
     notFound();
   }
+  if (resolution.kind === "redirect") {
+    permanentRedirect(`/boards/${resolution.canonicalSlug}`);
+  }
 
-  const relatedBoards = await getRelatedProducts(slug);
-  const trustDetails = getProductTrustDetails(board);
-  const availabilityHeadline = getAvailabilityHeadline(board);
-  const availabilityDescription = getAvailabilityDescription(board);
-  const availableSizes = getAvailableSizes(board);
-  const hasAvailableSizes = availableSizes.length > 0;
+  const board = resolution.item;
+  const narrativeOfferSlug = getCanonicalNarrativeOfferSlug(board);
+  const allBoards = await getAllCanonicalCatalogItems();
+  const narrativeProduct = narrativeOfferSlug
+    ? await getProductBySlug(narrativeOfferSlug)
+    : undefined;
+  const relatedBoards = getRelatedCanonicalBoards(board, allBoards);
+  const specs = board.canonicalSpecs;
+  const trustDetails = getCanonicalBoardTrustDetails(specs);
+  const flexPresentation = getCanonicalFlexPresentation(specs);
+  const pricePresentation = getCanonicalBoardPricePresentation(board.priceFrom);
+  const currentAvailableSizes = getCanonicalCurrentAvailableSizes(board);
+  const hasAvailableSizes = currentAvailableSizes.length > 0;
+  const availabilityHeadline = getCanonicalBoardAvailabilityHeadline(board);
+  const availabilityDescription =
+    getCanonicalBoardAvailabilityDescription(board);
   const introDescription =
-    board.descriptionShort.trim() || board.descriptionFull.trim();
-  const fullDescription = board.descriptionFull.trim();
+    specs.descriptionShort?.trim() || specs.descriptionFull?.trim() || "";
+  const fullDescription = specs.descriptionFull?.trim() || "";
   const showModelCharacter =
     fullDescription.length > 0 && fullDescription !== introDescription;
-  const showScenarios =
-    board.scenarios.length > 0 || board.notIdealFor.length > 0;
+  const scenarios = narrativeProduct?.scenarios ?? [];
+  const notIdealFor = narrativeProduct?.notIdealFor ?? [];
+  const showScenarios = scenarios.length > 0 || notIdealFor.length > 0;
   const coreFacts = [
     {
       label: "Стиль",
-      value: ridingStyleLabels[board.ridingStyle],
+      value: specs.ridingStyle
+        ? ridingStyleLabels[specs.ridingStyle]
+        : "Уточняется",
     },
     {
       label: "Уровень",
-      value: skillLevelLabels[board.skillLevel],
+      value: specs.skillLevel
+        ? skillLevelLabels[specs.skillLevel]
+        : "Уточняется",
     },
     {
       label: "Линейка",
-      value: getBoardLineLabel(board.boardLine),
+      value: getCanonicalBoardLineLabel(specs.boardLine),
     },
     {
       label: "Форма",
-      value: board.shapeType ? boardShapeLabels[board.shapeType] : "Уточняется",
+      value: specs.shapeType
+        ? boardShapeLabels[specs.shapeType]
+        : "Уточняется",
     },
     {
       label: "Прогиб",
-      value: board.camberProfile
-        ? camberProfileLabels[board.camberProfile]
+      value: specs.camberProfile
+        ? camberProfileLabels[specs.camberProfile]
         : "Уточняется",
     },
     {
       label: "Жёсткость",
-      value: getBoardStiffnessValue(board),
-      caption: getBoardStiffnessCaption(board),
+      value: flexPresentation.value,
+      caption: flexPresentation.caption,
     },
   ];
+  const genericStoreHref = board.defaultOfferSlug
+    ? buildStoreRedirectHref(board.defaultOfferSlug, {
+        from: "board-page",
+        placement: "board-page",
+      })
+    : null;
 
   return (
     <div className={`${publicStyles.theme} ${styles.boardDetailPage}`}>
@@ -136,8 +169,8 @@ export default async function BoardPage({ params }: BoardPageProps) {
 
         <section className={styles.hero} aria-labelledby="board-title">
           <BoardGallery
-            primaryImage={board.imageUrl}
-            galleryImages={board.galleryImages}
+            primaryImage={board.media[0] ?? ""}
+            galleryImages={board.media.slice(1)}
             brand={board.brand}
             modelName={board.modelName}
           />
@@ -180,8 +213,8 @@ export default async function BoardPage({ params }: BoardPageProps) {
 
             <div className={styles.commercialSummary}>
               <div className={styles.priceBlock}>
-                <p className={publicStyles.microLabel}>Цена от</p>
-                <strong>{formatMoney(board.priceFrom)}</strong>
+                <p className={publicStyles.microLabel}>{pricePresentation.label}</p>
+                <strong>{pricePresentation.value}</strong>
               </div>
               <div className={styles.availabilityBlock}>
                 <div className={styles.availabilityHeading}>
@@ -204,19 +237,23 @@ export default async function BoardPage({ params }: BoardPageProps) {
               {availabilityDescription}
             </p>
 
-            <div className={styles.heroActions}>
-              <TrackedStoreLink
-                href={buildStoreRedirectHref(board.slug, {
-                  from: "board-page",
-                })}
-                analyticsPayload={{
-                  board_slug: board.slug,
-                  placement: "board-page",
-                }}
-                className={`${publicStyles.primaryAction} ${styles.heroAction}`}
-              >
-                Перейти в магазин
-              </TrackedStoreLink>
+            <div
+              className={`${styles.heroActions} ${
+                genericStoreHref ? "" : styles.heroActionsSingle
+              }`}
+            >
+              {genericStoreHref ? (
+                <TrackedStoreLink
+                  href={genericStoreHref}
+                  analyticsPayload={{
+                    board_slug: board.slug,
+                    placement: "board-page",
+                  }}
+                  className={`${publicStyles.primaryAction} ${styles.heroAction}`}
+                >
+                  Перейти в магазин
+                </TrackedStoreLink>
+              ) : null}
               <Link
                 href="/quiz"
                 className={`${publicStyles.secondaryAction} ${styles.heroAction}`}
@@ -275,35 +312,58 @@ export default async function BoardPage({ params }: BoardPageProps) {
                       <th scope="col">Ширина</th>
                       <th scope="col">Вес райдера</th>
                       <th scope="col">Наличие</th>
+                      <th scope="col">Магазин</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {board.sizes.map((size) => (
-                      <tr
-                        key={`${board.id}-${getBoardSizeLabel(size)}`}
-                        className={
-                          size.isAvailable
-                            ? styles.availableRow
-                            : styles.unavailableRow
-                        }
-                      >
-                        <td>{getBoardSizeLabel(size)}</td>
-                        <td>{size.waistWidthMm} мм</td>
-                        <td>{widthTypeLabels[size.widthType]}</td>
-                        <td>{formatRecommendedWeightRange(size)}</td>
-                        <td>
-                          <span
-                            className={
-                              size.isAvailable
-                                ? styles.sizeAvailable
-                                : styles.sizeUnavailable
-                            }
-                          >
-                            {size.isAvailable ? "в наличии" : "нет сейчас"}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                    {board.sizes.map((size) => {
+                      const currentlyAvailable =
+                        isCanonicalSizeCurrentlyAvailable(size);
+                      const storeAction = getCanonicalSizeStoreAction(
+                        board.slug,
+                        size,
+                      );
+
+                      return (
+                        <tr
+                          key={size.sourceSizeId}
+                          className={
+                            currentlyAvailable
+                              ? styles.availableRow
+                              : styles.unavailableRow
+                          }
+                        >
+                          <td>{size.displaySizeLabel}</td>
+                          <td>{size.waistWidthMm} мм</td>
+                          <td>{widthTypeLabels[size.widthType]}</td>
+                          <td>{formatRecommendedWeightRange(size)}</td>
+                          <td>
+                            <span
+                              className={
+                                currentlyAvailable
+                                  ? styles.sizeAvailable
+                                  : styles.sizeUnavailable
+                              }
+                            >
+                              {currentlyAvailable ? "в наличии" : "нет сейчас"}
+                            </span>
+                          </td>
+                          <td>
+                            {storeAction ? (
+                              <TrackedStoreLink
+                                href={storeAction.href}
+                                analyticsPayload={storeAction.analyticsPayload}
+                                className={`${publicStyles.secondaryAction} ${styles.sizeStoreAction}`}
+                              >
+                                В магазин
+                              </TrackedStoreLink>
+                            ) : (
+                              <span className={styles.noSizeAction}>—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -341,21 +401,21 @@ export default async function BoardPage({ params }: BoardPageProps) {
               <h2>Где модель раскрывается лучше</h2>
             </div>
             <div className={styles.scenarioGrid}>
-              {board.scenarios.length > 0 ? (
+              {scenarios.length > 0 ? (
                 <article className={styles.positiveScenario}>
                   <p className={publicStyles.microLabel}>Хорошо для</p>
                   <ul>
-                    {board.scenarios.map((scenario) => (
+                    {scenarios.map((scenario) => (
                       <li key={scenario}>{scenario}</li>
                     ))}
                   </ul>
                 </article>
               ) : null}
-              {board.notIdealFor.length > 0 ? (
+              {notIdealFor.length > 0 ? (
                 <article className={styles.carefulScenario}>
                   <p className={publicStyles.microLabel}>Не лучший сценарий</p>
                   <ul>
-                    {board.notIdealFor.map((scenario) => (
+                    {notIdealFor.map((scenario) => (
                       <li key={scenario}>{scenario}</li>
                     ))}
                   </ul>
@@ -428,17 +488,11 @@ export default async function BoardPage({ params }: BoardPageProps) {
             </div>
             <div className={styles.relatedGrid}>
               {relatedBoards.map((relatedBoard) => (
-                <BoardCard
-                  key={relatedBoard.id}
-                  product={relatedBoard}
-                  variant="catalog"
-                  shopHref={buildStoreRedirectHref(relatedBoard.slug, {
-                    from: "board-related",
-                  })}
-                  shopAnalyticsPayload={{
-                    board_slug: relatedBoard.slug,
-                    placement: "board-related",
-                  }}
+                <CanonicalBoardCard
+                  key={relatedBoard.slug}
+                  board={relatedBoard}
+                  storeFrom="board-related"
+                  storePlacement="board-related"
                 />
               ))}
             </div>
@@ -447,31 +501,4 @@ export default async function BoardPage({ params }: BoardPageProps) {
       </div>
     </div>
   );
-}
-
-function getBoardLineLabel(boardLine: BoardPageProduct["boardLine"]) {
-  switch (boardLine) {
-    case "men":
-      return "Мужская";
-    case "women":
-      return "Женская";
-    default:
-      return "Унисекс";
-  }
-}
-
-function getBoardStiffnessValue(board: BoardPageProduct) {
-  if (hasTrustedFlex(board)) {
-    return `${board.flex} из 10`;
-  }
-
-  return "Требует перепроверки";
-}
-
-function getBoardStiffnessCaption(board: BoardPageProduct) {
-  if (hasTrustedFlex(board)) {
-    return null;
-  }
-
-  return "По этой модели магазин не даёт надёжной точной оценки, поэтому не показываем жёсткость как конкретный балл.";
 }

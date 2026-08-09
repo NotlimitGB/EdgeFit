@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { getAllProductSlugs } from "@/lib/products";
+import { getAllCanonicalBoardSlugs } from "@/lib/canonical-catalog";
 import { getSeoLandingPath, seoLandingPages } from "@/lib/seo-pages";
 import { getAbsoluteSiteUrl } from "@/lib/site-url";
 
@@ -19,9 +19,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   let slugs: string[] = [];
 
   try {
-    slugs = await getAllProductSlugs();
+    slugs = await getAllCanonicalBoardSlugs();
   } catch (error) {
-    console.error("Не удалось собрать slugs для sitemap, отдаём только статические страницы.", error);
+    console.error("Не удалось собрать canonical board slugs для sitemap, отдаём только статические страницы.", error);
   }
 
   return [
