@@ -1,6 +1,12 @@
 "use client";
 
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import {
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { BoardCard } from "@/components/boards/board-card";
 import publicStyles from "@/components/public/public-ui.module.css";
@@ -15,14 +21,23 @@ import {
   getAvailableSizes,
 } from "@/lib/product-availability";
 import type {
+  BoardShape,
   Product,
+  RidingStyle,
+  SkillLevel,
   WidthType,
 } from "@/types/domain";
 import {
   buildCatalogSearchParams,
+  CATALOG_BOARD_LINES,
+  CATALOG_BOARD_SHAPES,
   CATALOG_DEFAULT_STATE,
+  CATALOG_RIDING_STYLES,
+  CATALOG_SKILL_LEVELS,
+  CATALOG_WIDTH_TYPES,
   getCatalogStateKey,
   parseCatalogState,
+  toggleCatalogValue,
   type CatalogUrlState,
 } from "./catalog-state";
 import styles from "./catalog.module.css";
@@ -32,15 +47,16 @@ interface CatalogViewProps {
 }
 
 const PAGE_SIZE = 24;
-const VISIBLE_COUNT_STORAGE_KEY = "edgefit:catalog-visible-count:v1";
+const VISIBLE_COUNT_STORAGE_KEY = "edgefit:catalog-visible-count:v2";
+
+type MultiSelectKey = "style" | "skill" | "line" | "shape";
 
 interface StoredVisibleCount {
   stateKey: string;
   visibleCount: number;
 }
 
-const boardLineLabels: Record<Product["boardLine"] | "all", string> = {
-  all: "Любая линейка",
+const boardLineLabels: Record<Product["boardLine"], string> = {
   men: "Мужская",
   women: "Женская",
   unisex: "Унисекс",
@@ -157,19 +173,55 @@ export function CatalogView({ boards }: CatalogViewProps) {
       ),
     [brandValues, serializedSearchParams],
   );
-  const urlStateSnapshot = `${serializedSearchParams}\u0000${brandValues.join("\u0000")}`;
   const [catalogState, setCatalogState] = useState<CatalogUrlState>(urlCatalogState);
-  const [catalogStateSnapshot, setCatalogStateSnapshot] =
-    useState(urlStateSnapshot);
+  const catalogStateRef = useRef(catalogState);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [openMultiSelect, setOpenMultiSelect] =
+    useState<MultiSelectKey | null>(null);
+  const desiredSearchRef = useRef<string | null>(null);
+  const inFlightSearchRef = useRef<string | null>(null);
 
-  if (catalogStateSnapshot !== urlStateSnapshot) {
-    setCatalogStateSnapshot(urlStateSnapshot);
-    setCatalogState(urlCatalogState);
-  }
+  useEffect(() => {
+    const inFlightSearch = inFlightSearchRef.current;
 
-  const { q: query, brand, style, skill, shape, line: boardLine, width, sort } =
-    catalogState;
+    if (inFlightSearch !== null && serializedSearchParams !== inFlightSearch) {
+      return;
+    }
+
+    if (inFlightSearch !== null) {
+      const desiredSearch = desiredSearchRef.current ?? inFlightSearch;
+
+      if (desiredSearch !== serializedSearchParams) {
+        inFlightSearchRef.current = desiredSearch;
+        router.replace(
+          desiredSearch ? `${pathname}?${desiredSearch}` : pathname,
+          { scroll: false },
+        );
+        return;
+      }
+
+      inFlightSearchRef.current = null;
+      desiredSearchRef.current = null;
+    }
+
+    catalogStateRef.current = urlCatalogState;
+    const synchronizationId = window.setTimeout(() => {
+      setCatalogState(urlCatalogState);
+    }, 0);
+
+    return () => window.clearTimeout(synchronizationId);
+  }, [pathname, router, serializedSearchParams, urlCatalogState]);
+
+  const {
+    q: query,
+    brand,
+    styles: selectedStyles,
+    skills: selectedSkills,
+    shapes: selectedShapes,
+    lines: selectedLines,
+    widths: selectedWidths,
+    sort,
+  } = catalogState;
   const deferredQuery = useDeferredValue(query);
 
   const filteredBoards = useMemo(() => {
@@ -187,16 +239,34 @@ export function CatalogView({ boards }: CatalogViewProps) {
         return haystack.includes(normalizedQuery);
       })
       .filter((board) => (brand === "all" ? true : board.brand === brand))
-      .filter((board) => (style === "all" ? true : board.ridingStyle === style))
-      .filter((board) => (skill === "all" ? true : board.skillLevel === skill))
-      .filter((board) => (shape === "all" ? true : board.shapeType === shape))
-      .filter((board) => (boardLine === "all" ? true : board.boardLine === boardLine))
+      .filter((board) =>
+        selectedStyles.length === 0
+          ? true
+          : selectedStyles.includes(board.ridingStyle),
+      )
+      .filter((board) =>
+        selectedSkills.length === 0
+          ? true
+          : selectedSkills.includes(board.skillLevel),
+      )
+      .filter((board) =>
+        selectedShapes.length === 0
+          ? true
+          : board.shapeType !== null && selectedShapes.includes(board.shapeType),
+      )
+      .filter((board) =>
+        selectedLines.length === 0
+          ? true
+          : selectedLines.includes(board.boardLine),
+      )
       .filter((board) => {
-        if (width === "all") {
+        if (selectedWidths.length === 0) {
           return true;
         }
 
-        return getFilterSizes(board).some((size) => size.widthType === width);
+        return getFilterSizes(board).some((size) =>
+          selectedWidths.includes(size.widthType),
+        );
       })
       .sort((left, right) => {
         if (sort === "price-asc") {
@@ -212,11 +282,11 @@ export function CatalogView({ boards }: CatalogViewProps) {
   }, [
     boards,
     brand,
-    style,
-    skill,
-    shape,
-    boardLine,
-    width,
+    selectedStyles,
+    selectedSkills,
+    selectedShapes,
+    selectedLines,
+    selectedWidths,
     sort,
     deferredQuery,
   ]);
@@ -250,11 +320,11 @@ export function CatalogView({ boards }: CatalogViewProps) {
   const activeFilterCount = [
     query.trim().length > 0,
     brand !== "all",
-    style !== "all",
-    skill !== "all",
-    shape !== "all",
-    boardLine !== "all",
-    width !== "all",
+    selectedStyles.length > 0,
+    selectedSkills.length > 0,
+    selectedShapes.length > 0,
+    selectedLines.length > 0,
+    selectedWidths.length > 0,
   ].filter(Boolean).length;
   const hasActiveFilters = activeFilterCount > 0 || sort !== "default";
 
@@ -267,22 +337,40 @@ export function CatalogView({ boards }: CatalogViewProps) {
     const normalizedStateKey = getCatalogStateKey(normalizedState);
     const nextSearch = nextSearchParams.toString();
 
+    catalogStateRef.current = normalizedState;
     setCatalogState(normalizedState);
     setVisibleCount(PAGE_SIZE);
     writeStoredVisibleCount(normalizedStateKey, PAGE_SIZE);
+    desiredSearchRef.current = nextSearch;
 
-    if (nextSearch !== serializedSearchParams) {
+    if (
+      inFlightSearchRef.current === null &&
+      nextSearch !== serializedSearchParams
+    ) {
+      inFlightSearchRef.current = nextSearch;
       router.replace(nextSearch ? `${pathname}?${nextSearch}` : pathname, {
         scroll: false,
       });
+    } else if (
+      inFlightSearchRef.current === null &&
+      nextSearch === serializedSearchParams
+    ) {
+      desiredSearchRef.current = null;
     }
   }
 
   function updateCatalogState(patch: Partial<CatalogUrlState>) {
-    replaceCatalogState({ ...catalogState, ...patch });
+    replaceCatalogState({ ...catalogStateRef.current, ...patch });
+  }
+
+  function changeOpenMultiSelect(key: MultiSelectKey, isOpen: boolean) {
+    setOpenMultiSelect((currentKey) =>
+      isOpen ? key : currentKey === key ? null : currentKey,
+    );
   }
 
   function resetFilters() {
+    setOpenMultiSelect(null);
     replaceCatalogState({ ...CATALOG_DEFAULT_STATE });
   }
 
@@ -344,57 +432,65 @@ export function CatalogView({ boards }: CatalogViewProps) {
         </div>
 
         <div className={styles.secondaryFilters}>
-          <SelectField
+          <MultiSelectField<RidingStyle>
+            id="style"
             label="Стиль"
-            value={style}
-            onChange={(value) => updateCatalogState({ style: value })}
-            options={[
-              { value: "all", label: "Все стили" },
-              { value: "all-mountain", label: ridingStyleLabels["all-mountain"] },
-              { value: "park", label: ridingStyleLabels.park },
-              { value: "freeride", label: ridingStyleLabels.freeride },
-            ]}
+            emptyLabel="Все стили"
+            values={selectedStyles}
+            isOpen={openMultiSelect === "style"}
+            onOpenChange={(isOpen) =>
+              changeOpenMultiSelect("style", isOpen)
+            }
+            onChange={(styles) => updateCatalogState({ styles })}
+            options={CATALOG_RIDING_STYLES.map((value) => ({
+              value,
+              label: ridingStyleLabels[value],
+            }))}
           />
-          <SelectField
+          <MultiSelectField<SkillLevel>
+            id="skill"
             label="Уровень"
-            value={skill}
-            onChange={(value) => updateCatalogState({ skill: value })}
-            options={[
-              { value: "all", label: "Любой уровень" },
-              { value: "beginner", label: skillLevelLabels.beginner },
-              { value: "intermediate", label: skillLevelLabels.intermediate },
-              { value: "advanced", label: skillLevelLabels.advanced },
-            ]}
+            emptyLabel="Любой уровень"
+            values={selectedSkills}
+            isOpen={openMultiSelect === "skill"}
+            onOpenChange={(isOpen) =>
+              changeOpenMultiSelect("skill", isOpen)
+            }
+            onChange={(skills) => updateCatalogState({ skills })}
+            options={CATALOG_SKILL_LEVELS.map((value) => ({
+              value,
+              label: skillLevelLabels[value],
+            }))}
           />
-          <SelectField
+          <MultiSelectField<Product["boardLine"]>
+            id="line"
             label="Линейка"
-            value={boardLine}
-            onChange={(value) => updateCatalogState({ line: value })}
-            options={[
-              { value: "all", label: boardLineLabels.all },
-              { value: "men", label: boardLineLabels.men },
-              { value: "women", label: boardLineLabels.women },
-              { value: "unisex", label: boardLineLabels.unisex },
-            ]}
+            emptyLabel="Любая линейка"
+            values={selectedLines}
+            isOpen={openMultiSelect === "line"}
+            onOpenChange={(isOpen) =>
+              changeOpenMultiSelect("line", isOpen)
+            }
+            onChange={(lines) => updateCatalogState({ lines })}
+            options={CATALOG_BOARD_LINES.map((value) => ({
+              value,
+              label: boardLineLabels[value],
+            }))}
           />
-          <SelectField
+          <MultiSelectField<BoardShape>
+            id="shape"
             label="Форма"
-            value={shape}
-            onChange={(value) => updateCatalogState({ shape: value })}
-            options={[
-              { value: "all", label: "Любая форма" },
-              { value: "twin", label: boardShapeLabels.twin },
-              { value: "asym-twin", label: boardShapeLabels["asym-twin"] },
-              {
-                value: "directional-twin",
-                label: boardShapeLabels["directional-twin"],
-              },
-              { value: "directional", label: boardShapeLabels.directional },
-              {
-                value: "tapered-directional",
-                label: boardShapeLabels["tapered-directional"],
-              },
-            ]}
+            emptyLabel="Любая форма"
+            values={selectedShapes}
+            isOpen={openMultiSelect === "shape"}
+            onOpenChange={(isOpen) =>
+              changeOpenMultiSelect("shape", isOpen)
+            }
+            onChange={(shapes) => updateCatalogState({ shapes })}
+            options={CATALOG_BOARD_SHAPES.map((value) => ({
+              value,
+              label: boardShapeLabels[value],
+            }))}
           />
         </div>
 
@@ -402,27 +498,46 @@ export function CatalogView({ boards }: CatalogViewProps) {
           <legend>Ширина</legend>
           <div className={styles.widthControls}>
             <div className={styles.widthOptions}>
-              {(["all", "regular", "mid-wide", "wide"] as const).map(
-                (option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    aria-pressed={width === option}
-                    onClick={() => updateCatalogState({ width: option })}
-                    className={styles.widthOption}
-                  >
-                    {option === "all"
-                      ? "Все по ширине"
-                      : widthTypeLabels[option]}
-                  </button>
-                ),
-              )}
+              <button
+                type="button"
+                aria-pressed={selectedWidths.length === 0}
+                data-catalog-filter-action
+                onClick={() => {
+                  setOpenMultiSelect(null);
+                  updateCatalogState({ widths: [] });
+                }}
+                className={styles.widthOption}
+              >
+                Все по ширине
+              </button>
+              {CATALOG_WIDTH_TYPES.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  aria-pressed={selectedWidths.includes(option)}
+                  data-catalog-filter-action
+                  onClick={() => {
+                    setOpenMultiSelect(null);
+                    updateCatalogState({
+                      widths: toggleCatalogValue(
+                        catalogStateRef.current.widths,
+                        option,
+                        CATALOG_WIDTH_TYPES,
+                      ),
+                    });
+                  }}
+                  className={styles.widthOption}
+                >
+                  {widthTypeLabels[option]}
+                </button>
+              ))}
             </div>
 
             {hasActiveFilters ? (
               <button
                 type="button"
                 onClick={resetFilters}
+                data-catalog-filter-action
                 className={styles.resetButton}
               >
                 Сбросить всё
@@ -532,5 +647,170 @@ function SelectField<T extends string>({
         ))}
       </select>
     </label>
+  );
+}
+
+interface MultiSelectFieldProps<T extends string> {
+  id: MultiSelectKey;
+  label: string;
+  emptyLabel: string;
+  values: readonly T[];
+  options: readonly { value: T; label: string }[];
+  isOpen: boolean;
+  onOpenChange: (isOpen: boolean) => void;
+  onChange: (values: T[]) => void;
+}
+
+function MultiSelectField<T extends string>({
+  id,
+  label,
+  emptyLabel,
+  values,
+  options,
+  isOpen,
+  onOpenChange,
+  onChange,
+}: MultiSelectFieldProps<T>) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const labelId = `catalog-${id}-label`;
+  const summaryId = `catalog-${id}-summary`;
+  const panelId = `catalog-${id}-options`;
+  const summary =
+    values.length === 0
+      ? emptyLabel
+      : values.length === 1
+        ? options.find((option) => option.value === values[0])?.label ?? emptyLabel
+        : `Выбрано: ${values.length}`;
+  const canonicalOrder = options.map((option) => option.value);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (
+        event.target instanceof Element &&
+        event.target.closest(
+          "[data-catalog-multi-select-trigger], [data-catalog-filter-action]",
+        )
+      ) {
+        return;
+      }
+
+      if (
+        event.target instanceof Node &&
+        !wrapperRef.current?.contains(event.target)
+      ) {
+        onOpenChange(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      event.preventDefault();
+      onOpenChange(false);
+      triggerRef.current?.focus();
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, onOpenChange]);
+
+  return (
+    <div
+      ref={wrapperRef}
+      className={`${styles.field} ${styles.multiSelectField} ${
+        isOpen ? styles.multiSelectFieldOpen : ""
+      }`}
+      onBlur={(event) => {
+        const nextFocus = event.relatedTarget;
+        if (
+          nextFocus instanceof Element &&
+          nextFocus.closest(
+            "[data-catalog-multi-select-trigger], [data-catalog-filter-action]",
+          )
+        ) {
+          return;
+        }
+
+        if (
+          isOpen &&
+          (!(nextFocus instanceof Node) ||
+            !event.currentTarget.contains(nextFocus))
+        ) {
+          onOpenChange(false);
+        }
+      }}
+    >
+      <span id={labelId}>{label}</span>
+      <button
+        ref={triggerRef}
+        type="button"
+        className={styles.multiSelectTrigger}
+        aria-expanded={isOpen}
+        aria-controls={panelId}
+        aria-labelledby={`${labelId} ${summaryId}`}
+        data-catalog-multi-select-trigger
+        onClick={() => onOpenChange(!isOpen)}
+      >
+        <span id={summaryId}>{summary}</span>
+        <span className={styles.multiSelectArrow} aria-hidden="true">
+          ↓
+        </span>
+      </button>
+
+      {isOpen ? (
+        <div
+          id={panelId}
+          className={styles.multiSelectPanel}
+          role="group"
+          aria-labelledby={labelId}
+        >
+          <div className={styles.multiSelectOptions}>
+            {options.map((option) => (
+              <label key={option.value} className={styles.checkboxRow}>
+                <input
+                  type="checkbox"
+                  checked={values.includes(option.value)}
+                  onChange={() =>
+                    onChange(
+                      toggleCatalogValue(
+                        values,
+                        option.value,
+                        canonicalOrder,
+                      ),
+                    )
+                  }
+                />
+                <span>{option.label}</span>
+              </label>
+            ))}
+          </div>
+
+          {values.length > 0 ? (
+            <button
+              type="button"
+              className={styles.groupResetButton}
+              onClick={() => {
+                onChange([]);
+                triggerRef.current?.focus();
+              }}
+            >
+              Снять выбор
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 }

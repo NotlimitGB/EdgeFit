@@ -138,7 +138,8 @@
 }
 
 .filters {
-  overflow: hidden;
+  isolation: isolate;
+  overflow: visible;
   border-radius: 1.25rem 0.45rem 1.25rem 1.25rem;
   padding: 1.1rem;
   color-scheme: dark;
@@ -224,8 +225,8 @@
   font-weight: 800;
 }
 
-.field input,
-.field select {
+.field > input,
+.field > select {
   width: 100%;
   min-height: 3rem;
   border: 1px solid var(--ef-border);
@@ -239,7 +240,7 @@
   color-scheme: dark;
 }
 
-.field input::placeholder {
+.field > input::placeholder {
   color: var(--ef-muted);
   opacity: 0.78;
 }
@@ -249,18 +250,144 @@
   background: var(--ef-surface-raised);
 }
 
-.field input:hover,
-.field select:hover {
+.field > input:hover,
+.field > select:hover {
   border-color: var(--ef-border-strong);
 }
 
-.field input:focus-visible,
-.field select:focus-visible,
+.field > input:focus-visible,
+.field > select:focus-visible,
+.multiSelectTrigger:focus-visible,
+.checkboxRow:has(input:focus-visible),
+.groupResetButton:focus-visible,
 .widthOption:focus-visible,
 .resetButton:focus-visible {
   border-color: var(--ef-focus);
   outline: 3px solid var(--ef-focus);
   outline-offset: 2px;
+}
+
+.multiSelectField {
+  position: relative;
+}
+
+.multiSelectFieldOpen {
+  z-index: 4;
+}
+
+.multiSelectTrigger {
+  display: flex;
+  width: 100%;
+  min-height: 3rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid var(--ef-border);
+  border-radius: 0.75rem;
+  padding: 0.7rem 0.85rem;
+  outline: none;
+  color: var(--ef-text);
+  background: rgba(4, 16, 21, 0.72);
+  font: inherit;
+  font-size: 0.88rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.multiSelectTrigger > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.multiSelectTrigger:hover,
+.multiSelectFieldOpen .multiSelectTrigger {
+  border-color: var(--ef-border-strong);
+}
+
+.multiSelectArrow {
+  flex: 0 0 auto;
+  color: var(--ef-accent);
+  font-size: 0.85rem;
+  transition: transform 160ms ease;
+}
+
+.multiSelectFieldOpen .multiSelectArrow {
+  transform: rotate(180deg);
+}
+
+.multiSelectPanel {
+  position: static;
+  z-index: 5;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  margin-top: 0.4rem;
+  max-height: min(20rem, 60vh);
+  overflow-y: auto;
+  border: 1px solid var(--ef-border-strong);
+  border-radius: 0.75rem;
+  padding: 0.4rem;
+  color: var(--ef-text);
+  background: var(--ef-surface-technical);
+  box-shadow: 0 1rem 2.2rem rgba(0, 0, 0, 0.32);
+}
+
+.multiSelectOptions {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.checkboxRow {
+  display: flex;
+  min-width: 0;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: 0.7rem;
+  border-radius: 0.55rem;
+  padding: 0.55rem 0.65rem;
+  color: var(--ef-text-soft);
+  font-size: 0.82rem;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.checkboxRow:hover {
+  color: var(--ef-text);
+  background: rgba(158, 223, 240, 0.075);
+}
+
+.checkboxRow input {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  margin: 0;
+  accent-color: var(--ef-accent);
+}
+
+.checkboxRow span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.groupResetButton {
+  width: 100%;
+  min-height: 2.75rem;
+  margin-top: 0.35rem;
+  border: 0;
+  border-top: 1px solid var(--ef-border);
+  border-radius: 0 0 0.5rem 0.5rem;
+  padding: 0.65rem;
+  color: var(--ef-accent);
+  background: transparent;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+
+.groupResetButton:hover {
+  background: rgba(158, 223, 240, 0.07);
 }
 
 .widthFieldset {
@@ -424,6 +551,13 @@
 
   .secondaryFilters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .multiSelectPanel {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    left: 0;
+    margin-top: 0;
   }
 
   .emptyState {
