@@ -8,6 +8,7 @@ interface BuildStoreRedirectHrefArgs {
   placement?: string;
   sizeCm?: number;
   sizeLabel?: string | null;
+  sourceSizeLabel?: string | null;
   widthType?: WidthType;
 }
 
@@ -73,6 +74,7 @@ export function buildStoreRedirectHref(
     placement,
     sizeCm,
     sizeLabel,
+    sourceSizeLabel,
     widthType,
   } =
     typeof productSlugOrArgs === "string"
@@ -96,6 +98,10 @@ export function buildStoreRedirectHref(
     searchParams.set("sizeLabel", sizeLabel);
   }
 
+  if (sourceSizeLabel) {
+    searchParams.set("sourceSizeLabel", sourceSizeLabel);
+  }
+
   if (widthType) {
     searchParams.set("widthType", widthType);
   }
@@ -108,7 +114,10 @@ export function buildStoreRedirectHref(
 export function buildStoreRedirectHrefForSize(
   productSlug: string,
   size?: ProductSize,
-  args: Omit<BuildStoreRedirectHrefArgs, "productSlug" | "sizeCm" | "sizeLabel" | "widthType"> = {},
+  args: Omit<
+    BuildStoreRedirectHrefArgs,
+    "productSlug" | "sizeCm" | "sizeLabel" | "widthType"
+  > = {},
 ) {
   return buildStoreRedirectHref({
     productSlug,

@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { analyticsEvents } from "@/lib/analytics/events";
 import { trackEvent } from "@/lib/analytics/client";
+import { enrichStoreClickClientPayload } from "@/lib/outbound-click-analytics";
 
 interface TrackedStoreLinkProps {
   href: string;
@@ -27,10 +28,14 @@ export function TrackedStoreLink({
           return;
         }
 
-        void trackEvent(analyticsEvents.productClicked, analyticsPayload, {
-          useBeacon: true,
-          skipInternalApi: true,
-        });
+        void trackEvent(
+          analyticsEvents.productClicked,
+          enrichStoreClickClientPayload(href, analyticsPayload),
+          {
+            useBeacon: true,
+            skipInternalApi: true,
+          },
+        );
       }}
       className={className}
     >

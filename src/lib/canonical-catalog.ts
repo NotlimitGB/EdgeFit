@@ -13,6 +13,18 @@ import { getProductColumnSupport } from "@/lib/database/product-column-support";
 const SCHEMA_ERROR =
   "Canonical catalog requires complete model-family schema support.";
 
+export interface CanonicalOfferIdentity {
+  boardSlug: string;
+  offerSlug: string;
+  familyId: string | null;
+}
+
+interface CanonicalOfferIdentityRow {
+  offerSlug: string;
+  familyId: string | null;
+  familySlug: string | null;
+}
+
 async function assertCanonicalCatalogSupport(sql: Sql) {
   const support = await getProductColumnSupport(sql);
   const required = [
@@ -238,6 +250,59 @@ const loadCanonicalCatalogItemBySlugFromDatabase = cache(
   },
 );
 
+const loadCanonicalOfferIdentityBySlugFromDatabase = cache(
+  async (slug: string): Promise<CanonicalOfferIdentity | undefined> => {
+    const sql = получитьКлиентБазы();
+    const support = await getProductColumnSupport(sql);
+
+    if (!support.modelFamilies || !support.familyId) {
+      const [legacyOffer] = await sql<{ offerSlug: string }[]>`
+        select p.slug as "offerSlug"
+        from products p
+        where p.slug = ${slug}
+          and p.is_active = true
+        limit 1
+      `;
+
+      return legacyOffer
+        ? {
+            boardSlug: legacyOffer.offerSlug,
+            offerSlug: legacyOffer.offerSlug,
+            familyId: null,
+          }
+        : undefined;
+    }
+
+    const [offer] = await sql<CanonicalOfferIdentityRow[]>`
+      select
+        p.slug as "offerSlug",
+        p.family_id::text as "familyId",
+        mf.slug as "familySlug"
+      from products p
+      left join model_families mf on mf.id = p.family_id
+      where p.slug = ${slug}
+        and p.is_active = true
+      limit 1
+    `;
+
+    if (!offer) {
+      return undefined;
+    }
+
+    if (offer.familyId != null && offer.familySlug == null) {
+      throw new Error(
+        `Canonical offer ${offer.offerSlug} references missing family ${offer.familyId}.`,
+      );
+    }
+
+    return {
+      boardSlug: offer.familySlug ?? offer.offerSlug,
+      offerSlug: offer.offerSlug,
+      familyId: offer.familyId,
+    };
+  },
+);
+
 export const getAllCanonicalCatalogItems = cache(async () => {
   if (!базаНастроена()) {
     return [];
@@ -252,4 +317,12 @@ export const getCanonicalCatalogItemBySlug = cache(async (slug: string) => {
   }
 
   return loadCanonicalCatalogItemBySlugFromDatabase(slug);
+});
+
+export const getCanonicalOfferIdentityBySlug = cache(async (slug: string) => {
+  if (!базаНастроена()) {
+    return undefined;
+  }
+
+  return loadCanonicalOfferIdentityBySlugFromDatabase(slug);
 });

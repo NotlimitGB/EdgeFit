@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildStoreRedirectHref,
   buildTrialSportSearchUrl,
   isPreferredStoreUrl,
   resolveProductStoreUrl,
@@ -32,5 +33,34 @@ describe("store redirect helpers", () => {
         modelName: "Mountain Twin",
       }),
     ).toBe("https://trial-sport.ru/search/?q=Jones+Mountain+Twin");
+  });
+
+  it("serializes canonical display and raw source size labels", () => {
+    expect(
+      buildStoreRedirectHref({
+        productSlug: "bataleon-beyond-medals-wide",
+        sizeCm: 161,
+        sizeLabel: "161W",
+        sourceSizeLabel: "161 cm",
+        widthType: "wide",
+      }),
+    ).toBe(
+      "/go/bataleon-beyond-medals-wide?sizeCm=161&sizeLabel=161W&sourceSizeLabel=161+cm&widthType=wide",
+    );
+  });
+
+  it("does not add a source size label when it is omitted", () => {
+    expect(
+      buildStoreRedirectHref({
+        productSlug: "bataleon-beyond-medals-wide",
+        sizeCm: 161,
+        sizeLabel: "161W",
+        widthType: "wide",
+      }),
+    ).not.toContain("sourceSizeLabel");
+  });
+
+  it("keeps the legacy basic redirect href unchanged", () => {
+    expect(buildStoreRedirectHref("slug")).toBe("/go/slug");
   });
 });
