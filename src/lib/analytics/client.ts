@@ -3,7 +3,6 @@ import {
   getYandexGoalNames,
   type AnalyticsEventName,
 } from "@/lib/analytics/events";
-import { capturePostHogEvent } from "@/lib/analytics/posthog-client";
 
 type AnalyticsPayload = Record<string, unknown>;
 
@@ -96,7 +95,6 @@ export async function trackEvent(
   }
 
   sendYandexGoal(eventName, payload);
-  void capturePostHogEvent(eventName, payload);
 
   if (options.skipInternalApi) {
     return;
