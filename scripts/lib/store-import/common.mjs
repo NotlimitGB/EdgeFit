@@ -563,7 +563,103 @@ export function getProductCompletenessScore(product) {
   );
 }
 
+function getImportedIdentityMetadata(product) {
+  const importMeta = product?.importMeta ?? {};
+
+  return {
+    storeCode: normalizeWhitespace(importMeta.storeCode) || null,
+    sourceProductId: normalizeWhitespace(importMeta.sourceProductId) || null,
+    boardLineEvidence:
+      importMeta.boardLineEvidence === "known" ? "known" : "missing",
+    variantMarker: normalizeWhitespace(importMeta.variantMarker) || null,
+  };
+}
+
+function assertCompatibleImportedProducts(left, right) {
+  const leftIdentity = getImportedIdentityMetadata(left);
+  const rightIdentity = getImportedIdentityMetadata(right);
+  const conflicts = [];
+
+  if (
+    leftIdentity.storeCode &&
+    leftIdentity.storeCode === rightIdentity.storeCode &&
+    leftIdentity.sourceProductId &&
+    rightIdentity.sourceProductId &&
+    leftIdentity.sourceProductId !== rightIdentity.sourceProductId
+  ) {
+    conflicts.push("same store has different merchant product IDs");
+  }
+
+  if (
+    leftIdentity.boardLineEvidence === "known" &&
+    rightIdentity.boardLineEvidence === "known" &&
+    left.boardLine !== right.boardLine
+  ) {
+    conflicts.push(`known board lines differ (${left.boardLine}/${right.boardLine})`);
+  } else if (
+    leftIdentity.sourceProductId !== rightIdentity.sourceProductId &&
+    (leftIdentity.boardLineEvidence !== "known" ||
+      rightIdentity.boardLineEvidence !== "known")
+  ) {
+    conflicts.push("board-line evidence is missing for an ambiguous identity");
+  }
+
+  const leftSeason = normalizeWhitespace(left.seasonLabel);
+  const rightSeason = normalizeWhitespace(right.seasonLabel);
+  if (leftSeason && rightSeason && leftSeason !== rightSeason) {
+    conflicts.push(`known seasons differ (${leftSeason}/${rightSeason})`);
+  }
+
+  if (leftIdentity.variantMarker !== rightIdentity.variantMarker) {
+    conflicts.push(
+      `explicit variants differ (${leftIdentity.variantMarker ?? "base"}/${rightIdentity.variantMarker ?? "base"})`,
+    );
+  }
+
+  if (conflicts.length > 0) {
+    throw new Error(
+      `Refusing to merge incompatible source offers for ${left.slug || right.slug}: ${conflicts.join("; ")}.`,
+    );
+  }
+}
+
+function getCommerceOwner(products) {
+  return [...products].sort((left, right) => {
+    if (left.isActive !== right.isActive) {
+      return Number(right.isActive) - Number(left.isActive);
+    }
+
+    const leftHasPrice = Number.isFinite(left.priceFrom) && left.priceFrom > 0;
+    const rightHasPrice = Number.isFinite(right.priceFrom) && right.priceFrom > 0;
+    if (leftHasPrice !== rightHasPrice) {
+      return Number(rightHasPrice) - Number(leftHasPrice);
+    }
+
+    if (leftHasPrice && rightHasPrice && left.priceFrom !== right.priceFrom) {
+      return left.priceFrom - right.priceFrom;
+    }
+
+    const completenessDifference =
+      getProductCompletenessScore(right) - getProductCompletenessScore(left);
+    if (completenessDifference !== 0) {
+      return completenessDifference;
+    }
+
+    const leftIdentity = getImportedIdentityMetadata(left);
+    const rightIdentity = getImportedIdentityMetadata(right);
+    return [leftIdentity.storeCode, leftIdentity.sourceProductId]
+      .join("|")
+      .localeCompare(
+        [rightIdentity.storeCode, rightIdentity.sourceProductId].join("|"),
+        "en",
+        { numeric: true },
+      );
+  })[0];
+}
+
 export function mergeImportedProducts(left, right) {
+  assertCompatibleImportedProducts(left, right);
+
   const leftSeasonRank = getSeasonRank(left.seasonLabel);
   const rightSeasonRank = getSeasonRank(right.seasonLabel);
   const leftScore = getProductCompletenessScore(left);
@@ -579,38 +675,7 @@ export function mergeImportedProducts(left, right) {
   }
 
   const secondary = base === left ? right : left;
-  const resolvedSizes =
-    Array.isArray(base.sizes) && base.sizes.length > 0
-      ? base.sizes
-      : Array.isArray(secondary.sizes)
-        ? secondary.sizes
-        : [];
-
-  const relevantPriceCandidates = [left, right]
-    .filter(
-      (product) =>
-        (!seasonsDiffer || product.seasonLabel?.trim() === base.seasonLabel?.trim()) &&
-        Number.isFinite(product.priceFrom) &&
-        product.priceFrom > 0,
-    )
-    .map((product) => product.priceFrom);
-  const positivePrices =
-    relevantPriceCandidates.length > 0
-      ? relevantPriceCandidates
-      : [left.priceFrom, right.priceFrom].filter(
-          (price) => Number.isFinite(price) && price > 0,
-        );
-
-  const sameSeasonActiveOffers = [left, right].filter(
-    (product) =>
-      product.isActive &&
-      (!seasonsDiffer || product.seasonLabel?.trim() === base.seasonLabel?.trim()),
-  );
-  const fallbackActiveOffers = [left, right].filter((product) => product.isActive);
-  const activeOffer =
-    (sameSeasonActiveOffers.length > 0 ? sameSeasonActiveOffers : fallbackActiveOffers)
-      .sort((a, b) => (a.priceFrom || Number.MAX_SAFE_INTEGER) - (b.priceFrom || Number.MAX_SAFE_INTEGER))[0] ??
-    base;
+  const commerceOwner = getCommerceOwner([left, right]);
 
   const baseMedia = [base.imageUrl, ...(base.galleryImages ?? [])]
     .map((image) => String(image ?? "").trim())
@@ -625,11 +690,11 @@ export function mergeImportedProducts(left, right) {
   return {
     ...base,
     seasonLabel: base.seasonLabel?.trim() || secondary.seasonLabel?.trim() || null,
-    sizes: resolvedSizes,
-    priceFrom:
-      positivePrices.length > 0 ? Math.min(...positivePrices) : base.priceFrom,
-    affiliateUrl: activeOffer.affiliateUrl || base.affiliateUrl,
-    isActive: left.isActive || right.isActive,
+    sizes: Array.isArray(commerceOwner.sizes) ? commerceOwner.sizes : [],
+    priceFrom: commerceOwner.priceFrom,
+    affiliateUrl: commerceOwner.affiliateUrl,
+    isActive: commerceOwner.isActive,
+    importMeta: commerceOwner.importMeta,
     imageUrl: mergedGalleryImages[0] || base.imageUrl || secondary.imageUrl,
     galleryImages: mergedGalleryImages.slice(1),
   };

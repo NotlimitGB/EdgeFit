@@ -1,4 +1,4 @@
-slug;flex;camber_profile;shape_type;source_name;source_url;source_checked_at
+slug;flex;camber_profile;shape_type;source_name;source_url;source_checked_at;board_line
 bataleon-evil-twin;5;camber;twin;Official Bataleon Evil Twin 25/26;https://bataleon.com/products/bataleon-2526-evil-twin-mens-snowboard;2026-04-14
 bataleon-evil-twin-wide;5;camber;twin;Official Bataleon Evil Twin 25/26;https://bataleon.com/products/bataleon-2526-evil-twin-mens-snowboard;2026-04-14
 bataleon-goliath;6;camber;directional-twin;Official Bataleon Goliath 25/26;https://bataleon.com/products/bataleon-2526-goliath-mens-snowboard;2026-04-14
@@ -67,17 +67,17 @@ capita-paradise-wide;4;hybrid-camber;directional-twin;Official CAPiTA Paradise 2
 capita-birds-of-a-feather;5.5;hybrid-camber;twin;Official CAPiTA Birds of a Feather 2026;https://capitasnowboarding.com/products/birds-of-a-feather-2026;2026-04-14
 capita-mega-mercury;7;hybrid-camber;directional;Official CAPiTA Mega Mercury 2026;https://capitasnowboarding.com/products/mega-merc-2026;2026-04-14
 capita-the-equalizer;5.5;hybrid-camber;directional;Official CAPiTA The Equalizer by Jess Kimura 2026;https://capitasnowboarding.com/en-ca/products/the-equalizer-by-jess-kimura-2026;2026-04-14
-capita-children-of-the-gnar;3.5;hybrid-camber;twin;Official CAPiTA Children of the Gnar 2026;https://capitasnowboarding.com/products/children-of-the-gnar-2026;2026-04-14
-capita-children-of-the-pow;3.5;rocker;directional;Official CAPiTA Children of the Pow 2026;https://capitasnowboarding.com/products/children-of-the-pow-2026;2026-04-14
+capita-children-of-the-gnar;3.5;hybrid-camber;twin;Official CAPiTA Children of the Gnar 2026;https://capitasnowboarding.com/products/children-of-the-gnar-2026;2026-04-14;unisex
+capita-children-of-the-pow;3.5;rocker;directional;Official CAPiTA Children of the Pow 2026;https://capitasnowboarding.com/products/children-of-the-pow-2026;2026-04-14;unisex
 capita-dark-horse;6;camber;twin;Official CAPiTA Dark Horse 2026;https://capitasnowboarding.com/products/dark-horse-2026;2026-04-14
 capita-indoor-survival;4.5;camber;twin;Official CAPiTA Indoor Survival 2026;https://capitasnowboarding.com/products/indoor-survival-2026;2026-04-14
 capita-indoor-survival-wide;4.5;camber;twin;Official CAPiTA Indoor Survival 2026;https://capitasnowboarding.com/products/indoor-survival-2026;2026-04-14
 capita-jess-kimura-mini;3;rocker;twin;Official CAPiTA Jess Kimura Mini 2026;https://capitasnowboarding.com/products/jess-kimura-mini-2026;2026-04-14
-capita-micro-mini;3;rocker;twin;Official CAPiTA Micro Mini 2026;https://capitasnowboarding.com/products/micro-mini-2026;2026-04-14
+capita-micro-mini;3;rocker;twin;Official CAPiTA Micro Mini 2026;https://capitasnowboarding.com/products/micro-mini-2026;2026-04-14;unisex
 capita-pathfinder;4;rocker;twin;Official CAPiTA Pathfinder Reverse Camber 2026;https://capitasnowboarding.com/products/pathfinder-2026;2026-04-16
 capita-pathfinder-wide;4;rocker;twin;Official CAPiTA Pathfinder Reverse Camber 2026;https://capitasnowboarding.com/products/pathfinder-2026;2026-04-16
 capita-pathfinder-camber;4;camber;directional-twin;Official CAPiTA Pathfinder Camber 2025;https://eu.capitasnowboarding.com/products/pathfinder-camber-2025;2026-04-16
-capita-scott-stevens-mini;3;rocker;twin;Official CAPiTA Scott Stevens Mini 2026;https://capitasnowboarding.com/products/scott-stevens-mini-2026;2026-04-14
+capita-scott-stevens-mini;3;rocker;twin;Official CAPiTA Scott Stevens Mini 2026;https://capitasnowboarding.com/products/scott-stevens-mini-2026;2026-04-14;unisex
 capita-sb-powder-racers;5;hybrid-camber;tapered-directional;Official CAPiTA Spring Break Powder Racer 2026;https://capitasnowboarding.com/products/sb-powder-racers-2026;2026-04-16
 capita-sb-powder-twin;5;hybrid-camber;twin;Official CAPiTA Spring Break Powder Twin 2026;https://capitasnowboarding.com/products/sb-powder-twin-2026;2026-04-14
 capita-space-metal-fantasy;4;rocker;twin;Official CAPiTA Space Metal Fantasy 2026;https://capitasnowboarding.com/products/space-metal-fantasy-2026;2026-04-14
@@ -87,8 +87,8 @@ capita-super-d-o-a;6;hybrid-camber;twin;Official CAPiTA Super D.O.A. 2026;https:
 capita-the-navigator;5.5;hybrid-camber;directional;Official CAPiTA The Navigator 2025;https://capitasnowboarding.com/products/the-navigator-2026;2026-04-14
 jones-aviator-2-0;8;camber;directional-twin;Official Jones Aviator 2.0 2026;https://www.jonessnowboards.com/products/men-aviator-2-0-snowboard-2026;2026-04-14
 jones-frontier;7;hybrid-camber;directional;Official Jones Frontier 2.0 2026;https://www.jonessnowboards.com/products/men-frontier-2-0-snowboard-2026;2026-04-14
-jones-stratos;6;hybrid-camber;directional;Official Jones Stratos 2026;https://www.jonessnowboards.com/products/men-stratos-snowboard-2026;2026-04-14
-jones-tweaker;4;camber;twin;Official Jones Tweaker 2026;https://www.jonessnowboards.com/products/men-tweaker-snowboard-2026;2026-04-14
+jones-stratos;6;hybrid-camber;directional;Official Jones Stratos 2026;https://www.jonessnowboards.com/products/men-stratos-snowboard-2026;2026-04-14;men
+jones-tweaker;4;camber;twin;Official Jones Tweaker 2026;https://www.jonessnowboards.com/products/men-tweaker-snowboard-2026;2026-04-14;men
 lib-tech-cold-brew;6;hybrid-rocker;directional;Official Lib Tech Cold Brew 2025-2026;https://www.lib-tech.com/snowboard/cold-brew;2026-04-14
 lib-tech-ejack-knife;7;hybrid-camber;tapered-directional;Official Lib Tech Ejack Knife 2025-2026;https://www.lib-tech.com/2526-ejack-knife-154;2026-04-16
 lib-tech-jamie-lynn;7;camber;tapered-directional;Official Lib Tech Jamie Lynn 2025-2026;https://www.lib-tech.com/jamie-lynn;2026-04-16
@@ -239,8 +239,8 @@ rome-womens-ravine;6;hybrid-camber;directional;Official Rome Women's Ravine 25/2
 yes-basic;4;hybrid-camber;twin;Official YES Basic;https://yessnowboards.com/products/basic;2026-04-17
 yes-greats;7;hybrid-camber;asym-twin;Official YES Greats;https://yessnowboards.com/products/greats;2026-04-14
 yes-pick-your-line;6;hybrid-camber;directional;Official YES Pick Your Line;https://yessnowboards.com/products/pick-your-line;2026-04-14
-yes-standard;6;hybrid-camber;directional-twin;Official YES Standard;https://yessnowboards.com/products/standard;2026-04-14
-yes-airmaster-3d;7;camber;directional-twin;Official YES Airmaster 3D 2026;https://yessnowboards.com/products/airmaster-3d;2026-04-14
+yes-standard;6;hybrid-camber;directional-twin;Official YES Standard;https://yessnowboards.com/products/standard;2026-04-14;men
+yes-airmaster-3d;7;camber;directional-twin;Official YES Airmaster 3D 2026;https://yessnowboards.com/products/airmaster-3d;2026-04-14;men
 yes-airmaster-xtrm-fridge-3d;10;camber;directional-twin;Official YES Airmaster Xtrm Fridge 3D 2026;https://yessnowboards.com/products/airmaster-xtrm-fridge-3d;2026-04-17
 yes-all-in;6;hybrid-camber;directional-twin;Official YES All-In 2026;https://yessnowboards.com/products/all-in;2026-04-14
 yes-all-in-xtrm;8;;directional-twin;Official YES All-In Xtrm 2026;https://yessnowboards.com/products/all-in-xtrm;2026-04-14
@@ -375,7 +375,7 @@ gnu-gloss-c;;camber;;Official GNU Gloss C 2026;https://www.gnu.com/gloss-c;2026-
 gnu-gremlin;;camber;;Official GNU Gremlin 2026;https://www.gnu.com/gremlin;2026-04-17
 gnu-head-space;;camber;;Official GNU Head Space 2026;https://www.gnu.com/head-space;2026-04-17
 gnu-hyper;;hybrid-rocker;;Official GNU Hyper 2025;https://gbp.gnu.com/hyper;2026-04-17
-gnu-riders-choice;;hybrid-rocker;asym-twin;Official GNU Riders Choice 2026;https://www.gnu.com/riders-choice;2026-04-17
+gnu-riders-choice;;hybrid-rocker;asym-twin;Official GNU Riders Choice 2026;https://www.gnu.com/riders-choice;2026-04-17;men
 gnu-upgrade;;hybrid-camber;directional-twin;Official GNU Upgrade 2026;https://www.gnu.com/upgrade;2026-04-17
 gnu-velvet;;hybrid-rocker;;Official GNU Velvet 2026;https://www.gnu.com/velvet;2026-04-17
 gnu-wagyu;;camber;;Official GNU Wagyu 2026;https://www.gnu.com/wagyu;2026-04-17

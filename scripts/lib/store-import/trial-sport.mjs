@@ -6,7 +6,6 @@ import {
   classifyWidthType,
   decodeHtml,
   isPlausibleWaistWidthMm,
-  mapBoardLineFromText,
   mapRidingStyle,
   mapShapeType,
   mapSkillLevel,
@@ -21,6 +20,11 @@ import {
   stripHtml,
   toAbsoluteUrl,
 } from "./common.mjs";
+import {
+  getBoardLineEvidence,
+  getExplicitVariantMarker,
+  getStoreIdentityFromUrl,
+} from "./source-identity.mjs";
 
 const TRIAL_BASE_URL = "https://trial-sport.ru";
 const TRIAL_SECTION_URL =
@@ -453,7 +457,8 @@ function buildTrialProduct(productUrl, htmlText, specMap, checkedAt) {
   const descriptionText = extractTrialDescription(htmlText, brand);
   const imageUrls = extractTrialImageUrls(htmlText);
   const seasonLabel = extractTrialSeasonLabel(htmlText);
-  const boardLine = mapBoardLineFromText(descriptionText);
+  const boardLineIdentity = getBoardLineEvidence(descriptionText);
+  const boardLine = boardLineIdentity.boardLine;
   const skillLevel = mapSkillLevel({
     levelText: "",
     flex,
@@ -484,6 +489,10 @@ function buildTrialProduct(productUrl, htmlText, specMap, checkedAt) {
     sizes,
     importMeta: {
       storeCode: "trial-sport",
+      sourceProductId: getStoreIdentityFromUrl(productUrl).sourceProductId,
+      baseSlug: slugifyBoard(`${brand} ${modelName}`),
+      boardLineEvidence: boardLineIdentity.evidence,
+      variantMarker: getExplicitVariantMarker(modelName),
       storeName: "Триал-Спорт",
     },
   };

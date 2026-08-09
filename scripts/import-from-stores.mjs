@@ -6,10 +6,9 @@ import { fileURLToPath } from "node:url";
 import { upsertCatalogProducts } from "./lib/upsert-boards.mjs";
 import { normalizeCatalogWaistWidths } from "./lib/catalog-repair.mjs";
 import {
-  mergeImportedProducts,
-  normalizeBoardKey,
   normalizeWhitespace,
 } from "./lib/store-import/common.mjs";
+import { buildSourceIdentityPlan } from "./lib/store-import/source-identity.mjs";
 import {
   applyOfficialProductSpecs,
   loadOfficialProductSpecs,
@@ -96,15 +95,6 @@ function hasCuratedVerifiedMedia(product) {
     .some((image) => !isLocalCatalogPlaceholderImage(image));
 }
 
-function getComparableProductKey(brand, modelName) {
-  const normalizedModelName = normalizeWhitespace(modelName)
-    .replace(/\b2(?:[.\- ]?0)\b/giu, " ")
-    .replace(/\s+/gu, " ")
-    .trim();
-
-  return normalizeBoardKey(`${brand} ${normalizedModelName}`);
-}
-
 async function wait(milliseconds) {
   return new Promise((resolve) => {
     setTimeout(resolve, milliseconds);
@@ -178,7 +168,7 @@ async function fetchWithRetries(url, headers, parseBuffer) {
   throw lastError;
 }
 
-async function fetchText(url) {
+export async function fetchText(url) {
   return fetchWithRetries(
     url,
     {
@@ -189,7 +179,7 @@ async function fetchText(url) {
   );
 }
 
-async function fetchJson(url) {
+export async function fetchJson(url) {
   return fetchWithRetries(
     url,
     {
@@ -201,7 +191,7 @@ async function fetchJson(url) {
   );
 }
 
-async function fetchArrayBuffer(url) {
+export async function fetchArrayBuffer(url) {
   return fetchWithRetries(
     url,
     {
@@ -254,7 +244,7 @@ async function getProductColumnSupport(sql, state) {
   return state.productColumnSupport;
 }
 
-async function loadExistingCatalog(sql, state) {
+export async function loadExistingCatalog(sql, state = { productColumnSupport: null }) {
   const {
     hasSeasonLabel,
     hasGalleryImages,
@@ -299,6 +289,14 @@ async function loadExistingCatalog(sql, state) {
       p.source_checked_at::text as "sourceCheckedAt",
       p.scenarios as "scenarios",
       p.not_ideal_for as "notIdealFor",
+      p.family_id::text as "familyId",
+      p.family_member_role as "familyMemberRole",
+      p.family_match_method as "familyMatchMethod",
+      p.family_match_confidence as "familyMatchConfidence",
+      p.family_manual_override as "familyManualOverride",
+      p.family_match_reason as "familyMatchReason",
+      p.family_matched_at::text as "familyMatchedAt",
+      p.updated_at::text as "updatedAt",
       coalesce(
         json_agg(
           json_build_object(
@@ -354,6 +352,16 @@ function mergeWithExistingProduct(existingProduct, importedProduct) {
   }
 
   if (existingProduct.dataStatus !== "verified") {
+    return importedProduct;
+  }
+
+  const hasIdentityConflict =
+    existingProduct.boardLine !== importedProduct.boardLine ||
+    (existingProduct.seasonLabel?.trim() &&
+      importedProduct.seasonLabel?.trim() &&
+      existingProduct.seasonLabel.trim() !== importedProduct.seasonLabel.trim());
+
+  if (hasIdentityConflict) {
     return importedProduct;
   }
 
@@ -506,6 +514,11 @@ export async function runStoreImport(options = {}) {
     ? options.importLimit
     : Number.parseInt(process.env.STORE_IMPORT_LIMIT ?? "", 10);
   const logger = options.logger ?? console;
+  const expectedPlanHash = normalizeWhitespace(
+    options.expectedPlanHash ??
+      process.env.CATALOG_SOURCE_IDENTITY_EXPECTED_PLAN_HASH ??
+      "",
+  );
   const ownSqlClient = !options.sql;
 
   if (!options.sql && !databaseUrl) {
@@ -522,18 +535,6 @@ export async function runStoreImport(options = {}) {
   const state = { productColumnSupport: null };
 
   try {
-    await sql`set statement_timeout = 0`;
-
-    const existingCatalog = await loadExistingCatalog(sql, state);
-    const officialProductSpecs = await loadOfficialProductSpecs();
-    const existingComparableVerifiedProducts = new Map(
-      Array.from(existingCatalog.values())
-        .filter((product) => product.dataStatus === "verified")
-        .map((product) => [
-          getComparableProductKey(product.brand, product.modelName),
-          product,
-        ]),
-    );
     const importedProducts = [];
     const warnings = [];
 
@@ -567,36 +568,43 @@ export async function runStoreImport(options = {}) {
       warnings.push(...result.warnings);
     }
 
-    const mergedImportedProducts = new Map();
+    await sql`set statement_timeout = 0`;
 
-    for (const importedProduct of importedProducts) {
-      const comparableProductKey = getComparableProductKey(
-        importedProduct.brand,
-        importedProduct.modelName,
-      );
-      const exactExistingProduct = existingCatalog.get(importedProduct.slug);
-      const comparableVerifiedProduct =
-        existingComparableVerifiedProducts.get(comparableProductKey);
-      const mergeTargetProduct =
-        comparableVerifiedProduct?.dataStatus === "verified"
-          ? comparableVerifiedProduct
-          : exactExistingProduct;
-      const mergedSlug = mergeTargetProduct?.slug ?? importedProduct.slug;
-      const normalizedImportedProduct =
-        mergedSlug === importedProduct.slug
-          ? importedProduct
-          : {
-              ...importedProduct,
-              slug: mergedSlug,
-            };
-      const current = mergedImportedProducts.get(mergedSlug);
-      mergedImportedProducts.set(
-        mergedSlug,
-        current
-          ? mergeImportedProducts(current, normalizedImportedProduct)
-          : normalizedImportedProduct,
+    const existingCatalog = await loadExistingCatalog(sql, state);
+    const officialProductSpecs = await loadOfficialProductSpecs();
+
+    const identityPlan = buildSourceIdentityPlan({
+      importedProducts,
+      existingProducts: existingCatalog,
+      officialSpecs: officialProductSpecs,
+    });
+
+    if (identityPlan.logicalPlan.blockingIssues.length > 0) {
+      throw new Error(
+        `Source identity plan is blocked: ${identityPlan.logicalPlan.blockingIssues.join(" ")}`,
       );
     }
+
+    const pendingIdentityRepairs = identityPlan.logicalPlan.groups.filter(
+      (group) =>
+        group.repairRequired && group.classification !== "NO_CONFLICT",
+    );
+
+    if (pendingIdentityRepairs.length > 0 && !expectedPlanHash) {
+      throw new Error(
+        `Source identity changes require a hashed preview (${pendingIdentityRepairs.length} groups).`,
+      );
+    }
+
+    if (expectedPlanHash && identityPlan.planHash !== expectedPlanHash) {
+      throw new Error(
+        `Source identity plan hash changed: expected ${expectedPlanHash}, actual ${identityPlan.planHash}.`,
+      );
+    }
+
+    const mergedImportedProducts = new Map(
+      identityPlan.resolvedProducts.map((product) => [product.slug, product]),
+    );
 
     const preparedProducts = Array.from(mergedImportedProducts.values())
       .map((product) => {
@@ -634,6 +642,7 @@ export async function runStoreImport(options = {}) {
     const repairedWaistWidths = await normalizeCatalogWaistWidths(sql);
     const result = {
       checkedAt,
+      sourceIdentityPlanHash: identityPlan.planHash,
       sourceFilter,
       warnings,
       importedModels: summary.importedModels,

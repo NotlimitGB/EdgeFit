@@ -174,6 +174,30 @@ function getVerificationMismatches(columnSupport, spec, row) {
 }
 
 async function updateProductWithSpec(sql, columnSupport, spec) {
+  const existingRows = await sql`
+    select board_line as "boardLine"
+    from products
+    where slug = ${spec.slug}
+  `;
+
+  if (existingRows.length === 0) {
+    return {
+      updated: false,
+      missing: true,
+      mismatches: [],
+    };
+  }
+
+  if (spec.boardLine && existingRows[0].boardLine !== spec.boardLine) {
+    return {
+      updated: false,
+      missing: false,
+      mismatches: [
+        `board_line=${existingRows[0].boardLine ?? "null"}, expected=${spec.boardLine}`,
+      ],
+    };
+  }
+
   const update = buildProductUpdate(columnSupport, spec);
   const updatedRows = await sql.unsafe(update.query, update.values);
 

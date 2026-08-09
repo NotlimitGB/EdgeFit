@@ -23,6 +23,8 @@ const ALLOWED_SHAPE_TYPES = new Set([
   "tapered-directional",
 ]);
 
+const ALLOWED_BOARD_LINES = new Set(["men", "women", "unisex"]);
+
 function normalizeText(value) {
   return String(value ?? "").trim();
 }
@@ -100,6 +102,7 @@ export async function loadOfficialProductSpecs(options = {}) {
     bom: true,
     columns: true,
     delimiter: ";",
+    relax_column_count: true,
     skip_empty_lines: true,
     trim: true,
   });
@@ -130,6 +133,12 @@ export async function loadOfficialProductSpecs(options = {}) {
       "shape_type",
       slug,
     );
+    const boardLine = parseOptionalEnum(
+      row.board_line,
+      ALLOWED_BOARD_LINES,
+      "board_line",
+      slug,
+    );
 
     if (flex === null && camberProfile === null && shapeType === null) {
       throw new Error(
@@ -142,6 +151,7 @@ export async function loadOfficialProductSpecs(options = {}) {
       flex,
       camberProfile,
       shapeType,
+      boardLine,
       sourceName,
       sourceUrl: parseRequiredUrl(row.source_url, slug),
       sourceCheckedAt: parseCheckedAt(row.source_checked_at, slug),
@@ -153,6 +163,10 @@ export async function loadOfficialProductSpecs(options = {}) {
 
 export function applyOfficialProductSpecs(product, spec) {
   if (!spec) {
+    return product;
+  }
+
+  if (spec.boardLine && product.boardLine !== spec.boardLine) {
     return product;
   }
 

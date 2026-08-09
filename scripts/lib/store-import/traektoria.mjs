@@ -4,7 +4,6 @@ import {
   buildScenarios,
   classifyWidthType,
   isPlausibleWaistWidthMm,
-  mapBoardLineFromText,
   mapRidingStyle,
   mapShapeType,
   mapSkillLevel,
@@ -18,6 +17,10 @@ import {
   stripHtml,
   toAbsoluteUrl,
 } from "./common.mjs";
+import {
+  getBoardLineEvidence,
+  getExplicitVariantMarker,
+} from "./source-identity.mjs";
 
 const TRAEKTORIA_BASE_URL = "https://www.traektoria.ru";
 const TRAEKTORIA_SECTION_API_URL =
@@ -219,7 +222,8 @@ function buildTraektoriaProduct(productUrl, productPayload, checkedAt) {
   const shapeType = mapShapeType(filterMap.get("SHAPE"));
   const flex = getFlexFromTraektoriaProduct(model, content.descriptions, filterMap);
   const ridingStyle = mapRidingStyle(filterMap.get("RIDING_STYLE"));
-  const boardLine = mapBoardLineFromText(props.gender);
+  const boardLineIdentity = getBoardLineEvidence(props.gender);
+  const boardLine = boardLineIdentity.boardLine;
   const skillLevel = mapSkillLevel({
     levelText: filterMap.get("LEVEL"),
     flex,
@@ -262,6 +266,10 @@ function buildTraektoriaProduct(productUrl, productPayload, checkedAt) {
     sizes,
     importMeta: {
       storeCode: "traektoria",
+      sourceProductId: extractProductId(productUrl),
+      baseSlug: slug,
+      boardLineEvidence: boardLineIdentity.evidence,
+      variantMarker: getExplicitVariantMarker(modelName),
       storeName: "Траектория",
     },
   };
