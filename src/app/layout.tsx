@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Manrope, Space_Grotesk } from "next/font/google";
+import { PostHogAnalytics } from "@/components/analytics/posthog-analytics";
 import { YandexMetrika } from "@/components/analytics/yandex-metrika";
 import { getSiteMetadataBase } from "@/lib/site-url";
 import { SiteFooter } from "@/components/site/site-footer";
@@ -40,6 +44,7 @@ export default function RootLayout({
 }>) {
   const yandexMetrikaId = Number(process.env.NEXT_PUBLIC_YANDEX_METRIKA_ID);
   const hasYandexMetrika = Number.isFinite(yandexMetrikaId) && yandexMetrikaId > 0;
+  const hasPostHog = Boolean(process.env.NEXT_PUBLIC_POSTHOG_KEY?.trim());
 
   return (
     <html
@@ -48,10 +53,17 @@ export default function RootLayout({
     >
       <body className="min-h-full bg-[var(--color-snow)] text-[var(--color-ink)]">
         {hasYandexMetrika ? <YandexMetrika counterId={yandexMetrikaId} /> : null}
+        {hasPostHog ? (
+          <Suspense fallback={null}>
+            <PostHogAnalytics />
+          </Suspense>
+        ) : null}
         <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(74,136,170,0.14),transparent_38%),linear-gradient(180deg,#f5f9fc_0%,#eef4f8_52%,#f7fbfd_100%)]" />
         <SiteHeader />
         <main className="flex min-h-[calc(100vh-9rem)] flex-col">{children}</main>
         <SiteFooter />
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
