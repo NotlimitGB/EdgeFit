@@ -154,7 +154,7 @@ async function loadFirstPartyReport(
   const sql = получитьКлиентБазы();
 
   try {
-    return await sql.begin("read only", async (tx) => {
+    return await sql.begin("isolation level repeatable read read only", async (tx) => {
       const historyRows = await tx<HistoryRow[]>`
         select
           min(created_at)::text as "firstEventAt",
