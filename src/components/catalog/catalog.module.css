@@ -210,6 +210,7 @@
 
 .secondaryFilters {
   margin-top: 1rem;
+  z-index: 3;
 }
 
 .field {
@@ -395,6 +396,7 @@
   margin-top: 1.2rem;
   border-top: 1px solid var(--ef-border);
   padding-top: 1rem;
+  z-index: 1;
 }
 
 .widthControls,
@@ -479,6 +481,10 @@
 .boardGrid {
   display: grid;
   gap: 1rem;
+}
+
+.singleCardAction {
+  grid-column: 1 / -1;
 }
 
 .emptyState {

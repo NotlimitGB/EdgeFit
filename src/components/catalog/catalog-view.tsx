@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { BoardCard } from "@/components/boards/board-card";
+import { CanonicalBoardCard } from "@/components/catalog/canonical-board-card";
 import publicStyles from "@/components/public/public-ui.module.css";
 import {
   boardShapeLabels,
@@ -16,17 +16,15 @@ import {
   skillLevelLabels,
   widthTypeLabels,
 } from "@/lib/content";
+import type { BoardShape, RidingStyle, SkillLevel } from "@/types/domain";
+import type { CanonicalCatalogItem } from "@/types/canonical-catalog";
 import {
-  getAvailableSizeCount,
-  getAvailableSizes,
-} from "@/lib/product-availability";
-import type {
-  BoardShape,
-  Product,
-  RidingStyle,
-  SkillLevel,
-  WidthType,
-} from "@/types/domain";
+  compareCanonicalFeatured,
+  compareCanonicalPriceAsc,
+  compareCanonicalPriceDesc,
+  getCanonicalFilterSizes,
+  matchesCanonicalCatalogSearch,
+} from "./canonical-catalog-ui";
 import {
   buildCatalogSearchParams,
   CATALOG_BOARD_LINES,
@@ -43,7 +41,7 @@ import {
 import styles from "./catalog.module.css";
 
 interface CatalogViewProps {
-  boards: Product[];
+  boards: CanonicalCatalogItem[];
 }
 
 const PAGE_SIZE = 24;
@@ -56,61 +54,15 @@ interface StoredVisibleCount {
   visibleCount: number;
 }
 
-const boardLineLabels: Record<Product["boardLine"], string> = {
+type CatalogBoardLine = NonNullable<
+  CanonicalCatalogItem["canonicalSpecs"]["boardLine"]
+>;
+
+const boardLineLabels: Record<CatalogBoardLine, string> = {
   men: "Мужская",
   women: "Женская",
   unisex: "Унисекс",
 };
-
-function getFilterSizes(board: Product) {
-  const availableSizes = getAvailableSizes(board);
-  return availableSizes.length > 0 ? availableSizes : board.sizes;
-}
-
-function getPrimaryWidthType(board: Product): WidthType {
-  const widthTypes = getFilterSizes(board).map((size) => size.widthType);
-
-  if (widthTypes.includes("wide")) {
-    return "wide";
-  }
-
-  if (widthTypes.includes("mid-wide")) {
-    return "mid-wide";
-  }
-
-  return "regular";
-}
-
-function compareByFeatured(left: Product, right: Product) {
-  const verifiedDelta =
-    Number(right.dataStatus === "verified") - Number(left.dataStatus === "verified");
-
-  if (verifiedDelta !== 0) {
-    return verifiedDelta;
-  }
-
-  const availableDelta = getAvailableSizeCount(right) - getAvailableSizeCount(left);
-  if (availableDelta !== 0) {
-    return availableDelta;
-  }
-
-  const freshnessDelta = String(right.sourceCheckedAt ?? "").localeCompare(
-    String(left.sourceCheckedAt ?? ""),
-    "ru",
-  );
-  if (freshnessDelta !== 0) {
-    return freshnessDelta;
-  }
-
-  if (left.priceFrom !== right.priceFrom) {
-    return left.priceFrom - right.priceFrom;
-  }
-
-  return `${left.brand} ${left.modelName}`.localeCompare(
-    `${right.brand} ${right.modelName}`,
-    "ru",
-  );
-}
 
 function readStoredVisibleCount(): StoredVisibleCount | null {
   try {
@@ -225,59 +177,52 @@ export function CatalogView({ boards }: CatalogViewProps) {
   const deferredQuery = useDeferredValue(query);
 
   const filteredBoards = useMemo(() => {
-    const normalizedQuery = deferredQuery.trim().toLowerCase();
-
     return boards
-      .filter((board) => {
-        if (!normalizedQuery) {
-          return true;
-        }
-
-        const haystack =
-          `${board.brand} ${board.modelName} ${board.slug}`.toLowerCase();
-
-        return haystack.includes(normalizedQuery);
-      })
+      .filter((board) => matchesCanonicalCatalogSearch(board, deferredQuery))
       .filter((board) => (brand === "all" ? true : board.brand === brand))
       .filter((board) =>
         selectedStyles.length === 0
           ? true
-          : selectedStyles.includes(board.ridingStyle),
+          : board.canonicalSpecs.ridingStyle !== null &&
+            selectedStyles.includes(board.canonicalSpecs.ridingStyle),
       )
       .filter((board) =>
         selectedSkills.length === 0
           ? true
-          : selectedSkills.includes(board.skillLevel),
+          : board.canonicalSpecs.skillLevel !== null &&
+            selectedSkills.includes(board.canonicalSpecs.skillLevel),
       )
       .filter((board) =>
         selectedShapes.length === 0
           ? true
-          : board.shapeType !== null && selectedShapes.includes(board.shapeType),
+          : board.canonicalSpecs.shapeType !== null &&
+            selectedShapes.includes(board.canonicalSpecs.shapeType),
       )
       .filter((board) =>
         selectedLines.length === 0
           ? true
-          : selectedLines.includes(board.boardLine),
+          : board.canonicalSpecs.boardLine !== null &&
+            selectedLines.includes(board.canonicalSpecs.boardLine),
       )
       .filter((board) => {
         if (selectedWidths.length === 0) {
           return true;
         }
 
-        return getFilterSizes(board).some((size) =>
+        return getCanonicalFilterSizes(board).some((size) =>
           selectedWidths.includes(size.widthType),
         );
       })
       .sort((left, right) => {
         if (sort === "price-asc") {
-          return left.priceFrom - right.priceFrom;
+          return compareCanonicalPriceAsc(left, right);
         }
 
         if (sort === "price-desc") {
-          return right.priceFrom - left.priceFrom;
+          return compareCanonicalPriceDesc(left, right);
         }
 
-        return compareByFeatured(left, right);
+        return compareCanonicalFeatured(left, right);
       });
   }, [
     boards,
@@ -462,7 +407,7 @@ export function CatalogView({ boards }: CatalogViewProps) {
               label: skillLevelLabels[value],
             }))}
           />
-          <MultiSelectField<Product["boardLine"]>
+          <MultiSelectField<CatalogBoardLine>
             id="line"
             label="Линейка"
             emptyLabel="Любая линейка"
@@ -586,12 +531,7 @@ export function CatalogView({ boards }: CatalogViewProps) {
           <>
             <div className={styles.boardGrid}>
               {visibleBoards.map((board) => (
-                <BoardCard
-                  key={board.id}
-                  product={board}
-                  eyebrow={widthTypeLabels[getPrimaryWidthType(board)]}
-                  variant="catalog"
-                />
+                <CanonicalBoardCard key={board.slug} board={board} />
               ))}
             </div>
 

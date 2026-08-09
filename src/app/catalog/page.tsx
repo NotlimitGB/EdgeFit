@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CatalogView } from "@/components/catalog/catalog-view";
 import publicStyles from "@/components/public/public-ui.module.css";
-import { getAllProducts } from "@/lib/products";
+import { getAllCanonicalCatalogItems } from "@/lib/canonical-catalog";
 import styles from "@/components/catalog/catalog.module.css";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 };
 
 export default async function CatalogPage() {
-  const boards = await getAllProducts();
+  const boards = await getAllCanonicalCatalogItems();
 
   return (
     <div className={`${publicStyles.theme} ${styles.catalogPage}`}>
