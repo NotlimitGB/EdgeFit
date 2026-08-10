@@ -271,6 +271,14 @@ export function getAnalyticsDeliveryClaimDecision(
   ) {
     return { action: "busy" };
   }
+  if (
+    existing.deliveryStatus === "sending" &&
+    existing.lastAttemptAt &&
+    now.getTime() - existing.lastAttemptAt.getTime() >=
+      ANALYTICS_DELIVERY_UNKNOWN_OUTCOME_GUARD_MS
+  ) {
+    return { action: "fail", category: "provider_outcome_unknown_expired" };
+  }
   if (existing.attemptCount >= ANALYTICS_DELIVERY_MAX_ATTEMPTS) {
     return { action: "fail", category: "delivery_attempts_exhausted" };
   }

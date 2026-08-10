@@ -6,6 +6,7 @@ import type {
   AnalyticsDeliveryRepository,
   AnalyticsMailer,
 } from "@/lib/analytics/delivery-server";
+import { getAnalyticsDeliveryClaimDecision } from "@/lib/analytics/delivery-core";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/database/client", () => ({ получитьКлиентБазы: vi.fn() }));
@@ -340,6 +341,37 @@ describe("retry and retention orchestration", () => {
       "stored_digest_hash_mismatch",
       expect.any(Date),
     );
+    expect(mailer.send).not.toHaveBeenCalled();
+  });
+
+  it("does not call the provider for stale sending after the safe window", async () => {
+    const now = new Date("2026-08-10T06:15:00Z");
+    const digest = makeServerDigest();
+    const row = {
+      ...ledgerRow(digest),
+      deliveryStatus: "sending" as const,
+      leaseExpiresAt: new Date("2026-08-09T20:00:00Z"),
+      lastAttemptAt: new Date("2026-08-09T07:15:00Z"),
+      lastErrorCategory: null,
+    };
+    const { dependencies, mailer } = makeDependencies({
+      repository: {
+        listDue: vi.fn(async () => [row]),
+        claim: vi.fn(async (storedDigest, claimNow) => {
+          const decision = getAnalyticsDeliveryClaimDecision(row, storedDigest, claimNow);
+          return {
+            status: decision.action === "fail" ? ("failed" as const) : ("claimed" as const),
+            logicalId: storedDigest.logicalId,
+            category: decision.action === "fail" ? decision.category : undefined,
+          };
+        }),
+      },
+    });
+    const result = await runAnalyticsDeliveryRetrySweep({ now, dependencies });
+    expect(result).toMatchObject({
+      status: "failed",
+      category: "provider_outcome_unknown_expired",
+    });
     expect(mailer.send).not.toHaveBeenCalled();
   });
 

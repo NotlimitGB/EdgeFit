@@ -339,6 +339,38 @@ describe("analytics delivery state decisions", () => {
     ).toEqual({ action: "claim_stored" });
   });
 
+  it("fails stale sending without requiring a persisted unknown category", () => {
+    expect(
+      getAnalyticsDeliveryClaimDecision(
+        makeRow(digest, {
+          deliveryStatus: "sending",
+          leaseExpiresAt: new Date("2026-08-09T20:00:00Z"),
+          lastAttemptAt: new Date("2026-08-09T07:15:00Z"),
+          lastErrorCategory: null,
+        }),
+        digest,
+        now,
+      ),
+    ).toEqual({
+      action: "fail",
+      category: "provider_outcome_unknown_expired",
+    });
+  });
+
+  it("does not make an old pending known provider failure terminal", () => {
+    expect(
+      getAnalyticsDeliveryClaimDecision(
+        makeRow(digest, {
+          deliveryStatus: "pending",
+          lastAttemptAt: new Date("2026-08-09T00:00:00Z"),
+          lastErrorCategory: "provider_rate_limited",
+        }),
+        digest,
+        now,
+      ),
+    ).toEqual({ action: "claim_stored" });
+  });
+
   it("stops after five attempts", () => {
     expect(
       getAnalyticsDeliveryClaimDecision(
