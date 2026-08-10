@@ -3,6 +3,18 @@
     {
       "path": "/api/cron/catalog-refresh",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/analytics-daily",
+      "schedule": "15 6 * * *"
+    },
+    {
+      "path": "/api/cron/analytics-weekly",
+      "schedule": "30 6 * * 1"
+    },
+    {
+      "path": "/api/cron/analytics-retry",
+      "schedule": "15 8 * * *"
     }
   ]
 }

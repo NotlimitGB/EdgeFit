@@ -361,6 +361,53 @@ create table if not exists analytics_events (
   created_at timestamptz not null default now()
 );
 
+create table if not exists analytics_digest_deliveries (
+  id uuid primary key default gen_random_uuid(),
+  logical_id text not null unique,
+  kind text not null,
+  as_of_date date not null,
+  period_start date not null,
+  period_end date not null,
+  digest jsonb not null,
+  digest_status text not null,
+  evidence_hash text not null,
+  content_hash text not null,
+  delivery_status text not null default 'pending',
+  attempt_count integer not null default 0,
+  lease_token uuid,
+  lease_expires_at timestamptz,
+  next_attempt_at timestamptz,
+  last_attempt_at timestamptz,
+  provider_message_id text,
+  last_error_category text,
+  last_failure_at timestamptz,
+  sent_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint chk_analytics_digest_deliveries_kind
+    check (kind in ('daily', 'weekly')),
+  constraint chk_analytics_digest_deliveries_digest_status
+    check (digest_status in ('complete', 'partial')),
+  constraint chk_analytics_digest_deliveries_delivery_status
+    check (delivery_status in ('pending', 'sending', 'sent', 'partial_sent', 'failed', 'conflict')),
+  constraint chk_analytics_digest_deliveries_attempt_count
+    check (attempt_count >= 0),
+  constraint chk_analytics_digest_deliveries_period
+    check (period_start <= period_end and as_of_date = period_end),
+  constraint chk_analytics_digest_deliveries_digest_object
+    check (jsonb_typeof(digest) = 'object'),
+  constraint chk_analytics_digest_deliveries_evidence_hash
+    check (evidence_hash ~ '^sha256:[0-9a-f]{64}$'),
+  constraint chk_analytics_digest_deliveries_content_hash
+    check (content_hash ~ '^sha256:[0-9a-f]{64}$'),
+  constraint chk_analytics_digest_deliveries_digest_identity
+    check (
+      digest ->> 'logicalId' = logical_id
+      and digest #>> '{delivery,contentHash}' = content_hash
+      and digest #>> '{sourceReport,evidenceHash}' = evidence_hash
+    )
+);
+
 create index if not exists idx_products_active on products(is_active);
 create index if not exists idx_products_style_level on products(riding_style, skill_level);
 create index if not exists idx_products_shape on products(shape_type);
@@ -377,3 +424,7 @@ create index if not exists idx_email_leads_created_at on email_leads(created_at 
 create index if not exists idx_analytics_events_created_at on analytics_events(created_at desc);
 create index if not exists idx_analytics_events_name on analytics_events(event_name, created_at desc);
 create index if not exists idx_analytics_events_session on analytics_events(session_id, created_at desc);
+create index if not exists idx_analytics_digest_deliveries_retry
+  on analytics_digest_deliveries(delivery_status, next_attempt_at);
+create index if not exists idx_analytics_digest_deliveries_created_at
+  on analytics_digest_deliveries(created_at);
