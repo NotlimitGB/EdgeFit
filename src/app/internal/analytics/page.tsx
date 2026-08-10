@@ -213,18 +213,18 @@ export default async function InternalAnalyticsPage() {
         </section>
 
         <section className="grid gap-6 lg:grid-cols-2" aria-label="KPI trends">
-          <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-xl font-bold text-slate-950">7 дней vs предыдущие 7</h2>
             <div className="mt-4"><TrendTable report={report} period="weekOverWeek" /></div>
           </article>
-          <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-xl font-bold text-slate-950">30 дней vs предыдущие 30</h2>
             <div className="mt-4"><TrendTable report={report} period="monthOverMonth" /></div>
           </article>
         </section>
 
         <section className="grid gap-6 lg:grid-cols-2" aria-label="Commerce evidence">
-          <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-xl font-bold text-slate-950">Merchant evidence</h2>
             <div className="mt-4 overflow-x-auto">
               <table className="min-w-[30rem] w-full text-left text-sm">
@@ -233,7 +233,7 @@ export default async function InternalAnalyticsPage() {
               </table>
             </div>
           </article>
-          <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-xl font-bold text-slate-950">Click origins</h2>
             <ul className="mt-4 divide-y divide-slate-100 text-sm">
               {report.commerce.clickSources30Days.map((item) => <li key={item.value ?? "unknown"} className="flex justify-between gap-4 py-3"><span>{item.value ?? "unknown"}</span><strong>{item.clickEvents}</strong></li>)}
