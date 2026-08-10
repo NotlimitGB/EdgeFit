@@ -11,6 +11,7 @@ import {
   calculateTrend,
   getHistoryDays,
   getAnalyticsReportPrivacyViolations,
+  quizCompletionAcquisitionPolicy,
   reportWindowKeys,
   reportedEventNames,
   type AnalyticsSourceStatus,
@@ -524,10 +525,12 @@ async function loadFirstPartyReport(
 function buildDataQuality({
   firstParty,
   metrikaStatus,
+  acquisitionStatus,
   traffic30d,
 }: {
   firstParty: FirstPartyResult;
   metrikaStatus: AnalyticsSourceStatus;
+  acquisitionStatus: AnalyticsSourceStatus;
   traffic30d: TrafficMetrics | null;
 }) {
   const warnings: DataQualityWarning[] = [];
@@ -588,6 +591,11 @@ function buildDataQuality({
         ? "metrika_not_configured"
         : "metrika_unavailable",
       "Yandex Metrica traffic is not available for this report.",
+    );
+  } else if (acquisitionStatus.status === "unavailable") {
+    add(
+      "metrika_acquisition_unavailable",
+      "Yandex Metrica acquisition conversions are not available for this report.",
     );
   }
   if (traffic30d && traffic30d.users > 0 && traffic30d.visits === 0) {
@@ -686,6 +694,10 @@ export async function getAnalyticsReport({ now = new Date() } = {}) {
       sources30Days: metrika.traffic.sources30Days,
       sourcesSampling: metrika.traffic.sourcesSampling,
     },
+    acquisition: {
+      ...metrika.acquisition,
+      quizCompletionPolicy: quizCompletionAcquisitionPolicy,
+    },
     firstParty: {
       historyDays: firstParty.historyDays,
       events: firstParty.events,
@@ -705,6 +717,7 @@ export async function getAnalyticsReport({ now = new Date() } = {}) {
     dataQuality: buildDataQuality({
       firstParty,
       metrikaStatus: metrika.sourceStatus,
+      acquisitionStatus: metrika.acquisition.sourceStatus,
       traffic30d,
     }),
   };

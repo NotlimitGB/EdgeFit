@@ -78,6 +78,48 @@ export interface TrafficSourceMetric {
   share: number | null;
 }
 
+export const acquisitionGoalKeys = [
+  "quizStarted",
+  "resultViewed",
+  "productClicked",
+] as const;
+
+export type AcquisitionGoalKey = (typeof acquisitionGoalKeys)[number];
+
+export interface GoalConversionMetric {
+  users: number;
+  visits: number;
+  visitConversionRate: number;
+  userConversionRate: number;
+}
+
+export interface AcquisitionGoalWindow {
+  goals: Record<AcquisitionGoalKey, GoalConversionMetric>;
+  sampling: SamplingMetadata;
+}
+
+export interface AcquisitionSourceMetric {
+  source: string;
+  label: string;
+  visits: number;
+  users: number;
+  goals: Record<AcquisitionGoalKey, GoalConversionMetric>;
+}
+
+export interface AcquisitionLandingMetric {
+  path: string;
+  visits: number;
+  users: number;
+  goals: Record<AcquisitionGoalKey, GoalConversionMetric>;
+}
+
+export const quizCompletionAcquisitionPolicy = {
+  authority: "first_party_ordered_funnel",
+  yandexGoalId: 545241567,
+  yandexStatus: "withheld_historical_contamination",
+  cleanFrom: "2026-08-11",
+} as const;
+
 export interface TrendDelta {
   current: number;
   previous: number;

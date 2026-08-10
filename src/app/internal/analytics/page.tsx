@@ -6,6 +6,10 @@ import {
   getAnalyticsReport,
   type AnalyticsReport,
 } from "@/lib/analytics/reporting-server";
+import type {
+  AcquisitionGoalKey,
+  GoalConversionMetric,
+} from "@/lib/analytics/reporting-core";
 import {
   INTERNAL_ACCESS_COOKIE,
   INTERNAL_LOGIN_PATH,
@@ -43,6 +47,23 @@ function formatDecimal(value: number | null | undefined) {
 
 function formatPercent(value: number | null | undefined) {
   return value == null ? "—" : percentFormatter.format(value);
+}
+
+const acquisitionGoalLabels: Record<AcquisitionGoalKey, string> = {
+  quizStarted: "Quiz started",
+  resultViewed: "Result viewed",
+  productClicked: "Store click",
+};
+
+function AcquisitionGoalValue({ goal }: { goal: GoalConversionMetric | undefined }) {
+  return (
+    <>
+      <strong className="block text-slate-900">{formatInteger(goal?.visits)}</strong>
+      <span className="text-xs text-slate-500">
+        {formatPercent(goal?.visitConversionRate)} визитов
+      </span>
+    </>
+  );
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -137,6 +158,7 @@ export default async function InternalAnalyticsPage() {
   const traffic30d = report.traffic.last30Days;
   const funnel30d = report.funnel.last30Days;
   const commerce30d = report.commerce.windows.last30Days;
+  const acquisition30d = report.acquisition.last30Days;
 
   return (
     <div className="container-shell py-10 sm:py-14">
@@ -209,6 +231,115 @@ export default async function InternalAnalyticsPage() {
               label="Result → store"
               value={formatPercent(funnel30d.resultToStoreRate)}
             />
+          </div>
+        </section>
+
+        <section className="min-w-0" aria-labelledby="acquisition-title">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 id="acquisition-title" className="text-2xl font-bold text-slate-950">
+                Yandex acquisition
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm text-slate-600">
+                Конверсия traffic → goal за последние 30 завершённых дней. Это не
+                последовательная конверсия first-party funnel.
+              </p>
+            </div>
+            <StatusBadge status={report.acquisition.sourceStatus.status} />
+          </div>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {(Object.keys(acquisitionGoalLabels) as AcquisitionGoalKey[]).map((key) => {
+              const goal = acquisition30d?.goals[key];
+              return (
+                <MetricCard
+                  key={key}
+                  label={acquisitionGoalLabels[key]}
+                  value={formatInteger(goal?.visits)}
+                  note={`${formatPercent(goal?.visitConversionRate)} визитов · ${formatInteger(goal?.users)} пользователей · ${formatPercent(goal?.userConversionRate)} пользователей`}
+                />
+              );
+            })}
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-sky-200 bg-sky-50 p-5 text-sm text-sky-950">
+            <strong>Quiz completion: first-party ordered funnel.</strong>{" "}
+            Yandex goal {report.acquisition.quizCompletionPolicy.yandexGoalId} намеренно
+            исключён из acquisition reporting из-за исторического загрязнения; чистая
+            Yandex-история начинается с {report.acquisition.quizCompletionPolicy.cleanFrom}.
+          </div>
+
+          <div className="mt-6 grid min-w-0 gap-6">
+            <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h3 className="text-xl font-bold text-slate-950">Traffic source → goals</h3>
+              {report.acquisition.sources30Days.length > 0 ? (
+                <div className="mt-4 max-w-full overflow-x-auto">
+                  <table className="min-w-[46rem] w-full text-left text-sm">
+                    <thead className="border-b border-slate-200 text-slate-500">
+                      <tr>
+                        <th className="px-3 py-3">Источник</th>
+                        <th className="px-3 py-3">Визиты</th>
+                        <th className="px-3 py-3">Quiz start</th>
+                        <th className="px-3 py-3">Result</th>
+                        <th className="px-3 py-3">Store</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.acquisition.sources30Days.map((item) => (
+                        <tr key={item.source} className="border-b border-slate-100 last:border-0">
+                          <th className="px-3 py-3 font-semibold text-slate-800">
+                            {item.label}
+                            <span className="mt-1 block text-xs font-normal text-slate-500">
+                              {item.source}
+                            </span>
+                          </th>
+                          <td className="px-3 py-3">{formatInteger(item.visits)}</td>
+                          <td className="px-3 py-3"><AcquisitionGoalValue goal={item.goals.quizStarted} /></td>
+                          <td className="px-3 py-3"><AcquisitionGoalValue goal={item.goals.resultViewed} /></td>
+                          <td className="px-3 py-3"><AcquisitionGoalValue goal={item.goals.productClicked} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="mt-4 text-sm text-slate-600">Нет доступных данных по источникам.</p>
+              )}
+            </article>
+
+            <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h3 className="text-xl font-bold text-slate-950">Landing page → goals</h3>
+              {report.acquisition.landingPages30Days.length > 0 ? (
+                <div className="mt-4 max-w-full overflow-x-auto">
+                  <table className="min-w-[46rem] w-full text-left text-sm">
+                    <thead className="border-b border-slate-200 text-slate-500">
+                      <tr>
+                        <th className="px-3 py-3">Landing path</th>
+                        <th className="px-3 py-3">Визиты</th>
+                        <th className="px-3 py-3">Quiz start</th>
+                        <th className="px-3 py-3">Result</th>
+                        <th className="px-3 py-3">Store</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.acquisition.landingPages30Days.map((item) => (
+                        <tr key={item.path} className="border-b border-slate-100 last:border-0">
+                          <th className="px-3 py-3 font-semibold text-slate-800">
+                            <span className="break-all">{item.path}</span>
+                          </th>
+                          <td className="px-3 py-3">{formatInteger(item.visits)}</td>
+                          <td className="px-3 py-3"><AcquisitionGoalValue goal={item.goals.quizStarted} /></td>
+                          <td className="px-3 py-3"><AcquisitionGoalValue goal={item.goals.resultViewed} /></td>
+                          <td className="px-3 py-3"><AcquisitionGoalValue goal={item.goals.productClicked} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="mt-4 text-sm text-slate-600">Нет доступных данных по landing pages.</p>
+              )}
+            </article>
           </div>
         </section>
 
