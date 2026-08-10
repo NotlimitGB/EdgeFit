@@ -31,7 +31,7 @@ export async function saveAnalyticsEvent({
       ${sessionId},
       ${eventName},
       ${pagePath ?? null},
-      ${JSON.stringify(payload)}::jsonb
+      ${sql.json(payload as Parameters<typeof sql.json>[0])}
     )
   `;
 }
