@@ -40,6 +40,15 @@ const ACQUISITION_METRICS = [
   ]),
 ] as const;
 
+const METRIKA_SOURCE_LABEL_FALLBACKS: Readonly<Record<string, string>> = {
+  organic: "Переходы из поисковых систем",
+  referral: "Переходы по ссылкам на сайтах",
+  direct: "Прямые заходы",
+  internal: "Внутренние переходы",
+};
+const MOJIBAKE_PAIR_PATTERN =
+  /[РС][\u0080-\u00bf\u0400\u0402-\u040f\u0450\u0452-\u045f\u2000-\u206f]/gu;
+
 interface MetrikaResponse {
   totals?: unknown;
   data?: unknown;
@@ -71,6 +80,20 @@ type FetchImplementation = typeof fetch;
 
 function nullableFiniteNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function normalizeMetrikaSourceLabel(source: string, value: unknown) {
+  const label = typeof value === "string" && value.trim() ? value.trim() : null;
+  if (!label) {
+    return source;
+  }
+
+  const mojibakePairs = label.match(MOJIBAKE_PAIR_PATTERN)?.length ?? 0;
+  if (mojibakePairs < 2 && !label.includes("\uFFFD")) {
+    return label;
+  }
+
+  return METRIKA_SOURCE_LABEL_FALLBACKS[source] ?? source;
 }
 
 function getSamplingMetadata(payload: MetrikaResponse): SamplingMetadata {
@@ -260,7 +283,7 @@ function parseTrafficSources(payload: MetrikaResponse): TrafficSourceMetric[] | 
     const id = (dimension as { id?: unknown }).id;
     const name = (dimension as { name?: unknown }).name;
     const source = typeof id === "string" && id.trim() ? id.trim() : null;
-    const label = typeof name === "string" && name.trim() ? name.trim() : source;
+    const label = source ? normalizeMetrikaSourceLabel(source, name) : null;
     if (!source || !label) {
       return [];
     }
@@ -346,7 +369,9 @@ function parseAcquisitionSources(
       return [];
     }
     const source = getDimensionValue(dimensions[0], "id");
-    const label = getDimensionValue(dimensions[0], "name") ?? source;
+    const label = source
+      ? normalizeMetrikaSourceLabel(source, getDimensionValue(dimensions[0], "name"))
+      : null;
     const visits = nullableFiniteNumber(metrics[0]);
     const users = nullableFiniteNumber(metrics[1]);
     const goals = parseAcquisitionGoals(metrics);

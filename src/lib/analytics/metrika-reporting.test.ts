@@ -68,20 +68,22 @@ function okAcquisitionResponse(metrics = acquisitionMetrics()) {
   );
 }
 
-function okSourceResponse() {
+function okSourceResponse(
+  dimensions: Array<{ id?: string; name?: string }> = [
+    { id: "organic", name: "Поиск" },
+    { id: "direct" },
+  ],
+) {
   return new Response(
     JSON.stringify({
       totals: acquisitionMetrics(),
-      data: [
-        {
-          dimensions: [{ id: "organic", name: "Поиск" }],
-          metrics: acquisitionMetrics({ visits: 120, users: 80 }),
-        },
-        {
-          dimensions: [{ id: "direct" }],
-          metrics: acquisitionMetrics({ visits: 30, users: 25 }),
-        },
-      ],
+      data: dimensions.map((dimension, index) => ({
+        dimensions: [dimension],
+        metrics: acquisitionMetrics({
+          visits: index === 0 ? 120 : 30,
+          users: index === 0 ? 80 : 25,
+        }),
+      })),
       sampled: true,
       sample_share: 0.5,
       sample_size: 500,
@@ -260,9 +262,14 @@ describe("Metrika reporting", () => {
     });
     expect(result.traffic.sources30Days[0]).toMatchObject({
       source: "organic",
+      label: "Поиск",
       visits: 120,
       users: 80,
       share: 0.8,
+    });
+    expect(result.acquisition.sources30Days[0]).toMatchObject({
+      source: "organic",
+      label: "Поиск",
     });
     expect(result.acquisition.sources30Days[1]).toMatchObject({
       source: "direct",
@@ -276,6 +283,57 @@ describe("Metrika reporting", () => {
     expect(getAnalyticsReportPrivacyViolations({ acquisition: result.acquisition })).toEqual(
       [],
     );
+  });
+
+  it("normalizes source-label mojibake consistently without changing source IDs", async () => {
+    const malformedLabel = "РџРµСЂРµС…РѕРґС‹ РёР· РїРѕРёСЃРєРѕРІС‹С… СЃРёСЃС‚РµРј";
+    const fetchMock = vi.fn(async (input: URL | RequestInfo) => {
+      const url = new URL(String(input));
+      if (url.searchParams.get("dimensions") === "ym:s:lastsignTrafficSource") {
+        return okSourceResponse([
+          { id: "organic", name: malformedLabel },
+          { id: "direct" },
+          { id: "custom-source", name: "Партнёрская кампания" },
+        ]);
+      }
+      return responseForMetrikaRequest(input);
+    });
+
+    const result = await getMetrikaReporting({
+      counterIdValue: "12345",
+      tokenValue: "fake-token",
+      windows,
+      fetchImpl: fetchMock,
+    });
+
+    expect(result.traffic.sources30Days).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "organic",
+          label: "Переходы из поисковых систем",
+        }),
+        expect.objectContaining({ source: "direct", label: "direct" }),
+        expect.objectContaining({
+          source: "custom-source",
+          label: "Партнёрская кампания",
+        }),
+      ]),
+    );
+    expect(result.acquisition.sources30Days).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "organic",
+          label: "Переходы из поисковых систем",
+        }),
+        expect.objectContaining({ source: "direct", label: "direct" }),
+        expect.objectContaining({
+          source: "custom-source",
+          label: "Партнёрская кампания",
+        }),
+      ]),
+    );
+    expect(result.traffic.sources30Days[0]?.label).not.toBe(malformedLabel);
+    expect(result.acquisition.sources30Days[0]?.label).not.toBe(malformedLabel);
   });
 
   it("keeps basic traffic when an acquisition-only request fails", async () => {
