@@ -1,0 +1,69 @@
+.launcher.launcher {
+  position: relative;
+  isolation: isolate;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--ef-border-strong);
+  border-radius: clamp(1.25rem, 3vw, 1.75rem);
+  padding: clamp(1.25rem, 4vw, 2.25rem);
+  background:
+    linear-gradient(145deg, rgba(20, 48, 54, 0.94), rgba(7, 20, 24, 0.98)),
+    var(--ef-bg);
+  box-shadow:
+    0 2rem 5rem rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(220, 246, 252, 0.07);
+}
+
+.launcher.launcher::before {
+  inset: 0;
+  height: 100%;
+  opacity: 0.42;
+}
+
+.intro {
+  position: relative;
+  z-index: 1;
+  max-width: 50rem;
+}
+
+.intro h2 {
+  max-width: 43rem;
+  margin-top: 1rem;
+  font-family: var(--font-space-grotesk), sans-serif;
+  font-size: clamp(2rem, 5vw, 3.35rem);
+  line-height: 0.98;
+  letter-spacing: -0.045em;
+  text-wrap: balance;
+}
+
+.intro > p:last-of-type {
+  max-width: 43rem;
+  margin-top: 1rem;
+  color: var(--ef-text-soft);
+  font-size: 1rem;
+  line-height: 1.75;
+}
+
+.action {
+  width: 100%;
+  margin-top: 1.5rem;
+}
+
+.quizMount {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  max-width: 100%;
+  margin-top: 2rem;
+}
+
+.quizMount:empty {
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .action {
+    width: auto;
+  }
+}

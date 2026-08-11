@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { InlineQuizLauncher } from "@/components/seo/inline-quiz-launcher";
 import type { SeoLandingPage } from "@/lib/seo-pages";
 import { getSeoLandingPath, seoLandingPages } from "@/lib/seo-pages";
 import { getAbsoluteSiteUrl } from "@/lib/site-url";
@@ -61,20 +62,22 @@ export function SeoLandingPageView({ page }: { page: SeoLandingPage }) {
             {page.lead}
           </p>
 
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Link
-              href="/quiz"
-              className="inline-flex items-center justify-center rounded-full bg-[var(--color-pine)] px-6 py-4 text-sm font-bold text-white hover:-translate-y-0.5 hover:bg-[var(--color-sky-deep)]"
-            >
-              Подобрать доску
-            </Link>
-            <Link
-              href="/catalog"
-              className="inline-flex items-center justify-center rounded-full border border-[var(--color-border)] bg-white px-6 py-4 text-sm font-bold text-[var(--color-pine)] hover:border-[var(--color-sky)]"
-            >
-              Посмотреть модели
-            </Link>
-          </div>
+          {page.interactiveExperience !== "quiz" ? (
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Link
+                href="/quiz"
+                className="inline-flex items-center justify-center rounded-full bg-[var(--color-pine)] px-6 py-4 text-sm font-bold text-white hover:-translate-y-0.5 hover:bg-[var(--color-sky-deep)]"
+              >
+                Подобрать доску
+              </Link>
+              <Link
+                href="/catalog"
+                className="inline-flex items-center justify-center rounded-full border border-[var(--color-border)] bg-white px-6 py-4 text-sm font-bold text-[var(--color-pine)] hover:border-[var(--color-sky)]"
+              >
+                Посмотреть модели
+              </Link>
+            </div>
+          ) : null}
         </div>
 
         <div className="panel grid-fade relative overflow-hidden p-6 sm:p-8">
@@ -96,6 +99,12 @@ export function SeoLandingPageView({ page }: { page: SeoLandingPage }) {
             </div>
           </div>
         </div>
+
+        {page.interactiveExperience === "quiz" ? (
+          <div className="min-w-0 xl:col-span-2">
+            <InlineQuizLauncher />
+          </div>
+        ) : null}
       </section>
 
       <section className="mt-16 grid gap-5 lg:grid-cols-3">

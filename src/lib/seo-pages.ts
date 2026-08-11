@@ -11,6 +11,7 @@ export interface SeoLandingFaq {
 
 export interface SeoLandingPage {
   slug: string;
+  interactiveExperience?: "quiz";
   shortTitle: string;
   title: string;
   description: string;
@@ -24,6 +25,7 @@ export interface SeoLandingPage {
 export const seoLandingPages: SeoLandingPage[] = [
   {
     slug: "kalkulyator-snouborda",
+    interactiveExperience: "quiz",
     shortTitle: "Калькулятор сноуборда",
     title: "Калькулятор сноуборда: как подобрать длину и ширину доски",
     description:
