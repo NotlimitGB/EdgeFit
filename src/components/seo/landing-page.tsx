@@ -1,8 +1,26 @@
 import Link from "next/link";
 import { InlineQuizLauncher } from "@/components/seo/inline-quiz-launcher";
 import type { SeoLandingPage } from "@/lib/seo-pages";
-import { getSeoLandingPath, seoLandingPages } from "@/lib/seo-pages";
+import {
+  getRelatedSeoLandingPages,
+  getSeoLandingPath,
+} from "@/lib/seo-pages";
 import { getAbsoluteSiteUrl } from "@/lib/site-url";
+
+const defaultDecisionCards = [
+  {
+    title: "Понятная логика",
+    text: "Объясняем, почему размер меняется от веса, стиля катания и ботинка, а не прячем формулу.",
+  },
+  {
+    title: "Проверка ширины",
+    text: "Помогаем вовремя увидеть, когда проблема уже не в длине, а в слишком узкой доске.",
+  },
+  {
+    title: "Переход к моделям",
+    text: "Страница не заканчивается на теории: после чтения можно сразу перейти в квиз и каталог.",
+  },
+];
 
 function buildArticleSchema(page: SeoLandingPage) {
   return {
@@ -39,7 +57,8 @@ function buildFaqSchema(page: SeoLandingPage) {
 }
 
 export function SeoLandingPageView({ page }: { page: SeoLandingPage }) {
-  const relatedPages = seoLandingPages.filter((item) => item.slug !== page.slug).slice(0, 4);
+  const relatedPages = getRelatedSeoLandingPages(page);
+  const decisionCards = page.decisionCards ?? defaultDecisionCards;
 
   return (
     <div className="container-shell py-12 sm:py-16">
@@ -108,26 +127,65 @@ export function SeoLandingPageView({ page }: { page: SeoLandingPage }) {
       </section>
 
       <section className="mt-16 grid gap-5 lg:grid-cols-3">
-        {[
-          {
-            title: "Понятная логика",
-            text: "Объясняем, почему размер меняется от веса, стиля катания и ботинка, а не прячем формулу.",
-          },
-          {
-            title: "Проверка ширины",
-            text: "Помогаем вовремя увидеть, когда проблема уже не в длине, а в слишком узкой доске.",
-          },
-          {
-            title: "Переход к моделям",
-            text: "Страница не заканчивается на теории: после чтения можно сразу перейти в квиз и каталог.",
-          },
-        ].map((card) => (
+        {decisionCards.map((card) => (
           <article key={card.title} className="panel p-5">
             <h2 className="text-2xl font-bold">{card.title}</h2>
             <p className="mt-3 text-sm leading-7 text-[var(--color-muted)]">{card.text}</p>
           </article>
         ))}
       </section>
+
+      {page.comparison ? (
+        <section className="panel mt-16 min-w-0 overflow-hidden p-6 sm:p-8">
+          <div className="max-w-4xl">
+            <span className="eyebrow">Сравнение</span>
+            <h2 className="heading-display mt-4 text-3xl font-bold text-balance sm:text-4xl">
+              {page.comparison.title}
+            </h2>
+            <p className="mt-4 text-base leading-8 text-[var(--color-muted)]">
+              {page.comparison.description}
+            </p>
+          </div>
+
+          <div className="mt-6 max-w-full overflow-x-auto">
+            <table className="min-w-[48rem] w-full border-separate border-spacing-0 text-left text-sm">
+              <thead>
+                <tr>
+                  {page.comparison.columns.map((column) => (
+                    <th
+                      key={column}
+                      scope="col"
+                      className="border-b border-[var(--color-border)] bg-[var(--color-paper-soft)] px-4 py-4 font-bold text-[var(--color-pine)] first:rounded-tl-xl last:rounded-tr-xl"
+                    >
+                      {column}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {page.comparison.rows.map((row) => (
+                  <tr key={row.label}>
+                    <th
+                      scope="row"
+                      className="border-b border-[var(--color-border)] bg-white/84 px-4 py-4 align-top font-bold text-[var(--color-ink)]"
+                    >
+                      {row.label}
+                    </th>
+                    {row.cells.map((cell) => (
+                      <td
+                        key={cell}
+                        className="border-b border-[var(--color-border)] bg-white/72 px-4 py-4 align-top leading-7 text-[var(--color-muted)]"
+                      >
+                        {cell}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
 
       <section className="mt-16 grid gap-6">
         {page.sections.map((section) => (

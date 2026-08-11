@@ -6,6 +6,10 @@ export const metadata: Metadata = {
   title: "Результат подбора",
   description:
     "Результат квиза EdgeFit: диапазон длины, рекомендация по ширине и список подходящих моделей.",
+  robots: {
+    index: false,
+    follow: true,
+  },
 };
 
 export default function ResultPage() {
