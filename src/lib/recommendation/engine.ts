@@ -35,12 +35,16 @@ import type {
   WidthType,
 } from "@/types/domain";
 
-export const ALGORITHM_VERSION = "v1.6.3";
+export const ALGORITHM_VERSION = "v1.6.4";
 
 type CompatibilitySeverity = "ideal" | "neutral" | "soft-mismatch" | "hard-mismatch";
 
 const RECOMMENDATION_SCORE_THRESHOLD = 56;
 const ALTERNATIVE_SCORE_THRESHOLD = 40;
+
+export interface RecommendationIdentityContext {
+  familyKeyByProductId?: Readonly<Record<string, string>>;
+}
 const CATASTROPHIC_LENGTH_DISTANCE_CM = 12;
 const CATASTROPHIC_WAIST_DEFICIT_MM = 12;
 const CATASTROPHIC_WEIGHT_DISTANCE_KG = 20;
@@ -1247,12 +1251,72 @@ function scoreCandidate(
   } satisfies RecommendationMatch;
 }
 
+function compareConcreteMatches(
+  left: RecommendationMatch,
+  right: RecommendationMatch,
+) {
+  const scoreDifference = right.score - left.score;
+  if (scoreDifference !== 0) return scoreDifference;
+
+  const slugDifference = compareStableText(
+    left.product.slug,
+    right.product.slug,
+  );
+  if (slugDifference !== 0) return slugDifference;
+
+  const sizeDifference = left.size.sizeCm - right.size.sizeCm;
+  if (sizeDifference !== 0) return sizeDifference;
+
+  const labelDifference = compareStableText(
+    left.size.sizeLabel ?? "",
+    right.size.sizeLabel ?? "",
+  );
+  if (labelDifference !== 0) return labelDifference;
+
+  return compareStableText(left.product.id, right.product.id);
+}
+
+function compareStableText(left: string, right: string) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+function getRecommendationFamilyKey(
+  productId: string,
+  familyKeyByProductId: Readonly<Record<string, string>>,
+) {
+  return familyKeyByProductId[productId]?.trim() || `product:${productId}`;
+}
+
+export function collapseRecommendationMatchesByFamily(
+  matches: readonly RecommendationMatch[],
+  familyKeyByProductId: Readonly<Record<string, string>> = {},
+) {
+  const bestMatchByFamily = new Map<string, RecommendationMatch>();
+
+  for (const match of matches) {
+    const familyKey = getRecommendationFamilyKey(
+      match.product.id,
+      familyKeyByProductId,
+    );
+    const existingMatch = bestMatchByFamily.get(familyKey);
+
+    if (!existingMatch || compareConcreteMatches(match, existingMatch) < 0) {
+      bestMatchByFamily.set(familyKey, match);
+    }
+  }
+
+  return [...bestMatchByFamily.values()].sort(compareConcreteMatches);
+}
+
 function getCandidates(
   boards: Product[],
   input: QuizInput,
   lengthRange: { min: number; max: number },
   targetWaistWidthMm: number,
   shapeProfile: ReturnType<typeof getRecommendationShapeProfile>,
+  familyKeyByProductId: Readonly<Record<string, string>>,
 ) {
   const bestPerBoard = boards.flatMap((product) => {
     const availableSizes = product.sizes.filter(
@@ -1283,12 +1347,15 @@ function getCandidates(
       ),
     );
 
-    const bestMatch = matches.sort((left, right) => right.score - left.score)[0];
+    const bestMatch = matches.sort(compareConcreteMatches)[0];
 
     return bestMatch ? [bestMatch] : [];
   });
 
-  const sortedBoards = bestPerBoard.sort((left, right) => right.score - left.score);
+  const sortedBoards = collapseRecommendationMatchesByFamily(
+    bestPerBoard,
+    familyKeyByProductId,
+  );
   const recommendedBoards = sortedBoards
     .filter((match) => match.score >= RECOMMENDATION_SCORE_THRESHOLD)
     .slice(0, 4);
@@ -1341,6 +1408,7 @@ function buildExplanation(
 export function getRecommendation(
   input: QuizInput,
   boards: Product[] = [],
+  identityContext: RecommendationIdentityContext = {},
 ): RecommendationResult {
   const activeBoards = boards.filter(
     (board) =>
@@ -1400,6 +1468,7 @@ export function getRecommendation(
     lengthRange,
     widthRecommendation.targetWaistWidthMm,
     shapeProfile,
+    identityContext.familyKeyByProductId ?? {},
   );
 
   return {

@@ -9,6 +9,7 @@ import type { Product, ProductSize } from "@/types/domain";
 
 interface ProductRow {
   id: string;
+  familyId: string | null;
   slug: string;
   brand: string;
   modelName: string;
@@ -81,8 +82,11 @@ function isReliableStoredSize(size: ProductSize) {
 }
 
 function normalizeProduct(product: ProductRow): Product {
+  const { familyId: internalFamilyId, ...publicProduct } = product;
+  void internalFamilyId;
+
   return {
-    ...product,
+    ...publicProduct,
     flex: Number(product.flex),
     priceFrom: Number(product.priceFrom),
     seasonLabel: product.seasonLabel?.trim() || null,
@@ -105,6 +109,9 @@ async function getSelectFragments(sql: Sql) {
   const columnSupport = await getProductColumnSupport(sql);
 
   return {
+    familyIdSelect: columnSupport.familyId
+      ? sql.unsafe("p.family_id::text")
+      : sql.unsafe("null::text"),
     seasonLabelSelect: columnSupport.seasonLabel
       ? sql.unsafe("p.season_label")
       : sql.unsafe("null::text"),
@@ -138,6 +145,31 @@ async function getSelectFragments(sql: Sql) {
   };
 }
 
+export interface RecommendationCatalog {
+  products: Product[];
+  familyKeyByProductId: Readonly<Record<string, string>>;
+}
+
+export function buildRecommendationFamilyKeyByProductId(
+  rows: readonly Pick<ProductRow, "id" | "familyId">[],
+) {
+  return Object.freeze(
+    Object.fromEntries(
+      rows.map((row) => [
+        row.id,
+        row.familyId ? `family:${row.familyId}` : `product:${row.id}`,
+      ]),
+    ),
+  ) as Readonly<Record<string, string>>;
+}
+
+function buildProductQueryResult(rows: ProductRow[]): RecommendationCatalog {
+  return {
+    products: rows.map(normalizeProduct),
+    familyKeyByProductId: buildRecommendationFamilyKeyByProductId(rows),
+  };
+}
+
 async function runProductQuery(
   sql: Sql,
   options:
@@ -152,6 +184,7 @@ async function runProductQuery(
       },
 ) {
   const {
+    familyIdSelect,
     seasonLabelSelect,
     shapeTypeSelect,
     camberProfileSelect,
@@ -168,6 +201,7 @@ async function runProductQuery(
     const rows = await sql<ProductRow[]>`
       select
         p.id::text as "id",
+        ${familyIdSelect} as "familyId",
         p.slug as "slug",
         p.brand as "brand",
         p.model_name as "modelName",
@@ -214,13 +248,14 @@ async function runProductQuery(
       limit 1
     `;
 
-    return rows.map(normalizeProduct);
+    return buildProductQueryResult(rows);
   }
 
   if (options.kind === "related") {
     const rows = await sql<ProductRow[]>`
       select
         p.id::text as "id",
+        ${familyIdSelect} as "familyId",
         p.slug as "slug",
         p.brand as "brand",
         p.model_name as "modelName",
@@ -276,12 +311,13 @@ async function runProductQuery(
       limit ${options.limit}
     `;
 
-    return rows.map(normalizeProduct);
+    return buildProductQueryResult(rows);
   }
 
   const rows = await sql<ProductRow[]>`
     select
       p.id::text as "id",
+      ${familyIdSelect} as "familyId",
       p.slug as "slug",
       p.brand as "brand",
       p.model_name as "modelName",
@@ -327,10 +363,15 @@ async function runProductQuery(
     order by p.brand, p.model_name
   `;
 
-  return rows.map(normalizeProduct);
+  return buildProductQueryResult(rows);
 }
 
 const loadAllProductsFromDatabase = cache(async () => {
+  const sql = получитьКлиентБазы();
+  return (await runProductQuery(sql, { kind: "all" })).products;
+});
+
+const loadRecommendationCatalogFromDatabase = cache(async () => {
   const sql = получитьКлиентБазы();
   return runProductQuery(sql, { kind: "all" });
 });
@@ -349,7 +390,8 @@ const loadAllProductSlugsFromDatabase = cache(async () => {
 
 const loadProductBySlugFromDatabase = cache(async (slug: string) => {
   const sql = получитьКлиентБазы();
-  const [product] = await runProductQuery(sql, { kind: "by-slug", slug });
+  const { products } = await runProductQuery(sql, { kind: "by-slug", slug });
+  const [product] = products;
   return product;
 });
 
@@ -362,13 +404,15 @@ const loadRelatedProductsFromDatabase = cache(
   ) => {
     const sql = получитьКлиентБазы();
 
-    return runProductQuery(sql, {
-      kind: "related",
-      slug,
-      ridingStyle,
-      boardLine,
-      limit,
-    });
+    return (
+      await runProductQuery(sql, {
+        kind: "related",
+        slug,
+        ridingStyle,
+        boardLine,
+        limit,
+      })
+    ).products;
   },
 );
 
@@ -379,6 +423,16 @@ export const получитьВсеМодели = cache(async () => {
 
   return loadAllProductsFromDatabase();
 });
+
+export const getRecommendationCatalog = cache(
+  async (): Promise<RecommendationCatalog> => {
+    if (!базаНастроена()) {
+      return { products: [], familyKeyByProductId: Object.freeze({}) };
+    }
+
+    return loadRecommendationCatalogFromDatabase();
+  },
+);
 
 export const получитьМодельПоСлагу = cache(async (слаг: string) => {
   if (!базаНастроена()) {

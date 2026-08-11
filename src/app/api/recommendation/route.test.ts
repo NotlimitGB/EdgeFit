@@ -3,14 +3,19 @@ import type { RecommendationResult } from "@/types/domain";
 
 const mocks = vi.hoisted(() => ({
   save: vi.fn(),
+  getRecommendation: vi.fn(),
   recommendation: null as RecommendationResult | null,
 }));
 
 vi.mock("@/lib/products", () => ({
-  получитьВсеМодели: async () => [{ id: "product-1" }],
+  getRecommendationCatalog: async () => ({
+    products: [{ id: "product-1" }],
+    familyKeyByProductId: { "product-1": "family:family-1" },
+  }),
 }));
 vi.mock("@/lib/recommendation/engine", () => ({
-  getRecommendation: () => mocks.recommendation,
+  getRecommendation: (...parameters: unknown[]) =>
+    mocks.getRecommendation(...parameters),
 }));
 vi.mock("@/lib/quiz-results", () => ({
   сохранитьРезультатКвиза: (...parameters: unknown[]) => mocks.save(...parameters),
@@ -23,7 +28,7 @@ import {
 } from "@/lib/saved-result-contract";
 
 const recommendation: RecommendationResult = {
-  algorithmVersion: "v1.6.3",
+  algorithmVersion: "v1.6.4",
   input: {
     heightCm: 178,
     weightKg: 74,
@@ -54,6 +59,7 @@ describe("recommendation API saved-result transport", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.recommendation = recommendation;
+    mocks.getRecommendation.mockReturnValue(recommendation);
   });
 
   it("keeps the response body exact and omits saved headers without a token", async () => {
@@ -88,6 +94,28 @@ describe("recommendation API saved-result transport", () => {
     expect(response.headers.get(SAVED_RESULT_TOKEN_HEADER)).toBe(token);
     expect(response.headers.get("cache-control")).toBe(
       "private, no-store, max-age=0",
+    );
+  });
+
+  it("passes internal family identity to the engine without exposing it in the body", async () => {
+    mocks.save.mockResolvedValue(null);
+
+    const response = await POST(
+      new Request("http://localhost/api/recommendation", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(recommendation.input),
+      }),
+    );
+    const body = await response.json();
+
+    expect(mocks.getRecommendation).toHaveBeenCalledWith(
+      recommendation.input,
+      [{ id: "product-1" }],
+      { familyKeyByProductId: { "product-1": "family:family-1" } },
+    );
+    expect(JSON.stringify(body)).not.toMatch(
+      /familyId|familyKey|familyMemberRole/u,
     );
   });
 });

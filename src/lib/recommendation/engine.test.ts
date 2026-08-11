@@ -89,7 +89,7 @@ const defaultBoards = [
 
 describe("getRecommendation", () => {
   it("reports the localized width-safety algorithm version", () => {
-    expect(ALGORITHM_VERSION).toBe("v1.6.3");
+    expect(ALGORITHM_VERSION).toBe("v1.6.4");
   });
 
   it("returns stable all-mountain length range for base input", () => {
@@ -1217,5 +1217,210 @@ describe("getRecommendation", () => {
     expect(alternativeScores).toEqual(
       [...alternativeScores].sort((left, right) => right - left),
     );
+  });
+});
+
+describe("canonical recommendation family collapse", () => {
+  function getResultSlugs(result: ReturnType<typeof getRecommendation>) {
+    return [...result.recommendedBoards, ...result.avoidBoards].map(
+      (match) => match.product.slug,
+    );
+  }
+
+  function groupProducts(
+    products: readonly Product[],
+    familyKey = "family:test-family",
+  ) {
+    return {
+      familyKeyByProductId: Object.fromEntries(
+        products.map((product) => [product.id, familyKey]),
+      ),
+    };
+  }
+
+  it("keeps only the highest-scoring sibling after every Product has been scored", () => {
+    const base = createProduct(
+      { slug: "family-base", modelName: "Family Base" },
+      { waistWidthMm: 252, widthType: "regular" },
+    );
+    const wide = createProduct(
+      { slug: "family-wide", modelName: "Family Wide" },
+      { waistWidthMm: 261, widthType: "wide" },
+    );
+    const independent = getRecommendation(baseInput, [base, wide]);
+    const expectedWinner = [
+      ...independent.recommendedBoards,
+      ...independent.avoidBoards,
+    ].sort((left, right) => right.score - left.score)[0];
+
+    expect(
+      independent.recommendedBoards.map(({ product }) => product.slug),
+    ).toEqual(expect.arrayContaining([base.slug, wide.slug]));
+    expect(
+      new Set(independent.recommendedBoards.map(({ score }) => score)).size,
+    ).toBe(2);
+
+    const collapsed = getRecommendation(
+      baseInput,
+      [base, wide],
+      groupProducts([base, wide]),
+    );
+
+    expect(getResultSlugs(collapsed)).toEqual([expectedWinner.product.slug]);
+  });
+
+  it("allows the Wide concrete offer to beat its base sibling for a wide-footprint rider", () => {
+    const input: QuizInput = { ...baseInput, bootSizeEu: 46 };
+    const base = createProduct(
+      { slug: "large-boot-base", modelName: "Large Boot Base" },
+      { waistWidthMm: 258, widthType: "mid-wide" },
+    );
+    const wide = createProduct(
+      { slug: "large-boot-wide", modelName: "Large Boot Wide" },
+      { waistWidthMm: 266, widthType: "wide", sizeLabel: "154W" },
+    );
+
+    const result = getRecommendation(
+      input,
+      [base, wide],
+      groupProducts([base, wide]),
+    );
+    const [winner] = [...result.recommendedBoards, ...result.avoidBoards];
+
+    expect(winner.product).toBe(wide);
+    expect(winner.product.id).toBe(wide.id);
+    expect(winner.product.slug).toBe("large-boot-wide");
+    expect(winner.size.sizeLabel).toBe("154W");
+  });
+
+  it("allows the base concrete offer to beat its Wide sibling without a role bias", () => {
+    const base = createProduct(
+      { slug: "regular-boot-base", modelName: "Regular Boot Base" },
+      { waistWidthMm: 252, widthType: "regular" },
+    );
+    const wide = createProduct(
+      { slug: "regular-boot-wide", modelName: "Regular Boot Wide" },
+      { waistWidthMm: 264, widthType: "wide", sizeLabel: "154W" },
+    );
+
+    const result = getRecommendation(
+      baseInput,
+      [base, wide],
+      groupProducts([base, wide]),
+    );
+
+    expect(getResultSlugs(result)).toEqual([base.slug]);
+  });
+
+  it("prevents a family from spanning recommended and avoid results", () => {
+    const base = createProduct(
+      { slug: "split-family-base", modelName: "Split Family Base" },
+      { waistWidthMm: 252, widthType: "regular" },
+    );
+    const wide = createProduct(
+      { slug: "split-family-wide", modelName: "Split Family Wide" },
+      { sizeCm: 160, waistWidthMm: 262, widthType: "wide" },
+    );
+    const peers = [1, 2, 3].map((index) =>
+      createProduct({
+        slug: `split-peer-${index}`,
+        modelName: `Split Peer ${index}`,
+      }),
+    );
+    const products = [base, wide, ...peers];
+    const independent = getRecommendation(baseInput, products);
+
+    expect(independent.recommendedBoards.map(({ product }) => product.slug)).toContain(
+      base.slug,
+    );
+    expect(independent.avoidBoards.map(({ product }) => product.slug)).toContain(
+      wide.slug,
+    );
+
+    const collapsed = getRecommendation(
+      baseInput,
+      products,
+      groupProducts([base, wide]),
+    );
+    const familyMatches = getResultSlugs(collapsed).filter((slug) =>
+      slug.startsWith("split-family-"),
+    );
+
+    expect(familyMatches).toEqual([base.slug]);
+  });
+
+  it("frees a top-four slot for a distinct model family", () => {
+    const base = createProduct({
+      slug: "diversity-base",
+      modelName: "Diversity Base",
+    });
+    const wide = createProduct({
+      slug: "diversity-wide",
+      modelName: "Diversity Wide",
+    });
+    const distinct = [1, 2, 3, 4].map((index) =>
+      createProduct({
+        slug: `diversity-peer-${index}`,
+        modelName: `Diversity Peer ${index}`,
+      }),
+    );
+
+    const result = getRecommendation(
+      baseInput,
+      [base, wide, ...distinct],
+      groupProducts([base, wide]),
+    );
+    const recommendedSlugs = result.recommendedBoards.map(
+      ({ product }) => product.slug,
+    );
+
+    expect(recommendedSlugs).toHaveLength(4);
+    expect(
+      recommendedSlugs.filter((slug) => slug.startsWith("diversity-")),
+    ).toHaveLength(4);
+    expect(
+      recommendedSlugs.filter(
+        (slug) => slug === base.slug || slug === wide.slug,
+      ),
+    ).toHaveLength(1);
+    expect(
+      recommendedSlugs.filter((slug) => slug.startsWith("diversity-peer-")),
+    ).toHaveLength(3);
+  });
+
+  it("uses stable concrete Product and size identity for equal-score siblings", () => {
+    const alpha = createProduct(
+      { slug: "equal-alpha", modelName: "Equal Alpha" },
+      { sizeCm: 154, sizeLabel: "154" },
+    );
+    const zeta = createProduct(
+      { slug: "equal-zeta", modelName: "Equal Zeta" },
+      { sizeCm: 154, sizeLabel: "154" },
+    );
+    const identity = groupProducts([alpha, zeta]);
+
+    const forward = getRecommendation(baseInput, [zeta, alpha], identity);
+    const reverse = getRecommendation(baseInput, [alpha, zeta], identity);
+
+    expect(getResultSlugs(forward)).toEqual([alpha.slug]);
+    expect(getResultSlugs(reverse)).toEqual([alpha.slug]);
+  });
+
+  it("keeps ungrouped Products independent when identity context is absent", () => {
+    const first = createProduct({
+      slug: "ungrouped-first",
+      modelName: "Shared Display Name",
+    });
+    const second = createProduct({
+      slug: "ungrouped-second",
+      modelName: "Shared Display Name",
+    });
+
+    const result = getRecommendation(baseInput, [first, second]);
+
+    expect(getResultSlugs(result)).toEqual([
+      first.slug,
+      second.slug,
+    ]);
   });
 });
