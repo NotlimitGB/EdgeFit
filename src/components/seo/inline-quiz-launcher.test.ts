@@ -18,7 +18,7 @@ describe("inline calculator SEO experience", () => {
     expect(getSeoLandingPage("kalkulyator-snouborda")?.interactiveExperience).toBe("quiz");
 
     const otherPages = seoLandingPages.filter((page) => page.slug !== "kalkulyator-snouborda");
-    expect(otherPages).toHaveLength(7);
+    expect(otherPages).toHaveLength(10);
     expect(otherPages.every((page) => page.interactiveExperience === undefined)).toBe(true);
   });
 

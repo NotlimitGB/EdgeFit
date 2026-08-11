@@ -41,12 +41,15 @@ import {
   seoLandingPages,
 } from "@/lib/seo-pages";
 
-const originalSlugs = [
+const existingSlugs = [
   "kalkulyator-snouborda",
   "rostovka-snouborda-po-rostu-i-vesu",
   "kak-vybrat-shirinu-snouborda",
   "snoubord-dlya-bolshogo-razmera-nogi",
   "zatsep-botinkom-na-snouborde",
+  "kak-vybrat-snoubord-novichku",
+  "zhestkost-snouborda",
+  "progib-snouborda-camber-rocker",
 ];
 
 const newPageExpectations = [
@@ -70,15 +73,43 @@ const newPageExpectations = [
   },
 ];
 
+const ridingStylePageExpectations = [
+  {
+    slug: "snoubord-dlya-frirayda",
+    title: "Сноуборд для фрирайда: как выбрать длину, форму и прогиб",
+    description:
+      "Как выбрать сноуборд для фрирайда: рабочая длина, directional-форма, flex и профиль под мягкий снег без универсальных формул.",
+    marker: "Параметры доски не заменяют решения о безопасности",
+    hasComparison: false,
+  },
+  {
+    slug: "snoubord-dlya-karvinga",
+    title: "Сноуборд для карвинга: как выбрать ширину, жёсткость и прогиб",
+    description:
+      "Как выбрать сноуборд для карвинга: ширина и boot clearance, flex, профиль, длина и форма для трассы и чистой дуги.",
+    marker: "Что EdgeFit не рассчитывает",
+    hasComparison: true,
+  },
+  {
+    slug: "snoubord-dlya-parka-i-fristayla",
+    title: "Сноуборд для парка и фристайла: как выбрать форму, flex и длину",
+    description:
+      "Как выбрать сноуборд для парка и фристайла: twin-форма, flex, рабочая длина и профиль для switch, фигур, прыжков и трассы.",
+    marker: "Парк — это несколько разных сценариев",
+    hasComparison: false,
+  },
+];
+
 describe("SEO landing registry", () => {
-  it("contains the five original pages and exactly three choice basics pages", () => {
-    expect(seoLandingPages).toHaveLength(8);
+  it("preserves the eight existing pages and adds exactly three riding-style pages", () => {
+    expect(seoLandingPages).toHaveLength(11);
     expect(seoLandingPages.map((page) => page.slug)).toEqual(
-      expect.arrayContaining(originalSlugs),
+      expect.arrayContaining(existingSlugs),
     );
     expect(
-      newPageExpectations.map(({ slug }) => getSeoLandingPage(slug)?.slug),
-    ).toEqual(newPageExpectations.map(({ slug }) => slug));
+      ridingStylePageExpectations.map(({ slug }) => getSeoLandingPage(slug)?.slug),
+    ).toEqual(ridingStylePageExpectations.map(({ slug }) => slug));
+    expect(getSeoLandingPage("snoubord-all-mountain")).toBeUndefined();
   });
 
   it("uses unique slugs and valid explicit topical relationships", () => {
@@ -123,6 +154,54 @@ describe("SEO landing registry", () => {
         .filter((page) => page.interactiveExperience === "quiz")
         .map((page) => page.slug),
     ).toEqual(["kalkulyator-snouborda"]);
+  });
+
+  it("uses the intended narrow riding-style relationships and backlinks", () => {
+    expect(getSeoLandingPage("snoubord-dlya-frirayda")?.relatedSlugs).toEqual([
+      "rostovka-snouborda-po-rostu-i-vesu",
+      "zhestkost-snouborda",
+      "progib-snouborda-camber-rocker",
+      "kalkulyator-snouborda",
+    ]);
+    expect(getSeoLandingPage("snoubord-dlya-karvinga")?.relatedSlugs).toEqual([
+      "kak-vybrat-shirinu-snouborda",
+      "zatsep-botinkom-na-snouborde",
+      "zhestkost-snouborda",
+      "progib-snouborda-camber-rocker",
+      "kalkulyator-snouborda",
+    ]);
+    expect(getSeoLandingPage("snoubord-dlya-parka-i-fristayla")?.relatedSlugs).toEqual([
+      "zhestkost-snouborda",
+      "progib-snouborda-camber-rocker",
+      "kak-vybrat-snoubord-novichku",
+      "kalkulyator-snouborda",
+    ]);
+
+    expect(
+      getSeoLandingPage("rostovka-snouborda-po-rostu-i-vesu")?.relatedSlugs.at(-1),
+    ).toBe("snoubord-dlya-frirayda");
+    expect(getSeoLandingPage("kak-vybrat-shirinu-snouborda")?.relatedSlugs.at(-1)).toBe(
+      "snoubord-dlya-karvinga",
+    );
+    expect(getSeoLandingPage("zatsep-botinkom-na-snouborde")?.relatedSlugs.at(-1)).toBe(
+      "snoubord-dlya-karvinga",
+    );
+    expect(getSeoLandingPage("zhestkost-snouborda")?.relatedSlugs.at(-1)).toBe(
+      "snoubord-dlya-parka-i-fristayla",
+    );
+    expect(getSeoLandingPage("progib-snouborda-camber-rocker")?.relatedSlugs.slice(-2)).toEqual([
+      "snoubord-dlya-frirayda",
+      "snoubord-dlya-parka-i-fristayla",
+    ]);
+  });
+
+  it("keeps every title and description unique", () => {
+    expect(new Set(seoLandingPages.map((page) => page.title)).size).toBe(
+      seoLandingPages.length,
+    );
+    expect(new Set(seoLandingPages.map((page) => page.description)).size).toBe(
+      seoLandingPages.length,
+    );
   });
 });
 
@@ -192,6 +271,66 @@ describe("choice basics SEO rendering", () => {
       expect(markup).toContain(faq.answer);
     }
   });
+});
+
+describe("riding-style SEO rendering", () => {
+  it.each(ridingStylePageExpectations)(
+    "provides distinct metadata and substantive content for $slug",
+    async ({ slug, title, description, marker, hasComparison }) => {
+      const page = getSeoLandingPage(slug);
+      expect(page).toBeDefined();
+
+      const metadata = await generateMetadata({
+        params: Promise.resolve({ seoSlug: slug }),
+      });
+      const markup = renderToStaticMarkup(
+        createElement(SeoLandingPageView, { page: page! }),
+      );
+
+      expect(metadata.title).toBe(title);
+      expect(metadata.description).toBe(description);
+      expect(metadata.alternates?.canonical).toBe(getSeoLandingPath(slug));
+      expect(new URL(String(metadata.openGraph?.url)).pathname).toBe(
+        getSeoLandingPath(slug),
+      );
+      expect(markup).toContain(marker);
+      expect(markup.match(/<h1\b/gu)).toHaveLength(1);
+      expect(markup.includes("<table")).toBe(hasComparison);
+      expect(markup).not.toContain("data-inline-quiz");
+      expect(markup).toContain('href="/quiz"');
+    },
+  );
+
+  it("renders the carving capability boundary as a semantic comparison", () => {
+    const carvingPage = getSeoLandingPage("snoubord-dlya-karvinga")!;
+    const markup = renderToStaticMarkup(
+      createElement(SeoLandingPageView, { page: carvingPage }),
+    );
+
+    expect(markup).toContain('<th scope="col"');
+    expect(markup).toContain('<th scope="row"');
+    expect(markup).toContain("Sidecut radius и effective edge");
+    expect(markup).toContain("EdgeFit не рассчитывает эти параметры");
+    expect(markup).toContain("hardboot compatibility");
+    expect(markup).toContain("race/alpine geometry");
+  });
+
+  it.each(ridingStylePageExpectations)(
+    "keeps visible FAQ aligned with structured data for $slug",
+    ({ slug }) => {
+      const page = getSeoLandingPage(slug)!;
+      const markup = renderToStaticMarkup(
+        createElement(SeoLandingPageView, { page }),
+      );
+
+      expect(markup).toContain('"@type":"Article"');
+      expect(markup).toContain('"@type":"FAQPage"');
+      for (const faq of page.faq) {
+        expect(markup).toContain(faq.question);
+        expect(markup).toContain(faq.answer);
+      }
+    },
+  );
 });
 
 describe("SEO indexing hygiene", () => {
