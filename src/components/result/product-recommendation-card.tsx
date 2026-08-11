@@ -26,7 +26,7 @@ export interface ProductRecommendationCardProps {
   position: number;
   variant: ProductRecommendationCardVariant;
   shopHref: string;
-  shopAnalyticsPayload: Record<string, unknown>;
+  shopAnalyticsPayload?: Record<string, unknown>;
 }
 
 export const recommendationRoleLabels: Record<RecommendationRole, string> = {

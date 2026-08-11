@@ -337,11 +337,67 @@ create table if not exists quiz_results (
   result_boot_drag_risk boot_drag_risk_type not null,
   algorithm_version text not null,
   recommended_snapshot jsonb not null default '[]'::jsonb,
+  public_token_hash text,
+  result_snapshot jsonb,
   created_at timestamptz not null default now()
 );
 
 alter table quiz_results
   add column if not exists terrain_priority terrain_priority_type not null default 'balanced';
+
+alter table quiz_results
+  add column if not exists public_token_hash text;
+
+alter table quiz_results
+  add column if not exists result_snapshot jsonb;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'chk_quiz_results_public_token_hash'
+  ) then
+    alter table quiz_results
+      add constraint chk_quiz_results_public_token_hash
+      check (
+        public_token_hash is null
+        or public_token_hash ~ '^sha256:[0-9a-f]{64}$'
+      );
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'chk_quiz_results_result_snapshot_object'
+  ) then
+    alter table quiz_results
+      add constraint chk_quiz_results_result_snapshot_object
+      check (
+        result_snapshot is null
+        or jsonb_typeof(result_snapshot) = 'object'
+      );
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'chk_quiz_results_saved_result_coherence'
+  ) then
+    alter table quiz_results
+      add constraint chk_quiz_results_saved_result_coherence
+      check (
+        (public_token_hash is null and result_snapshot is null)
+        or (public_token_hash is not null and result_snapshot is not null)
+      );
+  end if;
+end $$;
 
 create table if not exists email_leads (
   id uuid primary key default gen_random_uuid(),
@@ -420,6 +476,9 @@ create unique index if not exists uq_products_one_base_per_family
 create index if not exists idx_product_sizes_product on product_sizes(product_id);
 create index if not exists idx_product_sizes_lookup on product_sizes(size_cm, waist_width_mm, width_type);
 create index if not exists idx_quiz_results_created_at on quiz_results(created_at desc);
+create unique index if not exists uq_quiz_results_public_token_hash
+  on quiz_results(public_token_hash)
+  where public_token_hash is not null;
 create index if not exists idx_email_leads_created_at on email_leads(created_at desc);
 create index if not exists idx_analytics_events_created_at on analytics_events(created_at desc);
 create index if not exists idx_analytics_events_name on analytics_events(event_name, created_at desc);

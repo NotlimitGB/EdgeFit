@@ -5,6 +5,7 @@ import { saveAnalyticsEvent } from "@/lib/analytics/server";
 import { getCanonicalOfferIdentityBySlug } from "@/lib/canonical-catalog";
 import { buildOutboundClickAnalyticsPayload } from "@/lib/outbound-click-analytics";
 import { getProductBySlug } from "@/lib/products";
+import { isSavedResultStoreSource } from "@/lib/saved-result-contract";
 import { SESSION_COOKIE_NAME } from "@/lib/session-id";
 import { resolveProductStoreUrl } from "@/lib/store-redirect";
 
@@ -55,7 +56,11 @@ export async function GET(
   const cookieStore = await cookies();
   const sessionId = cookieStore.get(SESSION_COOKIE_NAME)?.value?.trim();
 
-  if (payload.success && sessionId) {
+  if (
+    payload.success &&
+    sessionId &&
+    !isSavedResultStoreSource(payload.data.from)
+  ) {
     let canonicalIdentity = {
       boardSlug: product.slug,
       offerSlug: product.slug,

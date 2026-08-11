@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
-import { Analytics } from "@vercel/analytics/next";
-import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Manrope, Space_Grotesk } from "next/font/google";
-import { YandexMetrika } from "@/components/analytics/yandex-metrika";
+import { SiteAnalytics } from "@/components/analytics/site-analytics";
 import { getSiteMetadataBase } from "@/lib/site-url";
 import { SiteFooter } from "@/components/site/site-footer";
 import { SiteHeader } from "@/components/site/site-header";
@@ -49,13 +47,13 @@ export default function RootLayout({
       className={`${bodyFont.variable} ${headingFont.variable} h-full scroll-smooth antialiased`}
     >
       <body className="min-h-full bg-[var(--color-snow)] text-[var(--color-ink)]">
-        {hasYandexMetrika ? <YandexMetrika counterId={yandexMetrikaId} /> : null}
         <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(74,136,170,0.14),transparent_38%),linear-gradient(180deg,#f5f9fc_0%,#eef4f8_52%,#f7fbfd_100%)]" />
         <SiteHeader />
         <main className="flex min-h-[calc(100vh-9rem)] flex-col">{children}</main>
         <SiteFooter />
-        <Analytics />
-        <SpeedInsights />
+        <SiteAnalytics
+          yandexMetrikaId={hasYandexMetrika ? yandexMetrikaId : null}
+        />
       </body>
     </html>
   );

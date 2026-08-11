@@ -10,10 +10,14 @@ import {
   type QuizSubmission,
 } from "@/lib/quiz/schema";
 import { getOrCreateSessionId } from "@/lib/session-id";
+import {
+  persistRecommendationSessionState,
+  SAVED_RESULT_TOKEN_HEADER,
+} from "@/lib/saved-result-contract";
+import type { RecommendationResult } from "@/types/domain";
 import styles from "./quiz-flow.module.css";
 
 const STORAGE_KEY = "edgefit.quiz-draft";
-const RESULT_STORAGE_KEY = "edgefit.latest-recommendation";
 
 const stepFields = [
   ["heightCm", "weightKg", "bootSizeEu"],
@@ -329,10 +333,11 @@ export function QuizFlow() {
         );
       }
 
-      const recommendation = await response.json();
-      window.sessionStorage.setItem(
-        RESULT_STORAGE_KEY,
-        JSON.stringify(recommendation),
+      const recommendation = (await response.json()) as RecommendationResult;
+      persistRecommendationSessionState(
+        window.sessionStorage,
+        recommendation,
+        response.headers.get(SAVED_RESULT_TOKEN_HEADER),
       );
 
       void trackEvent("quiz_step_completed", {

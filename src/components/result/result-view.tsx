@@ -31,12 +31,18 @@ import {
   buildStoreRedirectHref,
   buildStoreRedirectHrefForSize,
 } from "@/lib/store-redirect";
+import {
+  getSavedResultPath,
+  RECOMMENDATION_RESULT_STORAGE_KEY,
+  SAVED_RESULT_TOKEN_STORAGE_KEY,
+} from "@/lib/saved-result-contract";
 import type { RecommendationResult } from "@/types/domain";
 import styles from "./result-view.module.css";
 
-const RESULT_STORAGE_KEY = "edgefit.latest-recommendation";
 let cachedRawRecommendation: string | null | undefined;
 let cachedRecommendation: RecommendationResult | null = null;
+let cachedRawSavedResultToken: string | null | undefined;
+let cachedSavedResultToken: string | null = null;
 
 const riskDescriptions: Record<RecommendationResult["bootDragRisk"], string> = {
   low: "Запас по ширине выглядит спокойным.",
@@ -63,7 +69,9 @@ function getRecommendationSnapshot() {
     return null;
   }
 
-  const rawRecommendation = window.sessionStorage.getItem(RESULT_STORAGE_KEY);
+  const rawRecommendation = window.sessionStorage.getItem(
+    RECOMMENDATION_RESULT_STORAGE_KEY,
+  );
 
   if (rawRecommendation === cachedRawRecommendation) {
     return cachedRecommendation;
@@ -83,6 +91,22 @@ function getRecommendationSnapshot() {
   }
 
   return cachedRecommendation;
+}
+
+function getSavedResultTokenSnapshot() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const rawToken = window.sessionStorage.getItem(SAVED_RESULT_TOKEN_STORAGE_KEY);
+
+  if (rawToken === cachedRawSavedResultToken) {
+    return cachedSavedResultToken;
+  }
+
+  cachedRawSavedResultToken = rawToken;
+  cachedSavedResultToken = rawToken && getSavedResultPath(rawToken) ? rawToken : null;
+  return cachedSavedResultToken;
 }
 
 function buildResultPayload(recommendation: RecommendationResult) {
@@ -105,28 +129,48 @@ function getCompactExplanation(recommendation: RecommendationResult) {
   ].filter(Boolean);
 }
 
-export function ResultView() {
-  const recommendation = useSyncExternalStore(
+export interface ResultViewProps {
+  initialRecommendation?: RecommendationResult | null;
+  mode?: "session" | "saved";
+  savedResultsEnabled?: boolean;
+}
+
+export function ResultView({
+  initialRecommendation = null,
+  mode = "session",
+  savedResultsEnabled = false,
+}: ResultViewProps = {}) {
+  const sessionRecommendation = useSyncExternalStore(
     subscribe,
     getRecommendationSnapshot,
     () => null,
   );
+  const savedResultToken = useSyncExternalStore(
+    subscribe,
+    getSavedResultTokenSnapshot,
+    () => null,
+  );
+  const recommendation =
+    mode === "saved" ? initialRecommendation : sessionRecommendation;
   const [email, setEmail] = useState("");
   const [consent, setConsent] = useState(false);
   const [emailError, setEmailError] = useState("");
   const [emailSuccess, setEmailSuccess] = useState("");
   const [isSubmittingEmail, setIsSubmittingEmail] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">(
+    "idle",
+  );
 
   useEffect(() => {
-    if (!recommendation) {
+    if (!recommendation || mode !== "session") {
       return;
     }
 
     void trackEvent("result_viewed", buildResultPayload(recommendation));
-  }, [recommendation]);
+  }, [mode, recommendation]);
 
   useEffect(() => {
-    if (!recommendation) {
+    if (!recommendation || mode !== "session") {
       return;
     }
 
@@ -143,7 +187,7 @@ export function ResultView() {
     return () => {
       window.removeEventListener("pagehide", handlePageHide);
     };
-  }, [recommendation]);
+  }, [mode, recommendation]);
 
   if (!recommendation) {
     return (
@@ -186,6 +230,29 @@ export function ResultView() {
   const topBoards = recommendation.recommendedBoards.slice(0, 3);
   const comparisonBoards = recommendation.recommendedBoards.slice(0, 3);
   const extraRecommendedBoards = recommendation.recommendedBoards.slice(3);
+  const isSavedMode = mode === "saved";
+  const savedResultPath =
+    mode === "session" && savedResultsEnabled && savedResultToken
+      ? getSavedResultPath(savedResultToken)
+      : null;
+
+  function getStoreSource(location: string) {
+    return `${isSavedMode ? "saved-result" : "result"}-${location}`;
+  }
+
+  async function handleCopySavedResult() {
+    if (!savedResultPath || typeof navigator === "undefined") {
+      return;
+    }
+
+    try {
+      const savedResultUrl = new URL(savedResultPath, window.location.origin);
+      await navigator.clipboard.writeText(savedResultUrl.toString());
+      setCopyStatus("copied");
+    } catch {
+      setCopyStatus("error");
+    }
+  }
 
   async function handleEmailSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -237,6 +304,10 @@ export function ResultView() {
     sizeLabel?: string,
     widthType?: string,
   ) {
+    if (isSavedMode) {
+      return undefined;
+    }
+
     return {
       placement,
       board_slug: boardSlug,
@@ -248,6 +319,10 @@ export function ResultView() {
   }
 
   function handleRecalculationStart() {
+    if (isSavedMode) {
+      return;
+    }
+
     void trackEvent("recalculation_started", buildResultPayload(activeRecommendation));
   }
 
@@ -260,6 +335,16 @@ export function ResultView() {
           aria-labelledby="result-title"
         >
           <div className={styles.summaryGrid} aria-hidden="true" />
+          {isSavedMode ? (
+            <div className={styles.savedResultNotice} role="note">
+              <p className={publicStyles.microLabel}>Сохранённый результат</p>
+              <strong>Это снимок fit и рекомендаций на момент расчёта.</strong>
+              <p>
+                Наличие, цена и условия внешнего магазина могли измениться —
+                проверьте их перед покупкой.
+              </p>
+            </div>
+          ) : null}
           <div className={styles.summaryLayout}>
             <div className={styles.summaryMain}>
               <p className={publicStyles.kicker}>Персональный snowboard fit</p>
@@ -377,6 +462,41 @@ export function ResultView() {
           </div>
         </section>
 
+        {savedResultPath ? (
+          <section
+            className={`${publicStyles.raisedTechnicalSurface} ${styles.saveResultSection}`}
+            aria-labelledby="save-result-title"
+          >
+            <div>
+              <p className={publicStyles.kicker}>Сохранить результат</p>
+              <h2 id="save-result-title">Вернитесь к этому расчёту по ссылке</h2>
+              <p>
+                Ссылка открывает именно этот fit и подборку, даже после закрытия
+                браузера или на другом устройстве.
+              </p>
+            </div>
+            <div className={styles.saveResultActions}>
+              <button
+                type="button"
+                className={publicStyles.primaryAction}
+                onClick={() => void handleCopySavedResult()}
+              >
+                Скопировать ссылку
+              </button>
+              <p className={styles.saveResultDisclosure}>
+                Любой, у кого есть ссылка, сможет увидеть параметры и результат.
+              </p>
+              <p className={styles.copyStatus} aria-live="polite">
+                {copyStatus === "copied"
+                  ? "Ссылка скопирована."
+                  : copyStatus === "error"
+                    ? "Не удалось скопировать ссылку. Попробуйте ещё раз."
+                    : ""}
+              </p>
+            </div>
+          </section>
+        ) : null}
+
         {compactExplanation.length > 0 ? (
           <section className={styles.reasonSection} aria-labelledby="reason-title">
             <SectionHeader
@@ -420,7 +540,7 @@ export function ResultView() {
                     match.product.slug,
                     match.size,
                     {
-                      from: "result-top",
+                      from: getStoreSource("top"),
                       placement: "recommended",
                     },
                   )}
@@ -490,7 +610,7 @@ export function ResultView() {
                       </Link>
                       <TrackedStoreLink
                         href={buildStoreRedirectHref(item.boardSlug, {
-                          from: "result-decision-guide",
+                          from: getStoreSource("decision-guide"),
                           placement: item.id,
                           sizeLabel: item.sizeLabel,
                         })}
@@ -547,7 +667,7 @@ export function ResultView() {
                             match.product.slug,
                             match.size,
                             {
-                              from: "result-comparison",
+                              from: getStoreSource("comparison"),
                               placement: "recommended",
                             },
                           )}
@@ -571,82 +691,84 @@ export function ResultView() {
           </section>
         ) : null}
 
-        <section className={styles.emailSection} aria-labelledby="email-title">
-          <div>
-            <p className={publicStyles.kicker}>Сохранить полезный результат</p>
-            <h2 id="email-title">
-              Сохрани подбор, чтобы вернуться к нему позже
-            </h2>
-            <p>
-              Отправим этот fit на указанную почту. Без обещаний «идеальной
-              доски» — только результат, к которому удобно вернуться.
-            </p>
-          </div>
-
-          <form
-            className={styles.emailForm}
-            onSubmit={handleEmailSubmit}
-            aria-busy={isSubmittingEmail}
-          >
-            <div className={styles.emailField}>
-              <label htmlFor="result-email">Почта</label>
-              <input
-                id="result-email"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@example.com"
-                aria-invalid={emailError ? "true" : "false"}
-                aria-describedby={
-                  emailError
-                    ? "result-email-hint result-email-error"
-                    : "result-email-hint"
-                }
-              />
-              <p id="result-email-hint">
-                Используем адрес только для сохранения результата и материалов
-                по теме.
+        {!isSavedMode ? (
+          <section className={styles.emailSection} aria-labelledby="email-title">
+            <div>
+              <p className={publicStyles.kicker}>Сохранить полезный результат</p>
+              <h2 id="email-title">
+                Сохрани подбор, чтобы вернуться к нему позже
+              </h2>
+              <p>
+                Отправим этот fit на указанную почту. Без обещаний «идеальной
+                доски» — только результат, к которому удобно вернуться.
               </p>
             </div>
 
-            <label className={styles.consentField} htmlFor="result-consent">
-              <input
-                id="result-consent"
-                type="checkbox"
-                checked={consent}
-                onChange={(event) => setConsent(event.target.checked)}
-              />
-              <span>
-                Согласен получить результат подбора и полезные материалы по
-                этой теме на указанную почту.
-              </span>
-            </label>
-
-            {emailError ? (
-              <p
-                id="result-email-error"
-                className={styles.formError}
-                role="alert"
-              >
-                {emailError}
-              </p>
-            ) : null}
-
-            {emailSuccess ? (
-              <p className={styles.formSuccess} role="status">
-                {emailSuccess}
-              </p>
-            ) : null}
-
-            <button
-              type="submit"
-              disabled={isSubmittingEmail}
-              className={`${publicStyles.primaryAction} ${styles.emailSubmitAction}`}
+            <form
+              className={styles.emailForm}
+              onSubmit={handleEmailSubmit}
+              aria-busy={isSubmittingEmail}
             >
-              {isSubmittingEmail ? "Сохраняем..." : "Отправить на почту"}
-            </button>
-          </form>
-        </section>
+              <div className={styles.emailField}>
+                <label htmlFor="result-email">Почта</label>
+                <input
+                  id="result-email"
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="you@example.com"
+                  aria-invalid={emailError ? "true" : "false"}
+                  aria-describedby={
+                    emailError
+                      ? "result-email-hint result-email-error"
+                      : "result-email-hint"
+                  }
+                />
+                <p id="result-email-hint">
+                  Используем адрес только для сохранения результата и материалов
+                  по теме.
+                </p>
+              </div>
+
+              <label className={styles.consentField} htmlFor="result-consent">
+                <input
+                  id="result-consent"
+                  type="checkbox"
+                  checked={consent}
+                  onChange={(event) => setConsent(event.target.checked)}
+                />
+                <span>
+                  Согласен получить результат подбора и полезные материалы по
+                  этой теме на указанную почту.
+                </span>
+              </label>
+
+              {emailError ? (
+                <p
+                  id="result-email-error"
+                  className={styles.formError}
+                  role="alert"
+                >
+                  {emailError}
+                </p>
+              ) : null}
+
+              {emailSuccess ? (
+                <p className={styles.formSuccess} role="status">
+                  {emailSuccess}
+                </p>
+              ) : null}
+
+              <button
+                type="submit"
+                disabled={isSubmittingEmail}
+                className={`${publicStyles.primaryAction} ${styles.emailSubmitAction}`}
+              >
+                {isSubmittingEmail ? "Сохраняем..." : "Отправить на почту"}
+              </button>
+            </form>
+          </section>
+        ) : null}
 
         <section className={styles.methodSection} aria-label="Методика подбора">
           <details className={styles.methodDisclosure}>
@@ -733,7 +855,7 @@ export function ResultView() {
                     match.product.slug,
                     match.size,
                     {
-                      from: "result-extra",
+                      from: getStoreSource("extra"),
                       placement: "recommended",
                     },
                   )}
@@ -769,7 +891,7 @@ export function ResultView() {
                     match.product.slug,
                     match.size,
                     {
-                      from: "result-avoid",
+                      from: getStoreSource("avoid"),
                       placement: "avoid",
                     },
                   )}

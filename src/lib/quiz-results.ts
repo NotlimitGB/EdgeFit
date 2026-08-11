@@ -2,6 +2,11 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { базаНастроена } from "@/lib/database/config";
 import { получитьКлиентБазы } from "@/lib/database/client";
+import {
+  generateSavedResultToken,
+  hashSavedResultToken,
+  isSavedResultsEnabled,
+} from "@/lib/saved-results";
 import type { QuizInput, RecommendationResult } from "@/types/domain";
 
 interface ПараметрыСохраненияРезультата {
@@ -16,12 +21,12 @@ export async function сохранитьРезультатКвиза({
   идентификаторСессии,
 }: ПараметрыСохраненияРезультата) {
   if (!базаНастроена()) {
-    return;
+    return null;
   }
 
   const sql = получитьКлиентБазы();
 
-  await sql`
+  const [savedResult] = await sql<{ id: string }[]>`
     insert into quiz_results (
       session_id,
       height_cm,
@@ -69,5 +74,43 @@ export async function сохранитьРезультатКвиза({
         })),
       )}::jsonb
     )
+    returning id::text as "id"
   `;
+
+  if (!isSavedResultsEnabled() || !savedResult?.id) {
+    return null;
+  }
+
+  const publicToken = generateSavedResultToken();
+  const publicTokenHash = hashSavedResultToken(publicToken);
+
+  try {
+    const updatedRows = await sql<{ id: string }[]>`
+      update quiz_results
+      set
+        public_token_hash = ${publicTokenHash},
+        result_snapshot = ${sql.json(
+          результат as unknown as Parameters<typeof sql.json>[0],
+        )}
+      where id = ${savedResult.id}::uuid
+        and public_token_hash is null
+        and result_snapshot is null
+      returning id::text as "id"
+    `;
+
+    if (updatedRows[0]?.id) {
+      return publicToken;
+    }
+
+    console.error("Saved result persistence skipped.", {
+      category: "saved_result_update_missing",
+    });
+  } catch (error) {
+    console.error("Saved result persistence unavailable.", {
+      category: "saved_result_update_failed",
+      errorName: error instanceof Error ? error.name : "UnknownError",
+    });
+  }
+
+  return null;
 }

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ResultView } from "@/components/result/result-view";
+import { isSavedResultsEnabled } from "@/lib/saved-results";
 
 export const metadata: Metadata = {
   title: "Результат подбора",
@@ -8,5 +9,5 @@ export const metadata: Metadata = {
 };
 
 export default function ResultPage() {
-  return <ResultView />;
+  return <ResultView savedResultsEnabled={isSavedResultsEnabled()} />;
 }

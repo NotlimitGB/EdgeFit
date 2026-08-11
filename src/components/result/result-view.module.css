@@ -218,6 +218,29 @@
   padding: 1.25rem;
 }
 
+.savedResultNotice {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+  border-bottom: 1px solid var(--ef-border-strong);
+  padding: 1rem 1.25rem;
+  background: rgba(8, 24, 30, 0.72);
+}
+
+.savedResultNotice strong {
+  color: var(--ef-text);
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.savedResultNotice > p:last-child {
+  color: var(--ef-muted);
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+
 .summaryMain {
   min-width: 0;
 }
@@ -431,12 +454,56 @@
 .reasonSection,
 .recommendationSection,
 .decisionSection,
+.saveResultSection,
 .emailSection,
 .methodSection,
 .quietSection,
 .carefulSection,
 .finalActions {
   padding-top: 5rem;
+}
+
+.saveResultSection {
+  display: grid;
+  gap: 1.25rem;
+  min-width: 0;
+  margin-top: 2rem;
+  border-radius: 1rem;
+  padding: 1.25rem;
+}
+
+.saveResultSection h2 {
+  margin-top: 0.65rem;
+  font-size: clamp(1.55rem, 7vw, 2.4rem);
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+}
+
+.saveResultSection > div:first-child > p:last-child,
+.saveResultDisclosure {
+  margin-top: 0.8rem;
+  color: var(--ef-muted);
+  font-size: 0.82rem;
+  line-height: 1.65;
+}
+
+.saveResultActions {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+  align-content: start;
+}
+
+.saveResultActions button {
+  width: 100%;
+}
+
+.copyStatus {
+  min-height: 1.35rem;
+  margin-top: 0.35rem !important;
+  color: var(--ef-accent-strong);
+  font-size: 0.78rem;
+  line-height: 1.5;
 }
 
 .sectionHeader {
@@ -1163,6 +1230,13 @@
 }
 
 @media (min-width: 640px) {
+  .saveResultSection {
+    grid-template-columns: minmax(0, 1.35fr) minmax(14rem, 0.65fr);
+    gap: 2rem;
+    align-items: center;
+    padding: 1.5rem;
+  }
+
   .resultShell {
     padding-right: 1.5rem;
     padding-left: 1.5rem;

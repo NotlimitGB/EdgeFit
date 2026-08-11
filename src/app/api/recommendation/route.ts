@@ -3,6 +3,7 @@ import { сохранитьРезультатКвиза } from "@/lib/quiz-resul
 import { получитьВсеМодели } from "@/lib/products";
 import { getRecommendation } from "@/lib/recommendation/engine";
 import { quizSubmissionSchema } from "@/lib/quiz/schema";
+import { SAVED_RESULT_TOKEN_HEADER } from "@/lib/saved-result-contract";
 
 export async function POST(request: Request) {
   try {
@@ -21,13 +22,20 @@ export async function POST(request: Request) {
 
     const recommendation = getRecommendation(payload, модели);
 
-    await сохранитьРезультатКвиза({
+    const savedResultToken = await сохранитьРезультатКвиза({
       вход: payload,
       результат: recommendation,
       идентификаторСессии: request.headers.get("x-edgefit-session-id"),
     });
 
-    return NextResponse.json(recommendation);
+    const response = NextResponse.json(recommendation);
+
+    if (savedResultToken) {
+      response.headers.set(SAVED_RESULT_TOKEN_HEADER, savedResultToken);
+      response.headers.set("Cache-Control", "private, no-store, max-age=0");
+    }
+
+    return response;
   } catch (error) {
     return NextResponse.json(
       {
