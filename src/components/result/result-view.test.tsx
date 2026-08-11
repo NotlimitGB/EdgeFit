@@ -36,7 +36,51 @@ const recommendation: RecommendationResult = {
   targetWaistWidthMm: 250,
   bootDragRisk: "low",
   explanation: ["Диапазон рассчитан."],
-  recommendedBoards: [],
+  recommendedBoards: [
+    {
+      product: {
+        id: "product-1",
+        slug: "jones-mountain-twin",
+        brand: "Jones",
+        modelName: "Mountain Twin",
+        descriptionShort: "Test board",
+        descriptionFull: "Test board",
+        ridingStyle: "all-mountain",
+        skillLevel: "intermediate",
+        flex: 6,
+        priceFrom: 59_990,
+        imageUrl: "",
+        affiliateUrl: "https://traektoria.ru/product/1_board/",
+        isActive: true,
+        boardLine: "men",
+        shapeType: "directional-twin",
+        camberProfile: "hybrid-camber",
+        dataStatus: "verified",
+        sourceName: null,
+        sourceUrl: null,
+        sourceCheckedAt: null,
+        scenarios: [],
+        notIdealFor: [],
+        sizes: [],
+      },
+      size: {
+        sizeCm: 156,
+        sizeLabel: "156 cm",
+        waistWidthMm: 254,
+        recommendedWeightMin: 65,
+        recommendedWeightMax: 85,
+        widthType: "regular",
+        isAvailable: true,
+      },
+      score: 92,
+      fitLabel: "Точный fit",
+      role: "best-overall",
+      confidence: "high",
+      confidenceLabel: "Высокая уверенность",
+      isCatalogReady: true,
+      reasons: ["Подходит по длине", "Подходит по ширине"],
+    },
+  ],
   avoidBoards: [],
 };
 
@@ -51,5 +95,7 @@ describe("ResultView saved mode", () => {
     expect(markup).not.toContain("result-email");
     expect(markup).not.toContain("Скопировать ссылку");
     expect(markup).not.toContain("save-result-title");
+    expect(markup).toContain("Проверить в магазине");
+    expect(markup).not.toContain("Траектория");
   });
 });

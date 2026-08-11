@@ -30,6 +30,7 @@ import { getOrCreateSessionId } from "@/lib/session-id";
 import {
   buildStoreRedirectHref,
   buildStoreRedirectHrefForSize,
+  getStoreDestinationPresentation,
 } from "@/lib/store-redirect";
 import {
   getSavedResultPath,
@@ -238,6 +239,13 @@ export function ResultView({
 
   function getStoreSource(location: string) {
     return `${isSavedMode ? "saved-result" : "result"}-${location}`;
+  }
+
+  function getCommercialPresentation(affiliateUrl: string) {
+    return getStoreDestinationPresentation(
+      affiliateUrl,
+      isSavedMode ? "saved" : "session",
+    );
   }
 
   async function handleCopySavedResult() {
@@ -551,6 +559,9 @@ export function ResultView({
                     getBoardSizeLabel(match.size),
                     match.size.widthType,
                   )}
+                  commercialPresentation={getCommercialPresentation(
+                    match.product.affiliateUrl,
+                  )}
                 />
               ))}
             </div>
@@ -622,7 +633,10 @@ export function ResultView({
                         )}
                         className={publicStyles.primaryAction}
                       >
-                        В магазин
+                        {
+                          getCommercialPresentation(item.affiliateUrl)
+                            .actionLabel
+                        }
                       </TrackedStoreLink>
                     </div>
                   </div>
@@ -680,7 +694,8 @@ export function ResultView({
                           )}
                           className={styles.textActionStrong}
                         >
-                          В магазин ↗
+                          {getCommercialPresentation(match.product.affiliateUrl)
+                            .actionLabel} ↗
                         </TrackedStoreLink>
                       </div>
                     </article>
@@ -866,6 +881,9 @@ export function ResultView({
                     getBoardSizeLabel(match.size),
                     match.size.widthType,
                   )}
+                  commercialPresentation={getCommercialPresentation(
+                    match.product.affiliateUrl,
+                  )}
                 />
               ))}
             </div>
@@ -901,6 +919,9 @@ export function ResultView({
                     match.size.sizeCm,
                     getBoardSizeLabel(match.size),
                     match.size.widthType,
+                  )}
+                  commercialPresentation={getCommercialPresentation(
+                    match.product.affiliateUrl,
                   )}
                 />
               ))}

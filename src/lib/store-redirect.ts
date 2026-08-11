@@ -12,12 +12,41 @@ interface BuildStoreRedirectHrefArgs {
   widthType?: WidthType;
 }
 
-const PREFERRED_STORE_HOSTS = new Set([
-  "trial-sport.ru",
-  "www.trial-sport.ru",
-  "traektoria.ru",
-  "www.traektoria.ru",
-]);
+type SupportedStoreDestination = {
+  merchantLabel: "Trial Sport" | "Траектория";
+  actionLabel: string;
+};
+
+export type StoreDestinationMode = "direct" | "fallback-search" | "saved";
+
+export interface StoreDestinationPresentation {
+  mode: StoreDestinationMode;
+  merchantLabel: SupportedStoreDestination["merchantLabel"] | null;
+  actionLabel: string;
+  priceLabel: "Ориентир цены";
+  note?: string;
+}
+
+const SUPPORTED_STORE_DESTINATIONS: Readonly<
+  Record<string, SupportedStoreDestination>
+> = {
+  "trial-sport.ru": {
+    merchantLabel: "Trial Sport",
+    actionLabel: "Открыть в Trial Sport",
+  },
+  "www.trial-sport.ru": {
+    merchantLabel: "Trial Sport",
+    actionLabel: "Открыть в Trial Sport",
+  },
+  "traektoria.ru": {
+    merchantLabel: "Траектория",
+    actionLabel: "Открыть в Траектории",
+  },
+  "www.traektoria.ru": {
+    merchantLabel: "Траектория",
+    actionLabel: "Открыть в Траектории",
+  },
+};
 
 function getHostname(value: string) {
   try {
@@ -25,6 +54,16 @@ function getHostname(value: string) {
   } catch {
     return null;
   }
+}
+
+function getSupportedStoreDestination(value?: string | null) {
+  const normalizedValue = value?.trim();
+  if (!normalizedValue) {
+    return null;
+  }
+
+  const hostname = getHostname(normalizedValue);
+  return hostname ? SUPPORTED_STORE_DESTINATIONS[hostname] ?? null : null;
 }
 
 function normalizeStoreSearchQuery(value: string) {
@@ -36,13 +75,40 @@ function normalizeStoreSearchQuery(value: string) {
 }
 
 export function isPreferredStoreUrl(value?: string | null) {
-  if (!value?.trim()) {
-    return false;
+  return getSupportedStoreDestination(value) != null;
+}
+
+export function getStoreDestinationPresentation(
+  affiliateUrl: string | null | undefined,
+  resultMode: "session" | "saved" = "session",
+): StoreDestinationPresentation {
+  if (resultMode === "saved") {
+    return {
+      mode: "saved",
+      merchantLabel: null,
+      actionLabel: "Проверить в магазине",
+      priceLabel: "Ориентир цены",
+    };
   }
 
-  const hostname = getHostname(value);
+  const supportedDestination = getSupportedStoreDestination(affiliateUrl);
+  if (supportedDestination) {
+    return {
+      mode: "direct",
+      merchantLabel: supportedDestination.merchantLabel,
+      actionLabel: supportedDestination.actionLabel,
+      priceLabel: "Ориентир цены",
+      note: "Актуальные цену и наличие проверь в магазине.",
+    };
+  }
 
-  return hostname ? PREFERRED_STORE_HOSTS.has(hostname) : false;
+  return {
+    mode: "fallback-search",
+    merchantLabel: "Trial Sport",
+    actionLabel: "Искать в Trial Sport",
+    priceLabel: "Ориентир цены",
+    note: "Откроется поиск модели в магазине. Актуальные цену и наличие проверь там.",
+  };
 }
 
 export function buildTrialSportSearchUrl(query: string) {

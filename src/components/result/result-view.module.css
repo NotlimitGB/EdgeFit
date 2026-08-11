@@ -807,12 +807,29 @@
   text-align: right;
 }
 
+.commercialNote {
+  margin: 0.6rem 1.1rem 0;
+  color: var(--ef-muted);
+  font-size: 0.68rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .recommendationActions {
   padding: 1.1rem;
 }
 
 .recommendationActions > * {
   flex: 1 1 8rem;
+  min-width: 0;
+  text-align: center;
+  white-space: normal;
+}
+
+.compactActions > *,
+.comparisonActions > * {
+  min-width: 0;
+  white-space: normal;
 }
 
 .emptyRecommendations {
@@ -1321,7 +1338,7 @@
 
   .recommendationCard {
     display: grid;
-    grid-row: span 6;
+    grid-row: span 7;
     grid-template-rows: subgrid;
     height: auto;
     margin-bottom: 1rem;
@@ -1348,8 +1365,12 @@
     margin-top: 0;
   }
 
-  .recommendationActions {
+  .commercialNote {
     grid-row: 6;
+  }
+
+  .recommendationActions {
+    grid-row: 7;
   }
 
   .decisionGuideGrid {

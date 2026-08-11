@@ -9,6 +9,7 @@ import {
   widthTypeLabels,
 } from "@/lib/content";
 import { formatRecommendedWeightRange } from "@/lib/weight-range";
+import type { StoreDestinationPresentation } from "@/lib/store-redirect";
 import type {
   RecommendationMatch,
   RecommendationRole,
@@ -27,6 +28,7 @@ export interface ProductRecommendationCardProps {
   variant: ProductRecommendationCardVariant;
   shopHref: string;
   shopAnalyticsPayload?: Record<string, unknown>;
+  commercialPresentation: StoreDestinationPresentation;
 }
 
 export const recommendationRoleLabels: Record<RecommendationRole, string> = {
@@ -49,6 +51,7 @@ export function ProductRecommendationCard({
   variant,
   shopHref,
   shopAnalyticsPayload,
+  commercialPresentation,
 }: ProductRecommendationCardProps) {
   const reasons = match.reasons.length > 0
     ? match.reasons.slice(0, 3)
@@ -153,11 +156,15 @@ export function ProductRecommendationCard({
 
       <div className={styles.commercialMeta}>
         <p>
-          <span>Цена от</span>
+          <span>{commercialPresentation.priceLabel}</span>
           <strong>{formatMoney(match.product.priceFrom)}</strong>
         </p>
         <p>{availabilityLabel}</p>
       </div>
+
+      {commercialPresentation.note ? (
+        <p className={styles.commercialNote}>{commercialPresentation.note}</p>
+      ) : null}
 
       <div className={styles.recommendationActions}>
         <Link
@@ -171,7 +178,7 @@ export function ProductRecommendationCard({
           analyticsPayload={shopAnalyticsPayload}
           className={publicStyles.primaryAction}
         >
-          В магазин <span aria-hidden="true">↗</span>
+          {commercialPresentation.actionLabel} <span aria-hidden="true">↗</span>
         </TrackedStoreLink>
       </div>
     </article>
