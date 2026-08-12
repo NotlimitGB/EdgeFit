@@ -244,20 +244,23 @@ function extractTrialPageCount(htmlText) {
   return pages.length > 0 ? Math.max(...pages) : 1;
 }
 
-function extractTrialJsonArray(htmlText, variableName) {
+function extractTrialJsonArrayResult(htmlText, variableName) {
   const pattern = new RegExp(
     `(?:const|let|var)\\s+${variableName}\\s*=\\s*(\\[[\\s\\S]*?\\])\\s*;?\\s*<\\/script>`,
     "u",
   );
   const match = htmlText.match(pattern);
   if (!match) {
-    return [];
+    return { ok: false, value: [] };
   }
 
   try {
-    return JSON.parse(match[1]);
+    const value = JSON.parse(match[1]);
+    return Array.isArray(value)
+      ? { ok: true, value }
+      : { ok: false, value: [] };
   } catch {
-    return [];
+    return { ok: false, value: [] };
   }
 }
 
@@ -430,7 +433,7 @@ function mergeTrialSizes(specGroup, icspEntries, modelName) {
     .sort((left, right) => left.sizeCm - right.sizeCm);
 }
 
-function buildTrialProduct(productUrl, htmlText, specMap, checkedAt) {
+function buildTrialProduct(productUrl, htmlText, specMap, icspEntries, checkedAt) {
   const brand = extractTrialBrand(htmlText);
   const modelName = extractTrialModelName(htmlText, brand);
 
@@ -443,7 +446,6 @@ function buildTrialProduct(productUrl, htmlText, specMap, checkedAt) {
     return null;
   }
 
-  const icspEntries = extractTrialJsonArray(htmlText, "icspJS");
   const availableEntries = icspEntries.filter(isTrialEntryAvailable);
   const sizes = mergeTrialSizes(specGroup, icspEntries, modelName);
 
@@ -511,6 +513,109 @@ function buildTrialProduct(productUrl, htmlText, specMap, checkedAt) {
   };
 }
 
+export const TRIAL_SPORT_FAILURE_CATEGORIES = Object.freeze({
+  productFetch: "product_fetch_failure",
+  specMissing: "spec_missing",
+  specFetch: "spec_fetch_failure",
+  specParse: "spec_parse_failure",
+  productParse: "product_parse_failure",
+  availabilityParse: "availability_parse_failure",
+  other: "other_failure",
+});
+
+function createTrialFailureCounts() {
+  return Object.fromEntries(
+    Object.values(TRIAL_SPORT_FAILURE_CATEGORIES).map((category) => [category, 0]),
+  );
+}
+
+function getTrialAvailability(htmlText) {
+  const parsed = extractTrialJsonArrayResult(htmlText, "icspJS");
+  if (!parsed.ok) {
+    return { status: "unknown", entries: [] };
+  }
+
+  return {
+    status: parsed.value.some(isTrialEntryAvailable) ? "available" : "unavailable",
+    entries: parsed.value,
+  };
+}
+
+function isTrialNotFoundError(error) {
+  return error instanceof Error && /\bHTTP\s+(?:404|410)\b/u.test(error.message);
+}
+
+export async function revalidateTrialSportProducts({
+  products,
+  fetchText,
+  concurrency = 5,
+}) {
+  const queue = Array.isArray(products) ? products : [];
+  const outcomes = [];
+  const failuresByCategory = createTrialFailureCounts();
+  let cursor = 0;
+
+  async function worker() {
+    while (cursor < queue.length) {
+      const currentIndex = cursor;
+      cursor += 1;
+      const product = queue[currentIndex];
+      const slug = String(product?.slug ?? "").trim();
+      const productUrl = String(product?.affiliateUrl ?? "").trim();
+
+      if (!slug || !productUrl) {
+        failuresByCategory[TRIAL_SPORT_FAILURE_CATEGORIES.other] += 1;
+        outcomes.push({ slug, status: "unknown" });
+        continue;
+      }
+
+      let htmlText;
+      try {
+        htmlText = await fetchText(productUrl);
+      } catch (error) {
+        if (isTrialNotFoundError(error)) {
+          outcomes.push({ slug, status: "unavailable" });
+          continue;
+        }
+
+        failuresByCategory[TRIAL_SPORT_FAILURE_CATEGORIES.productFetch] += 1;
+        outcomes.push({ slug, status: "unknown" });
+        continue;
+      }
+
+      const availability = getTrialAvailability(htmlText);
+      if (availability.status === "unknown") {
+        failuresByCategory[TRIAL_SPORT_FAILURE_CATEGORIES.availabilityParse] += 1;
+        outcomes.push({ slug, status: "unknown" });
+        continue;
+      }
+
+      outcomes.push({ slug, status: availability.status });
+    }
+  }
+
+  await Promise.all(
+    Array.from(
+      { length: Math.max(1, Math.min(concurrency, queue.length || 1)) },
+      () => worker(),
+    ),
+  );
+
+  const unknownCount = outcomes.filter((outcome) => outcome.status === "unknown").length;
+
+  return {
+    outcomes: outcomes.sort((left, right) => left.slug.localeCompare(right.slug, "en")),
+    diagnostics: {
+      checkedCount: queue.length,
+      availableCount: outcomes.filter((outcome) => outcome.status === "available").length,
+      unavailableCount: outcomes.filter((outcome) => outcome.status === "unavailable").length,
+      unknownCount,
+      failuresByCategory,
+      complete: unknownCount === 0,
+    },
+  };
+}
+
 export async function importTrialSportProducts({
   fetchArrayBuffer,
   fetchText,
@@ -535,15 +640,21 @@ export async function importTrialSportProducts({
   }
 
   const workbookCache = new Map();
-  const queue = Array.from(productUrls).sort((left, right) =>
+  const discoveredUrls = Array.from(productUrls).sort((left, right) =>
     left.localeCompare(right, "ru"),
-  ).slice(
-    0,
-    Number.isFinite(limit) && limit > 0 ? limit : undefined,
   );
+  const hasLimit = Number.isFinite(limit) && limit > 0;
+  const queue = discoveredUrls.slice(0, hasLimit ? limit : undefined);
   const results = [];
   const warnings = [];
+  const failuresByCategory = createTrialFailureCounts();
+  let unavailableCount = 0;
   let cursor = 0;
+
+  function recordFailure(category, warning) {
+    failuresByCategory[category] += 1;
+    warnings.push(warning);
+  }
 
   async function worker() {
     while (cursor < queue.length) {
@@ -552,36 +663,93 @@ export async function importTrialSportProducts({
 
       const productUrl = queue[currentIndex];
 
+      let htmlText;
       try {
-        const htmlText = await fetchText(productUrl);
-        const specUrl = extractTrialSpecUrl(htmlText);
+        htmlText = await fetchText(productUrl);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "неизвестная ошибка";
+        recordFailure(
+          TRIAL_SPORT_FAILURE_CATEGORIES.productFetch,
+          `Триал-Спорт: ошибка загрузки ${productUrl}: ${message}`,
+        );
+        continue;
+      }
 
-        if (!specUrl) {
-          warnings.push(`Триал-Спорт: нет файла характеристик у ${productUrl}`);
-          continue;
-        }
+      const availability = getTrialAvailability(htmlText);
+      if (availability.status === "unknown") {
+        recordFailure(
+          TRIAL_SPORT_FAILURE_CATEGORIES.availabilityParse,
+          `Триал-Спорт: не удалось определить наличие для ${productUrl}`,
+        );
+        continue;
+      }
 
-        let specMapPromise = workbookCache.get(specUrl);
-        if (!specMapPromise) {
-          specMapPromise = (async () => {
-            const workbookBytes = await fetchArrayBuffer(specUrl);
-            return buildTrialSpecMap(workbookBytes);
-          })();
-          workbookCache.set(specUrl, specMapPromise);
-        }
+      if (availability.status === "unavailable") {
+        unavailableCount += 1;
+        continue;
+      }
 
-        const specMap = await specMapPromise;
+      const specUrl = extractTrialSpecUrl(htmlText);
+      if (!specUrl) {
+        recordFailure(
+          TRIAL_SPORT_FAILURE_CATEGORIES.specMissing,
+          `Триал-Спорт: нет файла характеристик у ${productUrl}`,
+        );
+        continue;
+      }
 
-        const product = buildTrialProduct(productUrl, htmlText, specMap, checkedAt);
+      let specResultPromise = workbookCache.get(specUrl);
+      if (!specResultPromise) {
+        specResultPromise = (async () => {
+          let workbookBytes;
+          try {
+            workbookBytes = await fetchArrayBuffer(specUrl);
+          } catch (error) {
+            return { ok: false, category: TRIAL_SPORT_FAILURE_CATEGORIES.specFetch, error };
+          }
+
+          try {
+            const specMap = buildTrialSpecMap(workbookBytes);
+            return specMap.size > 0
+              ? { ok: true, specMap }
+              : { ok: false, category: TRIAL_SPORT_FAILURE_CATEGORIES.specParse };
+          } catch (error) {
+            return { ok: false, category: TRIAL_SPORT_FAILURE_CATEGORIES.specParse, error };
+          }
+        })();
+        workbookCache.set(specUrl, specResultPromise);
+      }
+
+      const specResult = await specResultPromise;
+      if (!specResult.ok) {
+        recordFailure(
+          specResult.category,
+          `Триал-Спорт: ошибка файла характеристик у ${productUrl}`,
+        );
+        continue;
+      }
+
+      try {
+        const product = buildTrialProduct(
+          productUrl,
+          htmlText,
+          specResult.specMap,
+          availability.entries,
+          checkedAt,
+        );
         if (product) {
           results.push(product);
         } else {
-          warnings.push(`Триал-Спорт: не удалось собрать карточку для ${productUrl}`);
+          recordFailure(
+            TRIAL_SPORT_FAILURE_CATEGORIES.productParse,
+            `Триал-Спорт: не удалось собрать карточку для ${productUrl}`,
+          );
         }
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "неизвестная ошибка";
-        warnings.push(`Триал-Спорт: ошибка обработки ${productUrl}: ${message}`);
+      } catch {
+        recordFailure(
+          TRIAL_SPORT_FAILURE_CATEGORIES.other,
+          `Триал-Спорт: неизвестная ошибка обработки ${productUrl}`,
+        );
       }
     }
   }
@@ -590,11 +758,32 @@ export async function importTrialSportProducts({
   await Promise.all(workers);
 
   logger.log(
-    `Триал-Спорт: найдено URL товаров ${queue.length}, импортировано ${results.length}.`,
+    `Триал-Спорт: найдено URL товаров ${discoveredUrls.length}, импортировано ${results.length}.`,
   );
+
+  const failedCount = Object.values(failuresByCategory).reduce(
+    (total, count) => total + count,
+    0,
+  );
+  const skippedCount = queue.length - results.length - unavailableCount - failedCount;
+  const diagnostics = {
+    discoveredCount: discoveredUrls.length,
+    attemptedCount: queue.length,
+    resolvedCount: results.length,
+    unavailableCount,
+    skippedCount,
+    failedCount,
+    failuresByCategory,
+    limited: hasLimit && queue.length < discoveredUrls.length,
+    complete:
+      !(hasLimit && queue.length < discoveredUrls.length) &&
+      failedCount === 0 &&
+      skippedCount === 0,
+  };
 
   return {
     products: results,
     warnings,
+    diagnostics,
   };
 }

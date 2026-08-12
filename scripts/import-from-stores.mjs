@@ -8,13 +8,19 @@ import { normalizeCatalogWaistWidths } from "./lib/catalog-repair.mjs";
 import {
   normalizeWhitespace,
 } from "./lib/store-import/common.mjs";
-import { buildSourceIdentityPlan } from "./lib/store-import/source-identity.mjs";
+import {
+  buildSourceIdentityPlan,
+  getStoreIdentityFromUrl,
+} from "./lib/store-import/source-identity.mjs";
 import {
   applyOfficialProductSpecs,
   loadOfficialProductSpecs,
 } from "./lib/official-specs.mjs";
 import { importTraektoriaProducts } from "./lib/store-import/traektoria.mjs";
-import { importTrialSportProducts } from "./lib/store-import/trial-sport.mjs";
+import {
+  importTrialSportProducts,
+  revalidateTrialSportProducts,
+} from "./lib/store-import/trial-sport.mjs";
 
 function normalizeGalleryImages(value) {
   const rawImages =
@@ -466,6 +472,89 @@ function shouldSyncManagedStoreProduct(product, currentSourceFilter) {
   return false;
 }
 
+export function assertTrialSportSourceComplete(diagnostics) {
+  if (!diagnostics || diagnostics.complete !== true) {
+    throw new Error("INCOMPLETE_TRIAL_SPORT_SOURCE");
+  }
+}
+
+function toProductValues(products) {
+  if (products instanceof Map) {
+    return Array.from(products.values());
+  }
+
+  return Array.isArray(products) ? products : [];
+}
+
+export function buildStaleProductDecision({
+  existingProducts,
+  resolvedProducts,
+  sourceFilter,
+  trialRevalidationOutcomes = [],
+}) {
+  const resolvedValues = toProductValues(resolvedProducts);
+  const resolvedSlugs = new Set(resolvedValues.map((product) => product.slug));
+  const resolvedTrialSourceIds = new Set(
+    resolvedValues
+      .filter(
+        (product) => getManagedStoreCodeFromUrl(product.affiliateUrl) === "trial-sport",
+      )
+      .map(
+        (product) => getStoreIdentityFromUrl(product.affiliateUrl).sourceProductId,
+      )
+      .filter(Boolean),
+  );
+  const revalidationBySlug = new Map(
+    trialRevalidationOutcomes.map((outcome) => [outcome.slug, outcome.status]),
+  );
+  const staleProducts = [];
+  const preservedProducts = [];
+  const trialProductsRequiringRevalidation = [];
+  const blockingTrialProducts = [];
+
+  for (const product of toProductValues(existingProducts)) {
+    if (
+      !shouldSyncManagedStoreProduct(product, sourceFilter) ||
+      product.isActive === false ||
+      resolvedSlugs.has(product.slug)
+    ) {
+      continue;
+    }
+
+    const storeCode = getManagedStoreCodeFromUrl(product.affiliateUrl);
+    if (storeCode !== "trial-sport") {
+      staleProducts.push(product);
+      continue;
+    }
+
+    const sourceProductId = getStoreIdentityFromUrl(
+      product.affiliateUrl,
+    ).sourceProductId;
+    if (sourceProductId && resolvedTrialSourceIds.has(sourceProductId)) {
+      staleProducts.push(product);
+      continue;
+    }
+
+    const revalidationStatus = revalidationBySlug.get(product.slug);
+    if (revalidationStatus === "unavailable") {
+      staleProducts.push(product);
+    } else if (revalidationStatus === "available") {
+      preservedProducts.push(product);
+    } else if (revalidationStatus === "unknown") {
+      blockingTrialProducts.push(product);
+    } else {
+      trialProductsRequiringRevalidation.push(product);
+    }
+  }
+
+  return {
+    staleProducts,
+    preservedProducts,
+    trialProductsRequiringRevalidation,
+    blockingTrialProducts,
+  };
+}
+
 function summarizeWarnings(warnings, logger) {
   if (warnings.length === 0) {
     return;
@@ -537,6 +626,7 @@ export async function runStoreImport(options = {}) {
   try {
     const importedProducts = [];
     const warnings = [];
+    let trialSportDiagnostics = null;
 
     if (sourceFilter === "all" || sourceFilter === "traektoria") {
       const result = await importTraektoriaProducts({
@@ -566,6 +656,8 @@ export async function runStoreImport(options = {}) {
 
       importedProducts.push(...result.products);
       warnings.push(...result.warnings);
+      trialSportDiagnostics = result.diagnostics;
+      assertTrialSportSourceComplete(trialSportDiagnostics);
     }
 
     await sql`set statement_timeout = 0`;
@@ -606,6 +698,38 @@ export async function runStoreImport(options = {}) {
       identityPlan.resolvedProducts.map((product) => [product.slug, product]),
     );
 
+    const initialStaleDecision = buildStaleProductDecision({
+      existingProducts: existingCatalog,
+      resolvedProducts: mergedImportedProducts,
+      sourceFilter,
+    });
+    let staleDecision = initialStaleDecision;
+
+    if (initialStaleDecision.trialProductsRequiringRevalidation.length > 0) {
+      const revalidation = await revalidateTrialSportProducts({
+        products: initialStaleDecision.trialProductsRequiringRevalidation,
+        fetchText,
+      });
+
+      if (!revalidation.diagnostics.complete) {
+        throw new Error("INCOMPLETE_TRIAL_SPORT_SOURCE");
+      }
+
+      staleDecision = buildStaleProductDecision({
+        existingProducts: existingCatalog,
+        resolvedProducts: mergedImportedProducts,
+        sourceFilter,
+        trialRevalidationOutcomes: revalidation.outcomes,
+      });
+    }
+
+    if (
+      staleDecision.trialProductsRequiringRevalidation.length > 0 ||
+      staleDecision.blockingTrialProducts.length > 0
+    ) {
+      throw new Error("INCOMPLETE_TRIAL_SPORT_SOURCE");
+    }
+
     const preparedProducts = Array.from(mergedImportedProducts.values())
       .map((product) => {
         const mergedProduct = mergeWithExistingProduct(
@@ -620,12 +744,7 @@ export async function runStoreImport(options = {}) {
       })
       .filter((product) => product.sizes.length > 0);
 
-    const staleStoreProducts = Array.from(existingCatalog.values())
-      .filter(
-        (product) =>
-          shouldSyncManagedStoreProduct(product, sourceFilter) &&
-          !mergedImportedProducts.has(product.slug),
-      )
+    const staleStoreProducts = staleDecision.staleProducts
       .map((product) =>
         applyOfficialProductSpecs(
           {
