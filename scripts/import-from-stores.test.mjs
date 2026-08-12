@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  assertTrialSportSourceComplete,
+  assertTrialSportStaleSafe,
   buildStaleProductDecision,
 } from "./import-from-stores.mjs";
 
@@ -21,15 +21,17 @@ function makeProduct({
   };
 }
 
-describe("Trial Sport source completeness gate", () => {
-  it("blocks an incomplete source before stale handling", () => {
-    expect(() => assertTrialSportSourceComplete({ complete: false })).toThrow(
+describe("Trial Sport stale-safety gate", () => {
+  it("allows import-incomplete evidence only when stale-safe", () => {
+    expect(() => assertTrialSportStaleSafe({ staleSafe: false })).toThrow(
       "INCOMPLETE_TRIAL_SPORT_SOURCE",
     );
-    expect(() => assertTrialSportSourceComplete(null)).toThrow(
+    expect(() => assertTrialSportStaleSafe(null)).toThrow(
       "INCOMPLETE_TRIAL_SPORT_SOURCE",
     );
-    expect(() => assertTrialSportSourceComplete({ complete: true })).not.toThrow();
+    expect(() =>
+      assertTrialSportStaleSafe({ importComplete: false, staleSafe: true }),
+    ).not.toThrow();
   });
 });
 
@@ -119,10 +121,70 @@ describe("safe managed-store stale decisions", () => {
       existingProducts: [existing],
       resolvedProducts: [replacement],
       sourceFilter: "all",
+      trialSourceObservations: [
+        {
+          storeCode: "trial-sport",
+          sourceProductId: "1005",
+          availability: "available",
+          status: "safe_unimportable",
+          reason: "spec_group_missing",
+        },
+      ],
     });
 
     expect(decision.staleProducts).toEqual([existing]);
     expect(decision.trialProductsRequiringRevalidation).toEqual([]);
+  });
+
+  it("preserves an observed safe-unimportable existing Trial Product", () => {
+    const existing = makeProduct({
+      slug: "observed-without-specs",
+      sourceProductId: "1008",
+    });
+
+    const decision = buildStaleProductDecision({
+      existingProducts: [existing],
+      resolvedProducts: [],
+      sourceFilter: "trial-sport",
+      trialSourceObservations: [
+        {
+          storeCode: "trial-sport",
+          sourceProductId: "1008",
+          availability: "available",
+          status: "safe_unimportable",
+          reason: "spec_missing",
+        },
+      ],
+    });
+
+    expect(decision.preservedProducts).toEqual([existing]);
+    expect(decision.staleProducts).toEqual([]);
+    expect(decision.trialProductsRequiringRevalidation).toEqual([]);
+  });
+
+  it("does not let malformed observations bypass direct revalidation", () => {
+    const existing = makeProduct({
+      slug: "malformed-observation",
+      sourceProductId: "1009",
+    });
+
+    const decision = buildStaleProductDecision({
+      existingProducts: [existing],
+      resolvedProducts: [],
+      sourceFilter: "trial-sport",
+      trialSourceObservations: [
+        {
+          storeCode: "trial-sport",
+          sourceProductId: "1009",
+          availability: "available",
+          status: "safe_unimportable",
+          reason: "unknown",
+        },
+      ],
+    });
+
+    expect(decision.preservedProducts).toEqual([]);
+    expect(decision.trialProductsRequiringRevalidation).toEqual([existing]);
   });
 
   it("keeps Traektoria cleanup independent from Trial revalidation", () => {

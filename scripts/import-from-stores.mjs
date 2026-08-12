@@ -398,8 +398,8 @@ function shouldSyncManagedStoreProduct(product, currentSourceFilter) {
   return false;
 }
 
-export function assertTrialSportSourceComplete(diagnostics) {
-  if (!diagnostics || diagnostics.complete !== true) {
+export function assertTrialSportStaleSafe(diagnostics) {
+  if (!diagnostics || diagnostics.staleSafe !== true) {
     throw new Error("INCOMPLETE_TRIAL_SPORT_SOURCE");
   }
 }
@@ -416,6 +416,7 @@ export function buildStaleProductDecision({
   existingProducts,
   resolvedProducts,
   sourceFilter,
+  trialSourceObservations = [],
   trialRevalidationOutcomes = [],
 }) {
   const resolvedValues = toProductValues(resolvedProducts);
@@ -428,6 +429,18 @@ export function buildStaleProductDecision({
       .map(
         (product) => getStoreIdentityFromUrl(product.affiliateUrl).sourceProductId,
       )
+      .filter(Boolean),
+  );
+  const observedLiveTrialSourceIds = new Set(
+    trialSourceObservations
+      .filter(
+        (observation) =>
+          observation?.storeCode === "trial-sport" &&
+          observation?.availability === "available" &&
+          observation?.status === "safe_unimportable" &&
+          ["spec_missing", "spec_group_missing"].includes(observation?.reason),
+      )
+      .map((observation) => String(observation.sourceProductId ?? "").trim())
       .filter(Boolean),
   );
   const revalidationBySlug = new Map(
@@ -458,6 +471,11 @@ export function buildStaleProductDecision({
     ).sourceProductId;
     if (sourceProductId && resolvedTrialSourceIds.has(sourceProductId)) {
       staleProducts.push(product);
+      continue;
+    }
+
+    if (sourceProductId && observedLiveTrialSourceIds.has(sourceProductId)) {
+      preservedProducts.push(product);
       continue;
     }
 
@@ -553,6 +571,7 @@ export async function runStoreImport(options = {}) {
     const importedProducts = [];
     const warnings = [];
     let trialSportDiagnostics = null;
+    let trialSportSourceObservations = [];
 
     if (sourceFilter === "all" || sourceFilter === "traektoria") {
       const result = await importTraektoriaProducts({
@@ -583,7 +602,8 @@ export async function runStoreImport(options = {}) {
       importedProducts.push(...result.products);
       warnings.push(...result.warnings);
       trialSportDiagnostics = result.diagnostics;
-      assertTrialSportSourceComplete(trialSportDiagnostics);
+      trialSportSourceObservations = result.sourceObservations ?? [];
+      assertTrialSportStaleSafe(trialSportDiagnostics);
     }
 
     await sql`set statement_timeout = 0`;
@@ -628,6 +648,7 @@ export async function runStoreImport(options = {}) {
       existingProducts: existingCatalog,
       resolvedProducts: mergedImportedProducts,
       sourceFilter,
+      trialSourceObservations: trialSportSourceObservations,
     });
     let staleDecision = initialStaleDecision;
 
@@ -645,6 +666,7 @@ export async function runStoreImport(options = {}) {
         existingProducts: existingCatalog,
         resolvedProducts: mergedImportedProducts,
         sourceFilter,
+        trialSourceObservations: trialSportSourceObservations,
         trialRevalidationOutcomes: revalidation.outcomes,
       });
     }
@@ -690,6 +712,7 @@ export async function runStoreImport(options = {}) {
       sourceIdentityPlanHash: identityPlan.planHash,
       sourceFilter,
       warnings,
+      trialSportDiagnostics,
       importedModels: summary.importedModels,
       importedSizes: summary.importedSizes,
       cleanedBrokenTrialSizes,

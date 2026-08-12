@@ -433,24 +433,54 @@ function mergeTrialSizes(specGroup, icspEntries, modelName) {
     .sort((left, right) => left.sizeCm - right.sizeCm);
 }
 
-function buildTrialProduct(productUrl, htmlText, specMap, icspEntries, checkedAt) {
+function buildTrialProduct(
+  productUrl,
+  htmlText,
+  specMap,
+  icspEntries,
+  checkedAt,
+  specMissing = false,
+) {
   const brand = extractTrialBrand(htmlText);
   const modelName = extractTrialModelName(htmlText, brand);
+  const sourceProductId = getStoreIdentityFromUrl(productUrl).sourceProductId;
 
-  if (!brand || !modelName) {
-    return null;
+  if (!brand || !modelName || !sourceProductId) {
+    return { status: "unsafe_failure", reason: "product_parse_failure" };
+  }
+
+  if (specMissing) {
+    return {
+      status: "safe_unimportable",
+      observation: {
+        storeCode: "trial-sport",
+        sourceProductId,
+        availability: "available",
+        status: "safe_unimportable",
+        reason: "spec_missing",
+      },
+    };
   }
 
   const specGroup = findTrialSpecGroup(specMap, modelName);
   if (!specGroup) {
-    return null;
+    return {
+      status: "safe_unimportable",
+      observation: {
+        storeCode: "trial-sport",
+        sourceProductId,
+        availability: "available",
+        status: "safe_unimportable",
+        reason: "spec_group_missing",
+      },
+    };
   }
 
   const availableEntries = icspEntries.filter(isTrialEntryAvailable);
   const sizes = mergeTrialSizes(specGroup, icspEntries, modelName);
 
   if (sizes.length === 0 || availableEntries.length === 0) {
-    return null;
+    return { status: "unsafe_failure", reason: "product_parse_failure" };
   }
 
   const flex = specGroup.flex || 5;
@@ -491,7 +521,7 @@ function buildTrialProduct(productUrl, htmlText, specMap, icspEntries, checkedAt
     sizes,
     importMeta: {
       storeCode: "trial-sport",
-      sourceProductId: getStoreIdentityFromUrl(productUrl).sourceProductId,
+      sourceProductId,
       baseSlug: slugifyBoard(`${brand} ${modelName}`),
       boardLineEvidence: boardLineIdentity.evidence,
       variantMarker: getExplicitVariantMarker(modelName),
@@ -502,20 +532,24 @@ function buildTrialProduct(productUrl, htmlText, specMap, icspEntries, checkedAt
   const descriptions = buildDescriptions(product);
 
   return {
-    ...product,
-    descriptionShort: descriptions.descriptionShort,
-    descriptionFull:
-      descriptionText && descriptionText.length > 80
-        ? normalizeWhitespace(`${descriptions.descriptionFull} ${descriptionText}`)
-        : descriptions.descriptionFull,
-    scenarios: buildScenarios(product),
-    notIdealFor: buildNotIdealFor(product),
+    status: "resolved",
+    product: {
+      ...product,
+      descriptionShort: descriptions.descriptionShort,
+      descriptionFull:
+        descriptionText && descriptionText.length > 80
+          ? normalizeWhitespace(`${descriptions.descriptionFull} ${descriptionText}`)
+          : descriptions.descriptionFull,
+      scenarios: buildScenarios(product),
+      notIdealFor: buildNotIdealFor(product),
+    },
   };
 }
 
 export const TRIAL_SPORT_FAILURE_CATEGORIES = Object.freeze({
   productFetch: "product_fetch_failure",
-  specMissing: "spec_missing",
+  safeUnimportableSpecMissing: "safe_unimportable_spec_missing",
+  safeUnimportableSpecGroupMissing: "safe_unimportable_spec_group_missing",
   specFetch: "spec_fetch_failure",
   specParse: "spec_parse_failure",
   productParse: "product_parse_failure",
@@ -526,6 +560,32 @@ export const TRIAL_SPORT_FAILURE_CATEGORIES = Object.freeze({
 function createTrialFailureCounts() {
   return Object.fromEntries(
     Object.values(TRIAL_SPORT_FAILURE_CATEGORIES).map((category) => [category, 0]),
+  );
+}
+
+const SAFE_UNIMPORTABLE_FAILURE_CATEGORIES = new Set([
+  TRIAL_SPORT_FAILURE_CATEGORIES.safeUnimportableSpecMissing,
+  TRIAL_SPORT_FAILURE_CATEGORIES.safeUnimportableSpecGroupMissing,
+]);
+
+function getSafeUnimportableBreakdown(failuresByCategory) {
+  return {
+    specMissing:
+      failuresByCategory[
+        TRIAL_SPORT_FAILURE_CATEGORIES.safeUnimportableSpecMissing
+      ] ?? 0,
+    specGroupMissing:
+      failuresByCategory[
+        TRIAL_SPORT_FAILURE_CATEGORIES.safeUnimportableSpecGroupMissing
+      ] ?? 0,
+  };
+}
+
+function getUnsafeFailureCount(failuresByCategory) {
+  return Object.entries(failuresByCategory).reduce(
+    (total, [category, count]) =>
+      SAFE_UNIMPORTABLE_FAILURE_CATEGORIES.has(category) ? total : total + count,
+    0,
   );
 }
 
@@ -653,9 +713,16 @@ export async function importTrialSportProducts({
     resolvedCount: 0,
     unavailableCount: 0,
     failedCount: 0,
+    safeUnimportableCount: 0,
+    unsafeFailureCount: 0,
+    safeUnimportableByReason: { specMissing: 0, specGroupMissing: 0 },
     skippedCount: 0,
     remainingCount: 0,
     failuresByCategory: createTrialFailureCounts(),
+    limited: false,
+    importComplete: false,
+    staleSafe: false,
+    complete: false,
   });
 
   for (const listingUrl of listingUrls.slice(1)) {
@@ -672,9 +739,16 @@ export async function importTrialSportProducts({
       resolvedCount: 0,
       unavailableCount: 0,
       failedCount: 0,
+      safeUnimportableCount: 0,
+      unsafeFailureCount: 0,
+      safeUnimportableByReason: { specMissing: 0, specGroupMissing: 0 },
       skippedCount: 0,
       remainingCount: 0,
       failuresByCategory: createTrialFailureCounts(),
+      limited: false,
+      importComplete: false,
+      staleSafe: false,
+      complete: false,
     });
   }
 
@@ -685,6 +759,7 @@ export async function importTrialSportProducts({
   const hasLimit = Number.isFinite(limit) && limit > 0;
   const queue = discoveredUrls.slice(0, hasLimit ? limit : undefined);
   const results = [];
+  const sourceObservations = [];
   const warnings = [];
   const failuresByCategory = createTrialFailureCounts();
   let unavailableCount = 0;
@@ -702,6 +777,14 @@ export async function importTrialSportProducts({
     );
     const skippedCount =
       processedCount - results.length - unavailableCount - failedCount;
+    const safeUnimportableCount = sourceObservations.length;
+    const unsafeFailureCount = getUnsafeFailureCount(failuresByCategory);
+    const limited = hasLimit && queue.length < discoveredUrls.length;
+    const processingComplete = processedCount === queue.length;
+    const importComplete =
+      processingComplete && !limited && failedCount === 0 && skippedCount === 0;
+    const staleSafe =
+      processingComplete && !limited && unsafeFailureCount === 0 && skippedCount === 0;
     const snapshot = {
       phase,
       discoveredCount: discoveredUrls.length,
@@ -710,9 +793,16 @@ export async function importTrialSportProducts({
       resolvedCount: results.length,
       unavailableCount,
       failedCount,
+      safeUnimportableCount,
+      unsafeFailureCount,
+      safeUnimportableByReason: getSafeUnimportableBreakdown(failuresByCategory),
       skippedCount,
       remainingCount: Math.max(0, queue.length - processedCount),
       failuresByCategory: { ...failuresByCategory },
+      limited,
+      importComplete,
+      staleSafe,
+      complete: importComplete,
     };
 
     reportProgress(snapshot);
@@ -720,7 +810,36 @@ export async function importTrialSportProducts({
 
   function recordFailure(category, warning) {
     failuresByCategory[category] += 1;
-    warnings.push(warning);
+    warnings.push(
+      SAFE_UNIMPORTABLE_FAILURE_CATEGORIES.has(category)
+        ? `Trial Sport: ${category}`
+        : warning,
+    );
+  }
+
+  function recordProductOutcome(outcome, productUrl) {
+    if (outcome.status === "resolved") {
+      results.push(outcome.product);
+      return;
+    }
+
+    if (outcome.status === "safe_unimportable") {
+      sourceObservations.push(outcome.observation);
+      const category =
+        outcome.observation.reason === "spec_missing"
+          ? TRIAL_SPORT_FAILURE_CATEGORIES.safeUnimportableSpecMissing
+          : TRIAL_SPORT_FAILURE_CATEGORIES.safeUnimportableSpecGroupMissing;
+      recordFailure(
+        category,
+        `Trial Sport: safely observed but not importable (${outcome.observation.reason}) ${productUrl}`,
+      );
+      return;
+    }
+
+    recordFailure(
+      TRIAL_SPORT_FAILURE_CATEGORIES.productParse,
+      `Trial Sport: unable to build Product for ${productUrl}`,
+    );
   }
 
   async function worker() {
@@ -760,8 +879,21 @@ export async function importTrialSportProducts({
 
         const specUrl = extractTrialSpecUrl(htmlText);
         if (!specUrl) {
+          const outcome = buildTrialProduct(
+            productUrl,
+            htmlText,
+            null,
+            availability.entries,
+            checkedAt,
+            true,
+          );
+          if (outcome.status !== "safe_unimportable") {
+            recordProductOutcome(outcome, productUrl);
+            continue;
+          }
+          sourceObservations.push(outcome.observation);
           recordFailure(
-            TRIAL_SPORT_FAILURE_CATEGORIES.specMissing,
+            TRIAL_SPORT_FAILURE_CATEGORIES.safeUnimportableSpecMissing,
             `Триал-Спорт: нет файла характеристик у ${productUrl}`,
           );
           continue;
@@ -810,18 +942,23 @@ export async function importTrialSportProducts({
         }
 
         try {
-          const product = buildTrialProduct(
+          const outcome = buildTrialProduct(
             productUrl,
             htmlText,
             specResult.specMap,
             availability.entries,
             checkedAt,
           );
-          if (product) {
-            results.push(product);
+          if (outcome.status === "resolved") {
+            results.push(outcome.product);
           } else {
+            if (outcome.status === "safe_unimportable") {
+              sourceObservations.push(outcome.observation);
+            }
             recordFailure(
-              TRIAL_SPORT_FAILURE_CATEGORIES.productParse,
+              outcome.status === "safe_unimportable"
+                ? TRIAL_SPORT_FAILURE_CATEGORIES.safeUnimportableSpecGroupMissing
+                : TRIAL_SPORT_FAILURE_CATEGORIES.productParse,
               `Триал-Спорт: не удалось собрать карточку для ${productUrl}`,
             );
           }
@@ -853,6 +990,11 @@ export async function importTrialSportProducts({
     0,
   );
   const skippedCount = queue.length - results.length - unavailableCount - failedCount;
+  const safeUnimportableCount = sourceObservations.length;
+  const unsafeFailureCount = getUnsafeFailureCount(failuresByCategory);
+  const limited = hasLimit && queue.length < discoveredUrls.length;
+  const importComplete = !limited && failedCount === 0 && skippedCount === 0;
+  const staleSafe = !limited && unsafeFailureCount === 0 && skippedCount === 0;
   const diagnostics = {
     discoveredCount: discoveredUrls.length,
     attemptedCount: queue.length,
@@ -860,18 +1002,21 @@ export async function importTrialSportProducts({
     unavailableCount,
     skippedCount,
     failedCount,
+    safeUnimportableCount,
+    unsafeFailureCount,
+    safeUnimportableByReason: getSafeUnimportableBreakdown(failuresByCategory),
     failuresByCategory,
-    limited: hasLimit && queue.length < discoveredUrls.length,
-    complete:
-      !(hasLimit && queue.length < discoveredUrls.length) &&
-      failedCount === 0 &&
-      skippedCount === 0,
+    limited,
+    importComplete,
+    staleSafe,
+    complete: importComplete,
   };
 
   emitProgress("complete");
 
   return {
     products: results,
+    sourceObservations,
     warnings,
     diagnostics,
   };

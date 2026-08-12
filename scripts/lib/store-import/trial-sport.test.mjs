@@ -6,6 +6,7 @@ import {
   TRIAL_SPORT_FAILURE_CATEGORIES,
 } from "./trial-sport.mjs";
 import { CatalogHttpTimeoutError } from "./catalog-http.mjs";
+import { buildSourceIdentityPlan } from "./source-identity.mjs";
 
 const sectionUrl =
   "https://trial-sport.ru/gds.php?s=51526&c1=1070639&c2=1078224&gpp=100";
@@ -45,13 +46,13 @@ function buildProductPage({ availability = "available", id = "1001" } = {}) {
   `;
 }
 
-function buildSpecWorkbook() {
+function buildSpecWorkbook({ modelName = "Model" } = {}) {
   const sheet = `
     <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
       <sheetData>
         <row r="1"><c r="A1"><v>Header</v></c></row>
         <row r="2">
-          <c r="A2"><v>Model</v></c>
+          <c r="A2"><v>${modelName}</v></c>
           <c r="B2"><v>Directional</v></c>
           <c r="C2"><v>All Mountain</v></c>
           <c r="K2"><v>5</v></c>
@@ -75,6 +76,7 @@ function createFetchText({
   listingIds = ["1001"],
   productFailure = false,
   availability = "available",
+  productPageTransform = (page) => page,
 } = {}) {
   return vi.fn(async (url) => {
     if (url === sectionUrl) {
@@ -86,10 +88,12 @@ function createFetchText({
         throw new Error("HTTP 503");
       }
 
-      return buildProductPage({
-        availability,
-        id: url === productUrl ? "1001" : "1002",
-      });
+      return productPageTransform(
+        buildProductPage({
+          availability,
+          id: url === productUrl ? "1001" : "1002",
+        }),
+      );
     }
 
     throw new Error(`Unexpected test URL: ${url}`);
@@ -111,6 +115,7 @@ describe("Trial Sport source diagnostics", () => {
     });
 
     expect(result.products).toHaveLength(1);
+    expect(result.sourceObservations).toEqual([]);
     expect(result.diagnostics).toMatchObject({
       discoveredCount: 1,
       attemptedCount: 1,
@@ -118,7 +123,11 @@ describe("Trial Sport source diagnostics", () => {
       unavailableCount: 0,
       skippedCount: 0,
       failedCount: 0,
+      safeUnimportableCount: 0,
+      unsafeFailureCount: 0,
       limited: false,
+      importComplete: true,
+      staleSafe: true,
       complete: true,
     });
   });
@@ -132,6 +141,8 @@ describe("Trial Sport source diagnostics", () => {
     });
 
     expect(result.diagnostics.complete).toBe(false);
+    expect(result.diagnostics.importComplete).toBe(false);
+    expect(result.diagnostics.staleSafe).toBe(false);
     expect(result.diagnostics.failedCount).toBe(1);
     expect(
       result.diagnostics.failuresByCategory[
@@ -151,6 +162,7 @@ describe("Trial Sport source diagnostics", () => {
     });
 
     expect(result.diagnostics.complete).toBe(false);
+    expect(result.diagnostics.staleSafe).toBe(false);
     expect(
       result.diagnostics.failuresByCategory[
         TRIAL_SPORT_FAILURE_CATEGORIES.specFetch
@@ -168,6 +180,7 @@ describe("Trial Sport source diagnostics", () => {
 
     expect(result.diagnostics.unavailableCount).toBe(0);
     expect(result.diagnostics.complete).toBe(false);
+    expect(result.diagnostics.staleSafe).toBe(false);
     expect(
       result.diagnostics.failuresByCategory[
         TRIAL_SPORT_FAILURE_CATEGORIES.availabilityParse
@@ -187,6 +200,8 @@ describe("Trial Sport source diagnostics", () => {
     expect(result.diagnostics).toMatchObject({
       unavailableCount: 1,
       failedCount: 0,
+      importComplete: true,
+      staleSafe: true,
       complete: true,
     });
   });
@@ -204,8 +219,133 @@ describe("Trial Sport source diagnostics", () => {
       discoveredCount: 2,
       attemptedCount: 1,
       limited: true,
+      importComplete: false,
+      staleSafe: false,
       complete: false,
     });
+  });
+
+  it("observes a live Product with no spec link without emitting a Product", async () => {
+    const result = await importTrialSportProducts({
+      fetchText: createFetchText({
+        productPageTransform: (page) =>
+          page.replace('<a href="/svdownload.php?svid=7">Specs</a>', ""),
+      }),
+      fetchArrayBuffer: vi.fn(),
+      checkedAt: "2026-08-12",
+      logger: silentLogger,
+    });
+
+    expect(result.products).toEqual([]);
+    expect(result.sourceObservations).toEqual([
+      {
+        storeCode: "trial-sport",
+        sourceProductId: "1001",
+        availability: "available",
+        status: "safe_unimportable",
+        reason: "spec_missing",
+      },
+    ]);
+    expect(result.diagnostics).toMatchObject({
+      failedCount: 1,
+      safeUnimportableCount: 1,
+      unsafeFailureCount: 0,
+      safeUnimportableByReason: { specMissing: 1, specGroupMissing: 0 },
+      importComplete: false,
+      staleSafe: true,
+      complete: false,
+    });
+  });
+
+  it("does not mark missing-spec evidence safe without a parsed Product identity", async () => {
+    const result = await importTrialSportProducts({
+      fetchText: createFetchText({
+        productPageTransform: (page) =>
+          page
+            .replace('<a href="/svdownload.php?svid=7">Specs</a>', "")
+            .replace(
+              '<a href="/gds.php?brand=test"><span>TEST</span></a>',
+              "",
+            ),
+      }),
+      fetchArrayBuffer: vi.fn(),
+      checkedAt: "2026-08-12",
+      logger: silentLogger,
+    });
+
+    expect(result.sourceObservations).toEqual([]);
+    expect(result.diagnostics).toMatchObject({
+      safeUnimportableCount: 0,
+      unsafeFailureCount: 1,
+      importComplete: false,
+      staleSafe: false,
+    });
+  });
+
+  it("observes a live Product missing from a valid workbook group", async () => {
+    const result = await importTrialSportProducts({
+      fetchText: createFetchText(),
+      fetchArrayBuffer: vi.fn(async () =>
+        buildSpecWorkbook({ modelName: "Alpha" }),
+      ),
+      checkedAt: "2026-08-12",
+      logger: silentLogger,
+    });
+
+    expect(result.products).toEqual([]);
+    expect(result.sourceObservations[0]).toMatchObject({
+      sourceProductId: "1001",
+      reason: "spec_group_missing",
+    });
+    expect(result.diagnostics).toMatchObject({
+      safeUnimportableCount: 1,
+      unsafeFailureCount: 0,
+      safeUnimportableByReason: { specMissing: 0, specGroupMissing: 1 },
+      importComplete: false,
+      staleSafe: true,
+    });
+
+    const identityPlan = buildSourceIdentityPlan({
+      importedProducts: result.products,
+      existingProducts: new Map(),
+      officialSpecs: new Map(),
+    });
+    expect(identityPlan.resolvedProducts).toEqual([]);
+  });
+
+  it("keeps malformed workbooks and unknown Product parsing stale-unsafe", async () => {
+    const specParseResult = await importTrialSportProducts({
+      fetchText: createFetchText(),
+      fetchArrayBuffer: vi.fn(async () => Buffer.from("not-a-workbook")),
+      checkedAt: "2026-08-12",
+      logger: silentLogger,
+    });
+    expect(specParseResult.diagnostics.staleSafe).toBe(false);
+    expect(
+      specParseResult.diagnostics.failuresByCategory[
+        TRIAL_SPORT_FAILURE_CATEGORIES.specParse
+      ],
+    ).toBe(1);
+
+    const productParseResult = await importTrialSportProducts({
+      fetchText: createFetchText({
+        productPageTransform: (page) =>
+          page.replace(
+            '<a href="/gds.php?brand=test"><span>TEST</span></a>',
+            "",
+          ),
+      }),
+      fetchArrayBuffer: vi.fn(async () => buildSpecWorkbook()),
+      checkedAt: "2026-08-12",
+      logger: silentLogger,
+    });
+    expect(productParseResult.sourceObservations).toEqual([]);
+    expect(productParseResult.diagnostics.staleSafe).toBe(false);
+    expect(
+      productParseResult.diagnostics.failuresByCategory[
+        TRIAL_SPORT_FAILURE_CATEGORIES.productParse
+      ],
+    ).toBe(1);
   });
 
   it("emits discovery, periodic and reconciled final progress", async () => {
@@ -230,9 +370,16 @@ describe("Trial Sport source diagnostics", () => {
       resolvedCount: result.diagnostics.resolvedCount,
       unavailableCount: result.diagnostics.unavailableCount,
       failedCount: result.diagnostics.failedCount,
+      safeUnimportableCount: result.diagnostics.safeUnimportableCount,
+      unsafeFailureCount: result.diagnostics.unsafeFailureCount,
+      safeUnimportableByReason: result.diagnostics.safeUnimportableByReason,
       skippedCount: result.diagnostics.skippedCount,
       remainingCount: 0,
       failuresByCategory: result.diagnostics.failuresByCategory,
+      limited: result.diagnostics.limited,
+      importComplete: result.diagnostics.importComplete,
+      staleSafe: result.diagnostics.staleSafe,
+      complete: result.diagnostics.complete,
     });
   });
 
