@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertTraektoriaStaleSafe,
   assertTrialSportStaleSafe,
   buildStaleProductDecision,
 } from "./import-from-stores.mjs";
@@ -31,6 +32,20 @@ describe("Trial Sport stale-safety gate", () => {
     );
     expect(() =>
       assertTrialSportStaleSafe({ importComplete: false, staleSafe: true }),
+    ).not.toThrow();
+  });
+});
+
+describe("Traektoria stale-safety gate", () => {
+  it("allows import-incomplete evidence only when stale-safe", () => {
+    expect(() => assertTraektoriaStaleSafe({ staleSafe: false })).toThrow(
+      "INCOMPLETE_TRAEKTORIA_SOURCE",
+    );
+    expect(() => assertTraektoriaStaleSafe(null)).toThrow(
+      "INCOMPLETE_TRAEKTORIA_SOURCE",
+    );
+    expect(() =>
+      assertTraektoriaStaleSafe({ importComplete: false, staleSafe: true }),
     ).not.toThrow();
   });
 });
@@ -205,8 +220,128 @@ describe("safe managed-store stale decisions", () => {
       trialRevalidationOutcomes: [{ slug: trial.slug, status: "available" }],
     });
 
-    expect(decision.staleProducts).toEqual([traektoria]);
+    expect(decision.staleProducts).toEqual([]);
     expect(decision.preservedProducts).toEqual([trial]);
+    expect(decision.traektoriaProductsRequiringRevalidation).toEqual([
+      traektoria,
+    ]);
+  });
+
+  it("preserves an observed available Traektoria Product", () => {
+    const existing = makeProduct({
+      slug: "traektoria-observed",
+      sourceProductId: "2002",
+      storeCode: "traektoria",
+    });
+
+    const decision = buildStaleProductDecision({
+      existingProducts: [existing],
+      resolvedProducts: [],
+      sourceFilter: "traektoria",
+      traektoriaSourceObservations: [
+        {
+          storeCode: "traektoria",
+          sourceProductId: "2002",
+          availability: "available",
+          status: "safe_unimportable",
+          reason: "size_table_missing",
+        },
+      ],
+    });
+
+    expect(decision.preservedProducts).toEqual([existing]);
+    expect(decision.staleProducts).toEqual([]);
+    expect(decision.traektoriaProductsRequiringRevalidation).toEqual([]);
+  });
+
+  it("uses a trustworthy unavailable Traektoria observation as stale evidence", () => {
+    const existing = makeProduct({
+      slug: "traektoria-unavailable",
+      sourceProductId: "2003",
+      storeCode: "traektoria",
+    });
+
+    const decision = buildStaleProductDecision({
+      existingProducts: [existing],
+      resolvedProducts: [],
+      sourceFilter: "traektoria",
+      traektoriaSourceObservations: [
+        {
+          storeCode: "traektoria",
+          sourceProductId: "2003",
+          availability: "unavailable",
+          status: "safe_unimportable",
+          reason: "size_table_missing",
+        },
+      ],
+    });
+
+    expect(decision.staleProducts).toEqual([existing]);
+    expect(decision.traektoriaProductsRequiringRevalidation).toEqual([]);
+  });
+
+  it("applies Traektoria direct revalidation outcomes fail-closed", () => {
+    const available = makeProduct({
+      slug: "traektoria-available",
+      sourceProductId: "2004",
+      storeCode: "traektoria",
+    });
+    const unavailable = makeProduct({
+      slug: "traektoria-gone",
+      sourceProductId: "2005",
+      storeCode: "traektoria",
+    });
+    const unknown = makeProduct({
+      slug: "traektoria-unknown",
+      sourceProductId: "2006",
+      storeCode: "traektoria",
+    });
+
+    const decision = buildStaleProductDecision({
+      existingProducts: [available, unavailable, unknown],
+      resolvedProducts: [],
+      sourceFilter: "all",
+      traektoriaRevalidationOutcomes: [
+        { slug: available.slug, status: "available" },
+        { slug: unavailable.slug, status: "unavailable" },
+        { slug: unknown.slug, status: "unknown" },
+      ],
+    });
+
+    expect(decision.preservedProducts).toEqual([available]);
+    expect(decision.staleProducts).toEqual([unavailable]);
+    expect(decision.blockingTraektoriaProducts).toEqual([unknown]);
+  });
+
+  it("preserves Traektoria replacement semantics for the same source ID", () => {
+    const existing = makeProduct({
+      slug: "traektoria-old",
+      sourceProductId: "2007",
+      storeCode: "traektoria",
+    });
+    const replacement = makeProduct({
+      slug: "traektoria-new",
+      sourceProductId: "2007",
+      storeCode: "traektoria",
+    });
+
+    const decision = buildStaleProductDecision({
+      existingProducts: [existing],
+      resolvedProducts: [replacement],
+      sourceFilter: "all",
+      traektoriaSourceObservations: [
+        {
+          storeCode: "traektoria",
+          sourceProductId: "2007",
+          availability: "available",
+          status: "safe_unimportable",
+          reason: "size_table_missing",
+        },
+      ],
+    });
+
+    expect(decision.staleProducts).toEqual([existing]);
+    expect(decision.traektoriaProductsRequiringRevalidation).toEqual([]);
   });
 
   it("does not revalidate Products that are already inactive", () => {

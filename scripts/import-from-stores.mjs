@@ -14,7 +14,10 @@ import {
   applyOfficialProductSpecs,
   loadOfficialProductSpecs,
 } from "./lib/official-specs.mjs";
-import { importTraektoriaProducts } from "./lib/store-import/traektoria.mjs";
+import {
+  importTraektoriaProducts,
+  revalidateTraektoriaProducts,
+} from "./lib/store-import/traektoria.mjs";
 import {
   importTrialSportProducts,
   revalidateTrialSportProducts,
@@ -404,6 +407,12 @@ export function assertTrialSportStaleSafe(diagnostics) {
   }
 }
 
+export function assertTraektoriaStaleSafe(diagnostics) {
+  if (!diagnostics || diagnostics.staleSafe !== true) {
+    throw new Error("INCOMPLETE_TRAEKTORIA_SOURCE");
+  }
+}
+
 function toProductValues(products) {
   if (products instanceof Map) {
     return Array.from(products.values());
@@ -416,11 +425,23 @@ export function buildStaleProductDecision({
   existingProducts,
   resolvedProducts,
   sourceFilter,
+  traektoriaSourceObservations = [],
+  traektoriaRevalidationOutcomes = [],
   trialSourceObservations = [],
   trialRevalidationOutcomes = [],
 }) {
   const resolvedValues = toProductValues(resolvedProducts);
   const resolvedSlugs = new Set(resolvedValues.map((product) => product.slug));
+  const resolvedTraektoriaSourceIds = new Set(
+    resolvedValues
+      .filter(
+        (product) => getManagedStoreCodeFromUrl(product.affiliateUrl) === "traektoria",
+      )
+      .map(
+        (product) => getStoreIdentityFromUrl(product.affiliateUrl).sourceProductId,
+      )
+      .filter(Boolean),
+  );
   const resolvedTrialSourceIds = new Set(
     resolvedValues
       .filter(
@@ -443,11 +464,31 @@ export function buildStaleProductDecision({
       .map((observation) => String(observation.sourceProductId ?? "").trim())
       .filter(Boolean),
   );
-  const revalidationBySlug = new Map(
+  const observedTraektoriaBySourceId = new Map(
+    traektoriaSourceObservations
+      .filter(
+        (observation) =>
+          observation?.storeCode === "traektoria" &&
+          observation?.status === "safe_unimportable" &&
+          observation?.reason === "size_table_missing" &&
+          ["available", "unavailable"].includes(observation?.availability),
+      )
+      .map((observation) => [
+        String(observation.sourceProductId ?? "").trim(),
+        observation.availability,
+      ])
+      .filter(([sourceProductId]) => Boolean(sourceProductId)),
+  );
+  const trialRevalidationBySlug = new Map(
     trialRevalidationOutcomes.map((outcome) => [outcome.slug, outcome.status]),
+  );
+  const traektoriaRevalidationBySlug = new Map(
+    traektoriaRevalidationOutcomes.map((outcome) => [outcome.slug, outcome.status]),
   );
   const staleProducts = [];
   const preservedProducts = [];
+  const traektoriaProductsRequiringRevalidation = [];
+  const blockingTraektoriaProducts = [];
   const trialProductsRequiringRevalidation = [];
   const blockingTrialProducts = [];
 
@@ -461,14 +502,47 @@ export function buildStaleProductDecision({
     }
 
     const storeCode = getManagedStoreCodeFromUrl(product.affiliateUrl);
+    const sourceProductId = getStoreIdentityFromUrl(
+      product.affiliateUrl,
+    ).sourceProductId;
+
+    if (storeCode === "traektoria") {
+      if (sourceProductId && resolvedTraektoriaSourceIds.has(sourceProductId)) {
+        staleProducts.push(product);
+        continue;
+      }
+
+      const observedAvailability = sourceProductId
+        ? observedTraektoriaBySourceId.get(sourceProductId)
+        : null;
+      if (observedAvailability === "available") {
+        preservedProducts.push(product);
+        continue;
+      }
+
+      if (observedAvailability === "unavailable") {
+        staleProducts.push(product);
+        continue;
+      }
+
+      const revalidationStatus = traektoriaRevalidationBySlug.get(product.slug);
+      if (revalidationStatus === "unavailable") {
+        staleProducts.push(product);
+      } else if (revalidationStatus === "available") {
+        preservedProducts.push(product);
+      } else if (revalidationStatus === "unknown") {
+        blockingTraektoriaProducts.push(product);
+      } else {
+        traektoriaProductsRequiringRevalidation.push(product);
+      }
+      continue;
+    }
+
     if (storeCode !== "trial-sport") {
       staleProducts.push(product);
       continue;
     }
 
-    const sourceProductId = getStoreIdentityFromUrl(
-      product.affiliateUrl,
-    ).sourceProductId;
     if (sourceProductId && resolvedTrialSourceIds.has(sourceProductId)) {
       staleProducts.push(product);
       continue;
@@ -479,7 +553,7 @@ export function buildStaleProductDecision({
       continue;
     }
 
-    const revalidationStatus = revalidationBySlug.get(product.slug);
+    const revalidationStatus = trialRevalidationBySlug.get(product.slug);
     if (revalidationStatus === "unavailable") {
       staleProducts.push(product);
     } else if (revalidationStatus === "available") {
@@ -494,6 +568,8 @@ export function buildStaleProductDecision({
   return {
     staleProducts,
     preservedProducts,
+    traektoriaProductsRequiringRevalidation,
+    blockingTraektoriaProducts,
     trialProductsRequiringRevalidation,
     blockingTrialProducts,
   };
@@ -570,6 +646,8 @@ export async function runStoreImport(options = {}) {
   try {
     const importedProducts = [];
     const warnings = [];
+    let traektoriaDiagnostics = null;
+    let traektoriaSourceObservations = [];
     let trialSportDiagnostics = null;
     let trialSportSourceObservations = [];
 
@@ -584,6 +662,9 @@ export async function runStoreImport(options = {}) {
 
       importedProducts.push(...result.products);
       warnings.push(...result.warnings);
+      traektoriaDiagnostics = result.diagnostics;
+      traektoriaSourceObservations = result.sourceObservations ?? [];
+      assertTraektoriaStaleSafe(traektoriaDiagnostics);
     }
 
     if (
@@ -648,9 +729,27 @@ export async function runStoreImport(options = {}) {
       existingProducts: existingCatalog,
       resolvedProducts: mergedImportedProducts,
       sourceFilter,
+      traektoriaSourceObservations,
       trialSourceObservations: trialSportSourceObservations,
     });
-    let staleDecision = initialStaleDecision;
+    let traektoriaRevalidationOutcomes = [];
+    let trialRevalidationOutcomes = [];
+
+    if (
+      initialStaleDecision.traektoriaProductsRequiringRevalidation.length > 0
+    ) {
+      const revalidation = await revalidateTraektoriaProducts({
+        products:
+          initialStaleDecision.traektoriaProductsRequiringRevalidation,
+        fetchJson,
+      });
+
+      if (!revalidation.diagnostics.complete) {
+        throw new Error("INCOMPLETE_TRAEKTORIA_SOURCE");
+      }
+
+      traektoriaRevalidationOutcomes = revalidation.outcomes;
+    }
 
     if (initialStaleDecision.trialProductsRequiringRevalidation.length > 0) {
       const revalidation = await revalidateTrialSportProducts({
@@ -662,13 +761,24 @@ export async function runStoreImport(options = {}) {
         throw new Error("INCOMPLETE_TRIAL_SPORT_SOURCE");
       }
 
-      staleDecision = buildStaleProductDecision({
-        existingProducts: existingCatalog,
-        resolvedProducts: mergedImportedProducts,
-        sourceFilter,
-        trialSourceObservations: trialSportSourceObservations,
-        trialRevalidationOutcomes: revalidation.outcomes,
-      });
+      trialRevalidationOutcomes = revalidation.outcomes;
+    }
+
+    const staleDecision = buildStaleProductDecision({
+      existingProducts: existingCatalog,
+      resolvedProducts: mergedImportedProducts,
+      sourceFilter,
+      traektoriaSourceObservations,
+      traektoriaRevalidationOutcomes,
+      trialSourceObservations: trialSportSourceObservations,
+      trialRevalidationOutcomes,
+    });
+
+    if (
+      staleDecision.traektoriaProductsRequiringRevalidation.length > 0 ||
+      staleDecision.blockingTraektoriaProducts.length > 0
+    ) {
+      throw new Error("INCOMPLETE_TRAEKTORIA_SOURCE");
     }
 
     if (

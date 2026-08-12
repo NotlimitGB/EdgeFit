@@ -20,6 +20,7 @@ import {
 import {
   getBoardLineEvidence,
   getExplicitVariantMarker,
+  getStoreIdentityFromUrl,
 } from "./source-identity.mjs";
 
 const TRAEKTORIA_BASE_URL = "https://www.traektoria.ru";
@@ -35,81 +36,141 @@ function extractProductId(productUrl) {
   return match?.[1] ?? null;
 }
 
-function parseTraektoriaSizeTable(gridSizeHtml) {
-  const tableHtml = String(gridSizeHtml ?? "");
-  if (!tableHtml.trim()) {
-    return [];
-  }
+const SIZE_LABEL_MARKERS = [
+  "\u0440\u043e\u0441\u0442\u043e\u0432",
+  "\u0440\u0430\u0437\u043c\u0435\u0440",
+  "\u0434\u043b\u0438\u043d\u0430 \u0434\u043e\u0441\u043a",
+];
+const WAIST_LABEL = "\u0448\u0438\u0440\u0438\u043d\u0430 \u0442\u0430\u043b\u0438\u0438";
+const RIDER_WEIGHT_LABEL = "\u0432\u0435\u0441 \u0440\u0430\u0439\u0434\u0435\u0440\u0430";
+const SNOWBOARD_TYPE = "\u0441\u043d\u043e\u0443\u0431\u043e\u0440\u0434";
 
-  const rows = Array.from(
-    tableHtml.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/giu),
+function normalizeTableLabel(value) {
+  return normalizeWhitespace(value).toLowerCase();
+}
+
+function isSizeLabel(value) {
+  const normalized = normalizeTableLabel(value);
+  return SIZE_LABEL_MARKERS.some((marker) => normalized.includes(marker));
+}
+
+function isWaistLabel(value) {
+  return normalizeTableLabel(value).includes(WAIST_LABEL);
+}
+
+function isRiderWeightLabel(value) {
+  return normalizeTableLabel(value).includes(RIDER_WEIGHT_LABEL);
+}
+
+function getTraektoriaSizeTableRows(gridSizeHtml) {
+  return Array.from(
+    String(gridSizeHtml ?? "").matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/giu),
     (match) =>
       Array.from(
         match[1].matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/giu),
         (cellMatch) => stripHtml(cellMatch[1]),
       ),
   ).filter((cells) => cells.length > 0);
+}
 
-  if (rows.length < 2) {
-    return [];
+function toTraektoriaSize({ sizeLabel, waistValue, riderWeightValue }) {
+  const normalizedSizeLabel = normalizeWhitespace(sizeLabel);
+  const sizeCm = parseSizeCm(normalizedSizeLabel);
+  const waistWidthMm = normalizeWaistWidthMm(waistValue);
+  const weightRange = riderWeightValue
+    ? parseWeightRange(riderWeightValue)
+    : { min: 0, max: null };
+
+  if (!isPlausibleWaistWidthMm(sizeCm, waistWidthMm)) {
+    return null;
   }
 
+  return {
+    sizeCm,
+    sizeLabel: normalizedSizeLabel,
+    waistWidthMm,
+    recommendedWeightMin: weightRange.min,
+    recommendedWeightMax: weightRange.max,
+    widthType: classifyWidthType(waistWidthMm),
+  };
+}
+
+function parseColumnOrientedSizeTable(rows) {
   const header = rows[0].slice(1);
-  const sizesByLabel = new Map(
-    header.map((sizeLabel) => [
-      normalizeWhitespace(sizeLabel),
-      {
-        sizeLabel: normalizeWhitespace(sizeLabel),
-        sizeCm: parseSizeCm(sizeLabel),
-        waistWidthMm: null,
-        recommendedWeightMin: 0,
-        recommendedWeightMax: null,
-      },
-    ]),
+  const waistRow = rows.slice(1).find((row) => isWaistLabel(row[0]));
+  const riderWeightRow = rows.slice(1).find((row) =>
+    isRiderWeightLabel(row[0]),
+  );
+  const parseableHeaderCount = header.filter((label) =>
+    Number.isFinite(parseSizeCm(label)),
+  ).length;
+
+  if (parseableHeaderCount === 0 || !waistRow) {
+    return null;
+  }
+
+  return header
+    .map((sizeLabel, index) =>
+      toTraektoriaSize({
+        sizeLabel,
+        waistValue: waistRow[index + 1],
+        riderWeightValue: riderWeightRow?.[index + 1],
+      }),
+    )
+    .filter(Boolean);
+}
+
+function parseRowOrientedSizeTable(rows) {
+  const header = rows[0];
+  const waistIndex = header.findIndex(isWaistLabel);
+  const riderWeightIndex = header.findIndex(isRiderWeightLabel);
+
+  if (!isSizeLabel(header[0]) || waistIndex < 1) {
+    return null;
+  }
+
+  return rows
+    .slice(1)
+    .map((row) =>
+      toTraektoriaSize({
+        sizeLabel: row[0],
+        waistValue: row[waistIndex],
+        riderWeightValue:
+          riderWeightIndex >= 1 ? row[riderWeightIndex] : undefined,
+      }),
+    )
+    .filter(Boolean);
+}
+
+function parseTraektoriaSizeTable(gridSizeHtml) {
+  const tableHtml = String(gridSizeHtml ?? "");
+  if (!tableHtml.trim()) {
+    return { status: "missing", orientation: null, sizes: [] };
+  }
+
+  const rows = getTraektoriaSizeTableRows(tableHtml);
+  if (rows.length < 2) {
+    return { status: "invalid", orientation: null, sizes: [] };
+  }
+
+  const rowOrientedSizes = parseRowOrientedSizeTable(rows);
+  const columnOrientedSizes = rowOrientedSizes
+    ? null
+    : parseColumnOrientedSizeTable(rows);
+  const orientation = rowOrientedSizes
+    ? "row"
+    : columnOrientedSizes
+      ? "column"
+      : null;
+  const sizes = (rowOrientedSizes ?? columnOrientedSizes ?? []).sort(
+    (left, right) => left.sizeCm - right.sizeCm,
   );
 
-  for (const row of rows.slice(1)) {
-    const rowLabel = normalizeWhitespace(row[0]).toLowerCase();
-    const values = row.slice(1);
-
-    header.forEach((sizeLabel, index) => {
-      const item = sizesByLabel.get(normalizeWhitespace(sizeLabel));
-      const value = values[index];
-
-      if (!item || !value) {
-        return;
-      }
-
-      if (rowLabel.includes("вес райдера")) {
-        const weightRange = parseWeightRange(value);
-        item.recommendedWeightMin = weightRange.min;
-        item.recommendedWeightMax = weightRange.max;
-      }
-
-      if (rowLabel.includes("ширина талии")) {
-        const waistWidth = normalizeWaistWidthMm(value);
-        if (Number.isFinite(waistWidth)) {
-          item.waistWidthMm = waistWidth;
-        }
-      }
-    });
-  }
-
-  return Array.from(sizesByLabel.values())
-    .filter(
-      (size) =>
-        Number.isFinite(size.sizeCm) &&
-        isPlausibleWaistWidthMm(size.sizeCm, size.waistWidthMm),
-    )
-    .map((size) => ({
-      sizeCm: size.sizeCm,
-      sizeLabel: size.sizeLabel,
-      waistWidthMm: size.waistWidthMm,
-      recommendedWeightMin: size.recommendedWeightMin,
-      recommendedWeightMax: size.recommendedWeightMax,
-      widthType: classifyWidthType(size.waistWidthMm),
-    }))
-    .sort((left, right) => left.sizeCm - right.sizeCm);
+  return {
+    status: orientation && sizes.length > 0 ? "parsed" : "invalid",
+    orientation,
+    sizes,
+  };
 }
 
 function getTraektoriaFilterMap(filterOptions) {
@@ -151,28 +212,38 @@ function extractTraektoriaImageUrls(model) {
   return urls;
 }
 
-function getTraektoriaAvailableSkus(model) {
-  return (Array.isArray(model?.sku_list) ? model.sku_list : [])
-    .flatMap((skuGroup) => skuGroup?.sizes ?? [])
-    .filter((sku) => {
-      if (sku?.is_available === true) {
-        return true;
-      }
+function isTraektoriaSkuAvailable(sku) {
+  return (
+    sku?.is_available === true ||
+    (Number.isFinite(sku?.quantity) && Number(sku.quantity) > 0) ||
+    (Array.isArray(sku?.shops_available) && sku.shops_available.length > 0) ||
+    (Array.isArray(sku?.stores_available) && sku.stores_available.length > 0)
+  );
+}
 
-      if (Number.isFinite(sku?.quantity) && Number(sku.quantity) > 0) {
-        return true;
-      }
+function getTraektoriaAvailability(model) {
+  if (!Array.isArray(model?.sku_list)) {
+    return { status: "unknown", availableSkus: [] };
+  }
 
-      if (Array.isArray(sku?.shops_available) && sku.shops_available.length > 0) {
-        return true;
-      }
+  const allSkus = [];
+  for (const skuGroup of model.sku_list) {
+    if (!skuGroup || !Array.isArray(skuGroup.sizes)) {
+      return { status: "unknown", availableSkus: [] };
+    }
 
-      if (Array.isArray(sku?.stores_available) && sku.stores_available.length > 0) {
-        return true;
-      }
+    if (skuGroup.sizes.some((sku) => !sku || typeof sku !== "object")) {
+      return { status: "unknown", availableSkus: [] };
+    }
 
-      return false;
-    });
+    allSkus.push(...skuGroup.sizes);
+  }
+
+  const availableSkus = allSkus.filter(isTraektoriaSkuAvailable);
+  return {
+    status: availableSkus.length > 0 ? "available" : "unavailable",
+    availableSkus,
+  };
 }
 
 function mapTraektoriaSizesAvailability(sizes, availableSkus) {
@@ -202,9 +273,11 @@ function buildTraektoriaProduct(productUrl, productPayload, checkedAt) {
   }
 
   const filterMap = getTraektoriaFilterMap(content.filter_options);
-  const availableSkus = getTraektoriaAvailableSkus(model);
+  const availability = getTraektoriaAvailability(model);
+  const availableSkus = availability.availableSkus;
+  const sizeTable = parseTraektoriaSizeTable(content.grid_size_html);
   const sizes = mapTraektoriaSizesAvailability(
-    parseTraektoriaSizeTable(content.grid_size_html),
+    sizeTable.sizes,
     availableSkus,
   );
 
@@ -285,6 +358,209 @@ function buildTraektoriaProduct(productUrl, productPayload, checkedAt) {
   };
 }
 
+export const TRAEKTORIA_FAILURE_CATEGORIES = Object.freeze({
+  productFetch: "product_fetch_failure",
+  missingPayload: "missing_payload",
+  unexpectedType: "unexpected_type",
+  sizeTableParse: "size_table_parse_failure",
+  identity: "identity_failure",
+  availabilityParse: "availability_parse_failure",
+  other: "other_failure",
+});
+
+function createTraektoriaFailureCounts() {
+  return Object.fromEntries(
+    Object.values(TRAEKTORIA_FAILURE_CATEGORIES).map((category) => [category, 0]),
+  );
+}
+
+function getTraektoriaIdentity(model, props) {
+  const productName = normalizeWhitespace(props?.name);
+  const brand = normalizeWhitespace(model?.brand?.name || productName.split(" ")[0]);
+  const modelName = normalizeWhitespace(
+    props?.model_name || (brand ? productName.replace(brand, "") : ""),
+  );
+
+  return brand && modelName ? { brand, modelName } : null;
+}
+
+function buildTraektoriaProductOutcome(productUrl, productPayload, checkedAt) {
+  const sourceProductId = extractProductId(productUrl);
+  if (!sourceProductId) {
+    return {
+      status: "unsafe_failure",
+      category: TRAEKTORIA_FAILURE_CATEGORIES.identity,
+    };
+  }
+
+  const content = productPayload?.data?.MAIN?.content;
+  const model = content?.model;
+  const props = model?.props;
+  if (!content || !model || !props) {
+    return {
+      status: "unsafe_failure",
+      category: TRAEKTORIA_FAILURE_CATEGORIES.missingPayload,
+    };
+  }
+
+  if (normalizeWhitespace(props.thing_type).toLowerCase() !== SNOWBOARD_TYPE) {
+    return {
+      status: "unsafe_failure",
+      category: TRAEKTORIA_FAILURE_CATEGORIES.unexpectedType,
+    };
+  }
+
+  if (!getTraektoriaIdentity(model, props)) {
+    return {
+      status: "unsafe_failure",
+      category: TRAEKTORIA_FAILURE_CATEGORIES.identity,
+    };
+  }
+
+  const availability = getTraektoriaAvailability(model);
+  if (availability.status === "unknown") {
+    return {
+      status: "unsafe_failure",
+      category: TRAEKTORIA_FAILURE_CATEGORIES.availabilityParse,
+    };
+  }
+
+  const sizeTable = parseTraektoriaSizeTable(content.grid_size_html);
+  if (sizeTable.status === "missing") {
+    return {
+      status: "safe_unimportable",
+      observation: {
+        storeCode: "traektoria",
+        sourceProductId,
+        status: "safe_unimportable",
+        reason: "size_table_missing",
+        availability: availability.status,
+      },
+    };
+  }
+
+  if (sizeTable.status !== "parsed") {
+    return {
+      status: "unsafe_failure",
+      category: TRAEKTORIA_FAILURE_CATEGORIES.sizeTableParse,
+    };
+  }
+
+  try {
+    const product = buildTraektoriaProduct(productUrl, productPayload, checkedAt);
+    return product
+      ? { status: "resolved", product }
+      : {
+          status: "unsafe_failure",
+          category: TRAEKTORIA_FAILURE_CATEGORIES.other,
+        };
+  } catch {
+    return {
+      status: "unsafe_failure",
+      category: TRAEKTORIA_FAILURE_CATEGORIES.other,
+    };
+  }
+}
+
+function isTraektoriaNotFoundError(error) {
+  return error instanceof Error && /\bHTTP\s+(?:404|410)\b/u.test(error.message);
+}
+
+export async function revalidateTraektoriaProducts({
+  products,
+  fetchJson,
+  concurrency = 5,
+}) {
+  const queue = Array.isArray(products) ? products : [];
+  const outcomes = [];
+  const failuresByCategory = createTraektoriaFailureCounts();
+  let cursor = 0;
+
+  async function worker() {
+    while (cursor < queue.length) {
+      const currentIndex = cursor;
+      cursor += 1;
+      const product = queue[currentIndex];
+      const slug = String(product?.slug ?? "").trim();
+      const sourceProductId = getStoreIdentityFromUrl(
+        product?.affiliateUrl,
+      ).sourceProductId;
+
+      if (!slug || !sourceProductId) {
+        failuresByCategory[TRAEKTORIA_FAILURE_CATEGORIES.identity] += 1;
+        outcomes.push({ slug, status: "unknown" });
+        continue;
+      }
+
+      let payload;
+      try {
+        payload = await fetchJson(
+          `${TRAEKTORIA_BASE_URL}/slim/pages/product/${sourceProductId}/?SITE_ID=lid`,
+        );
+      } catch (error) {
+        if (isTraektoriaNotFoundError(error)) {
+          outcomes.push({ slug, status: "unavailable" });
+          continue;
+        }
+
+        failuresByCategory[TRAEKTORIA_FAILURE_CATEGORIES.productFetch] += 1;
+        outcomes.push({ slug, status: "unknown" });
+        continue;
+      }
+
+      const content = payload?.data?.MAIN?.content;
+      const model = content?.model;
+      const props = model?.props;
+      if (!content || !model || !props) {
+        failuresByCategory[TRAEKTORIA_FAILURE_CATEGORIES.missingPayload] += 1;
+        outcomes.push({ slug, status: "unknown" });
+        continue;
+      }
+
+      if (normalizeWhitespace(props.thing_type).toLowerCase() !== SNOWBOARD_TYPE) {
+        failuresByCategory[TRAEKTORIA_FAILURE_CATEGORIES.unexpectedType] += 1;
+        outcomes.push({ slug, status: "unknown" });
+        continue;
+      }
+
+      if (!getTraektoriaIdentity(model, props)) {
+        failuresByCategory[TRAEKTORIA_FAILURE_CATEGORIES.identity] += 1;
+        outcomes.push({ slug, status: "unknown" });
+        continue;
+      }
+
+      const availability = getTraektoriaAvailability(model);
+      if (availability.status === "unknown") {
+        failuresByCategory[TRAEKTORIA_FAILURE_CATEGORIES.availabilityParse] += 1;
+        outcomes.push({ slug, status: "unknown" });
+        continue;
+      }
+
+      outcomes.push({ slug, status: availability.status });
+    }
+  }
+
+  await Promise.all(
+    Array.from(
+      { length: Math.max(1, Math.min(concurrency, queue.length || 1)) },
+      () => worker(),
+    ),
+  );
+
+  const unknownCount = outcomes.filter((outcome) => outcome.status === "unknown").length;
+  return {
+    outcomes: outcomes.sort((left, right) => left.slug.localeCompare(right.slug, "en")),
+    diagnostics: {
+      checkedCount: queue.length,
+      availableCount: outcomes.filter((outcome) => outcome.status === "available").length,
+      unavailableCount: outcomes.filter((outcome) => outcome.status === "unavailable").length,
+      unknownCount,
+      failuresByCategory,
+      complete: unknownCount === 0,
+    },
+  };
+}
+
 export async function importTraektoriaProducts({
   fetchJson,
   concurrency = 8,
@@ -294,13 +570,26 @@ export async function importTraektoriaProducts({
 }) {
   const firstPagePayload = await fetchJson(TRAEKTORIA_SECTION_API_URL);
   const firstPageContent = firstPagePayload?.data?.MAIN?.content;
+  const firstPageProducts = firstPageContent?.products;
   const pageCount = Number(firstPageContent?.navigation?.data?.page_count ?? 1);
+  if (
+    !firstPageContent ||
+    !Array.isArray(firstPageProducts) ||
+    !Number.isInteger(pageCount) ||
+    pageCount < 1
+  ) {
+    throw new Error("INCOMPLETE_TRAEKTORIA_SOURCE");
+  }
+
   const productUrls = new Set(
-    (firstPageContent?.products ?? [])
+    firstPageProducts
       .map((product) => product.url)
       .filter(Boolean)
       .map((url) => toAbsoluteUrl(TRAEKTORIA_BASE_URL, url.split("?")[0])),
   );
+  if (firstPageProducts.some((product) => !product?.url)) {
+    throw new Error("INCOMPLETE_TRAEKTORIA_SOURCE");
+  }
 
   for (const productUrl of EXTRA_PRODUCT_URLS) {
     productUrls.add(productUrl);
@@ -310,7 +599,14 @@ export async function importTraektoriaProducts({
     const pagePayload = await fetchJson(
       `${TRAEKTORIA_SECTION_API_URL}&PAGEN_1=${page}`,
     );
-    const pageProducts = pagePayload?.data?.MAIN?.content?.products ?? [];
+    const pageProducts = pagePayload?.data?.MAIN?.content?.products;
+    if (!Array.isArray(pageProducts)) {
+      throw new Error("INCOMPLETE_TRAEKTORIA_SOURCE");
+    }
+
+    if (pageProducts.some((product) => !product?.url)) {
+      throw new Error("INCOMPLETE_TRAEKTORIA_SOURCE");
+    }
 
     for (const product of pageProducts) {
       if (product?.url) {
@@ -321,15 +617,37 @@ export async function importTraektoriaProducts({
     }
   }
 
-  const queue = Array.from(productUrls).sort((left, right) =>
+  const discoveredUrls = Array.from(productUrls).sort((left, right) =>
     left.localeCompare(right, "ru"),
-  ).slice(
-    0,
-    Number.isFinite(limit) && limit > 0 ? limit : undefined,
   );
+  const hasLimit = Number.isFinite(limit) && limit > 0;
+  const queue = discoveredUrls.slice(0, hasLimit ? limit : undefined);
   const results = [];
+  const sourceObservations = [];
   const warnings = [];
+  const failuresByCategory = createTraektoriaFailureCounts();
+  let processedCount = 0;
   let cursor = 0;
+
+  function recordUnsafeFailure(category) {
+    failuresByCategory[category] += 1;
+    warnings.push(`Traektoria: ${category}`);
+  }
+
+  function recordOutcome(outcome) {
+    if (outcome.status === "resolved") {
+      results.push(outcome.product);
+      return;
+    }
+
+    if (outcome.status === "safe_unimportable") {
+      sourceObservations.push(outcome.observation);
+      warnings.push("Traektoria: safe_unimportable_size_table_missing");
+      return;
+    }
+
+    recordUnsafeFailure(outcome.category);
+  }
 
   async function worker() {
     while (cursor < queue.length) {
@@ -340,7 +658,8 @@ export async function importTraektoriaProducts({
       const productId = extractProductId(productUrl);
 
       if (!productId) {
-        warnings.push(`Не удалось выделить id товара: ${productUrl}`);
+        recordUnsafeFailure(TRAEKTORIA_FAILURE_CATEGORIES.identity);
+        processedCount += 1;
         continue;
       }
 
@@ -348,15 +667,13 @@ export async function importTraektoriaProducts({
         const payload = await fetchJson(
           `${TRAEKTORIA_BASE_URL}/slim/pages/product/${productId}/?SITE_ID=lid`,
         );
-
-        const product = buildTraektoriaProduct(productUrl, payload, checkedAt);
-        if (product) {
-          results.push(product);
-        }
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "неизвестная ошибка";
-        warnings.push(`Траектория: не удалось обработать ${productUrl}: ${message}`);
+        recordOutcome(
+          buildTraektoriaProductOutcome(productUrl, payload, checkedAt),
+        );
+      } catch {
+        recordUnsafeFailure(TRAEKTORIA_FAILURE_CATEGORIES.productFetch);
+      } finally {
+        processedCount += 1;
       }
     }
   }
@@ -364,10 +681,47 @@ export async function importTraektoriaProducts({
   const workers = Array.from({ length: concurrency }, () => worker());
   await Promise.all(workers);
 
-  logger.log(`Траектория: найдено URL товаров ${queue.length}, импортировано ${results.length}.`);
+  const unsafeFailureCount = Object.values(failuresByCategory).reduce(
+    (total, count) => total + count,
+    0,
+  );
+  const safeUnimportableCount = sourceObservations.length;
+  const limited = hasLimit && queue.length < discoveredUrls.length;
+  const processingComplete = processedCount === queue.length;
+  const importComplete =
+    processingComplete &&
+    !limited &&
+    safeUnimportableCount === 0 &&
+    unsafeFailureCount === 0;
+  const staleSafe =
+    processingComplete && !limited && unsafeFailureCount === 0;
+  const diagnostics = {
+    discoveredCount: discoveredUrls.length,
+    attemptedCount: queue.length,
+    processedCount,
+    resolvedCount: results.length,
+    safeUnimportableCount,
+    unsafeFailureCount,
+    safeUnimportableByReason: {
+      sizeTableMissing: sourceObservations.filter(
+        (observation) => observation.reason === "size_table_missing",
+      ).length,
+    },
+    failuresByCategory,
+    limited,
+    importComplete,
+    staleSafe,
+    complete: importComplete,
+  };
+
+  logger.log(
+    `Траектория: найдено URL товаров ${discoveredUrls.length}, импортировано ${results.length}.`,
+  );
 
   return {
     products: results,
+    sourceObservations,
     warnings,
+    diagnostics,
   };
 }
