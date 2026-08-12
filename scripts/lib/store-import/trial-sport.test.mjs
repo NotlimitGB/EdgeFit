@@ -5,6 +5,7 @@ import {
   revalidateTrialSportProducts,
   TRIAL_SPORT_FAILURE_CATEGORIES,
 } from "./trial-sport.mjs";
+import { CatalogHttpTimeoutError } from "./catalog-http.mjs";
 
 const sectionUrl =
   "https://trial-sport.ru/gds.php?s=51526&c1=1070639&c2=1078224&gpp=100";
@@ -205,6 +206,50 @@ describe("Trial Sport source diagnostics", () => {
       limited: true,
       complete: false,
     });
+  });
+
+  it("emits discovery, periodic and reconciled final progress", async () => {
+    const progress = [];
+    const result = await importTrialSportProducts({
+      fetchText: createFetchText({ listingIds: ["1001", "1002"] }),
+      fetchArrayBuffer: vi.fn(async () => buildSpecWorkbook()),
+      checkedAt: "2026-08-12",
+      logger: silentLogger,
+      progressInterval: 1,
+      onProgress: (snapshot) => progress.push(snapshot),
+    });
+
+    expect(progress[0]).toMatchObject({ phase: "discovery", discoveredCount: 2, processedCount: 0 });
+    expect(progress.some((snapshot) => snapshot.phase === "processing" && snapshot.remainingCount === 2)).toBe(true);
+    expect(progress.some((snapshot) => snapshot.phase === "processing")).toBe(true);
+    expect(progress.at(-1)).toMatchObject({
+      phase: "complete",
+      discoveredCount: result.diagnostics.discoveredCount,
+      attemptedCount: result.diagnostics.attemptedCount,
+      processedCount: result.diagnostics.attemptedCount,
+      resolvedCount: result.diagnostics.resolvedCount,
+      unavailableCount: result.diagnostics.unavailableCount,
+      failedCount: result.diagnostics.failedCount,
+      skippedCount: result.diagnostics.skippedCount,
+      remainingCount: 0,
+      failuresByCategory: result.diagnostics.failuresByCategory,
+    });
+  });
+
+  it("classifies timed-out Product and spec requests structurally", async () => {
+    const productFetch = createFetchText();
+    productFetch.mockImplementationOnce(async () => buildListing("1001"));
+    productFetch.mockImplementationOnce(async () => { throw new CatalogHttpTimeoutError(); });
+    const productResult = await importTrialSportProducts({ fetchText: productFetch, fetchArrayBuffer: vi.fn(), checkedAt: "2026-08-12", logger: silentLogger });
+    expect(productResult.diagnostics.failuresByCategory[TRIAL_SPORT_FAILURE_CATEGORIES.productFetch]).toBe(1);
+
+    const specResult = await importTrialSportProducts({
+      fetchText: createFetchText(),
+      fetchArrayBuffer: vi.fn(async () => { throw new CatalogHttpTimeoutError(); }),
+      checkedAt: "2026-08-12",
+      logger: silentLogger,
+    });
+    expect(specResult.diagnostics.failuresByCategory[TRIAL_SPORT_FAILURE_CATEGORIES.specFetch]).toBe(1);
   });
 });
 

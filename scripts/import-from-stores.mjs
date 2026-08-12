@@ -1,6 +1,4 @@
 import postgres from "postgres";
-import http from "node:http";
-import https from "node:https";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { upsertCatalogProducts } from "./lib/upsert-boards.mjs";
@@ -21,6 +19,7 @@ import {
   importTrialSportProducts,
   revalidateTrialSportProducts,
 } from "./lib/store-import/trial-sport.mjs";
+import { fetchCatalogWithRetries } from "./lib/store-import/catalog-http.mjs";
 
 function normalizeGalleryImages(value) {
   const rawImages =
@@ -101,81 +100,8 @@ function hasCuratedVerifiedMedia(product) {
     .some((image) => !isLocalCatalogPlaceholderImage(image));
 }
 
-async function wait(milliseconds) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
-}
-
-async function requestBuffer(url, headers, redirectDepth = 0) {
-  const targetUrl = new URL(url);
-  const transport = targetUrl.protocol === "https:" ? https : http;
-
-  return new Promise((resolve, reject) => {
-    const request = transport.request(
-      targetUrl,
-      {
-        method: "GET",
-        headers,
-      },
-      (response) => {
-        const statusCode = response.statusCode ?? 0;
-
-        if (
-          statusCode >= 300 &&
-          statusCode < 400 &&
-          response.headers.location &&
-          redirectDepth < 5
-        ) {
-          resolve(
-            requestBuffer(
-              new URL(response.headers.location, targetUrl).toString(),
-              headers,
-              redirectDepth + 1,
-            ),
-          );
-          response.resume();
-          return;
-        }
-
-        if (statusCode < 200 || statusCode >= 300) {
-          reject(new Error(`HTTP ${statusCode}`));
-          response.resume();
-          return;
-        }
-
-        const chunks = [];
-        response.on("data", (chunk) => chunks.push(chunk));
-        response.on("end", () => resolve(Buffer.concat(chunks)));
-      },
-    );
-
-    request.on("error", reject);
-    request.end();
-  });
-}
-
-async function fetchWithRetries(url, headers, parseBuffer) {
-  let lastError = null;
-
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    try {
-      const buffer = await requestBuffer(url, headers);
-      return parseBuffer(buffer);
-    } catch (error) {
-      lastError = error;
-
-      if (attempt < 3) {
-        await wait(attempt * 700);
-      }
-    }
-  }
-
-  throw lastError;
-}
-
 export async function fetchText(url) {
-  return fetchWithRetries(
+  return fetchCatalogWithRetries(
     url,
     {
       "user-agent": "EdgeFitBot/1.0 (+https://edgefit.local)",
@@ -186,7 +112,7 @@ export async function fetchText(url) {
 }
 
 export async function fetchJson(url) {
-  return fetchWithRetries(
+  return fetchCatalogWithRetries(
     url,
     {
       "user-agent": "EdgeFitBot/1.0 (+https://edgefit.local)",
@@ -198,7 +124,7 @@ export async function fetchJson(url) {
 }
 
 export async function fetchArrayBuffer(url) {
-  return fetchWithRetries(
+  return fetchCatalogWithRetries(
     url,
     {
       "user-agent": "EdgeFitBot/1.0 (+https://edgefit.local)",

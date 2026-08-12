@@ -623,7 +623,21 @@ export async function importTrialSportProducts({
   limit = null,
   logger = console,
   checkedAt,
+  onProgress = null,
+  progressInterval = 25,
 }) {
+  function reportProgress(snapshot) {
+    if (typeof onProgress !== "function") {
+      return;
+    }
+
+    try {
+      onProgress(snapshot);
+    } catch {
+      // Progress reporting must never change importer behavior.
+    }
+  }
+
   const firstPageHtml = await fetchText(TRIAL_SECTION_URL);
   const maxPage = extractTrialPageCount(firstPageHtml);
   const listingUrls = Array.from({ length: maxPage }, (_, index) =>
@@ -631,12 +645,37 @@ export async function importTrialSportProducts({
   );
 
   const productUrls = new Set(extractTrialProductUrls(firstPageHtml));
+  reportProgress({
+    phase: "discovery",
+    discoveredCount: productUrls.size,
+    attemptedCount: 0,
+    processedCount: 0,
+    resolvedCount: 0,
+    unavailableCount: 0,
+    failedCount: 0,
+    skippedCount: 0,
+    remainingCount: 0,
+    failuresByCategory: createTrialFailureCounts(),
+  });
 
   for (const listingUrl of listingUrls.slice(1)) {
     const html = await fetchText(listingUrl);
     for (const productUrl of extractTrialProductUrls(html)) {
       productUrls.add(productUrl);
     }
+
+    reportProgress({
+      phase: "discovery",
+      discoveredCount: productUrls.size,
+      attemptedCount: 0,
+      processedCount: 0,
+      resolvedCount: 0,
+      unavailableCount: 0,
+      failedCount: 0,
+      skippedCount: 0,
+      remainingCount: 0,
+      failuresByCategory: createTrialFailureCounts(),
+    });
   }
 
   const workbookCache = new Map();
@@ -649,7 +688,35 @@ export async function importTrialSportProducts({
   const warnings = [];
   const failuresByCategory = createTrialFailureCounts();
   let unavailableCount = 0;
+  let processedCount = 0;
   let cursor = 0;
+  const normalizedProgressInterval = Math.max(
+    1,
+    Math.floor(progressInterval),
+  );
+
+  function emitProgress(phase) {
+    const failedCount = Object.values(failuresByCategory).reduce(
+      (total, count) => total + count,
+      0,
+    );
+    const skippedCount =
+      processedCount - results.length - unavailableCount - failedCount;
+    const snapshot = {
+      phase,
+      discoveredCount: discoveredUrls.length,
+      attemptedCount: queue.length,
+      processedCount,
+      resolvedCount: results.length,
+      unavailableCount,
+      failedCount,
+      skippedCount,
+      remainingCount: Math.max(0, queue.length - processedCount),
+      failuresByCategory: { ...failuresByCategory },
+    };
+
+    reportProgress(snapshot);
+  }
 
   function recordFailure(category, warning) {
     failuresByCategory[category] += 1;
@@ -663,97 +730,117 @@ export async function importTrialSportProducts({
 
       const productUrl = queue[currentIndex];
 
-      let htmlText;
       try {
-        htmlText = await fetchText(productUrl);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "неизвестная ошибка";
-        recordFailure(
-          TRIAL_SPORT_FAILURE_CATEGORIES.productFetch,
-          `Триал-Спорт: ошибка загрузки ${productUrl}: ${message}`,
-        );
-        continue;
-      }
-
-      const availability = getTrialAvailability(htmlText);
-      if (availability.status === "unknown") {
-        recordFailure(
-          TRIAL_SPORT_FAILURE_CATEGORIES.availabilityParse,
-          `Триал-Спорт: не удалось определить наличие для ${productUrl}`,
-        );
-        continue;
-      }
-
-      if (availability.status === "unavailable") {
-        unavailableCount += 1;
-        continue;
-      }
-
-      const specUrl = extractTrialSpecUrl(htmlText);
-      if (!specUrl) {
-        recordFailure(
-          TRIAL_SPORT_FAILURE_CATEGORIES.specMissing,
-          `Триал-Спорт: нет файла характеристик у ${productUrl}`,
-        );
-        continue;
-      }
-
-      let specResultPromise = workbookCache.get(specUrl);
-      if (!specResultPromise) {
-        specResultPromise = (async () => {
-          let workbookBytes;
-          try {
-            workbookBytes = await fetchArrayBuffer(specUrl);
-          } catch (error) {
-            return { ok: false, category: TRIAL_SPORT_FAILURE_CATEGORIES.specFetch, error };
-          }
-
-          try {
-            const specMap = buildTrialSpecMap(workbookBytes);
-            return specMap.size > 0
-              ? { ok: true, specMap }
-              : { ok: false, category: TRIAL_SPORT_FAILURE_CATEGORIES.specParse };
-          } catch (error) {
-            return { ok: false, category: TRIAL_SPORT_FAILURE_CATEGORIES.specParse, error };
-          }
-        })();
-        workbookCache.set(specUrl, specResultPromise);
-      }
-
-      const specResult = await specResultPromise;
-      if (!specResult.ok) {
-        recordFailure(
-          specResult.category,
-          `Триал-Спорт: ошибка файла характеристик у ${productUrl}`,
-        );
-        continue;
-      }
-
-      try {
-        const product = buildTrialProduct(
-          productUrl,
-          htmlText,
-          specResult.specMap,
-          availability.entries,
-          checkedAt,
-        );
-        if (product) {
-          results.push(product);
-        } else {
+        let htmlText;
+        try {
+          htmlText = await fetchText(productUrl);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "неизвестная ошибка";
           recordFailure(
-            TRIAL_SPORT_FAILURE_CATEGORIES.productParse,
-            `Триал-Спорт: не удалось собрать карточку для ${productUrl}`,
+            TRIAL_SPORT_FAILURE_CATEGORIES.productFetch,
+            `Триал-Спорт: ошибка загрузки ${productUrl}: ${message}`,
+          );
+          continue;
+        }
+
+        const availability = getTrialAvailability(htmlText);
+        if (availability.status === "unknown") {
+          recordFailure(
+            TRIAL_SPORT_FAILURE_CATEGORIES.availabilityParse,
+            `Триал-Спорт: не удалось определить наличие для ${productUrl}`,
+          );
+          continue;
+        }
+
+        if (availability.status === "unavailable") {
+          unavailableCount += 1;
+          continue;
+        }
+
+        const specUrl = extractTrialSpecUrl(htmlText);
+        if (!specUrl) {
+          recordFailure(
+            TRIAL_SPORT_FAILURE_CATEGORIES.specMissing,
+            `Триал-Спорт: нет файла характеристик у ${productUrl}`,
+          );
+          continue;
+        }
+
+        let specResultPromise = workbookCache.get(specUrl);
+        if (!specResultPromise) {
+          specResultPromise = (async () => {
+            let workbookBytes;
+            try {
+              workbookBytes = await fetchArrayBuffer(specUrl);
+            } catch (error) {
+              return {
+                ok: false,
+                category: TRIAL_SPORT_FAILURE_CATEGORIES.specFetch,
+                error,
+              };
+            }
+
+            try {
+              const specMap = buildTrialSpecMap(workbookBytes);
+              return specMap.size > 0
+                ? { ok: true, specMap }
+                : {
+                    ok: false,
+                    category: TRIAL_SPORT_FAILURE_CATEGORIES.specParse,
+                  };
+            } catch (error) {
+              return {
+                ok: false,
+                category: TRIAL_SPORT_FAILURE_CATEGORIES.specParse,
+                error,
+              };
+            }
+          })();
+          workbookCache.set(specUrl, specResultPromise);
+        }
+
+        const specResult = await specResultPromise;
+        if (!specResult.ok) {
+          recordFailure(
+            specResult.category,
+            `Триал-Спорт: ошибка файла характеристик у ${productUrl}`,
+          );
+          continue;
+        }
+
+        try {
+          const product = buildTrialProduct(
+            productUrl,
+            htmlText,
+            specResult.specMap,
+            availability.entries,
+            checkedAt,
+          );
+          if (product) {
+            results.push(product);
+          } else {
+            recordFailure(
+              TRIAL_SPORT_FAILURE_CATEGORIES.productParse,
+              `Триал-Спорт: не удалось собрать карточку для ${productUrl}`,
+            );
+          }
+        } catch {
+          recordFailure(
+            TRIAL_SPORT_FAILURE_CATEGORIES.other,
+            `Триал-Спорт: неизвестная ошибка обработки ${productUrl}`,
           );
         }
-      } catch {
-        recordFailure(
-          TRIAL_SPORT_FAILURE_CATEGORIES.other,
-          `Триал-Спорт: неизвестная ошибка обработки ${productUrl}`,
-        );
+      } finally {
+        processedCount += 1;
+        if (processedCount % normalizedProgressInterval === 0) {
+          emitProgress("processing");
+        }
       }
     }
   }
 
+  emitProgress("processing");
   const workers = Array.from({ length: concurrency }, () => worker());
   await Promise.all(workers);
 
@@ -780,6 +867,8 @@ export async function importTrialSportProducts({
       failedCount === 0 &&
       skippedCount === 0,
   };
+
+  emitProgress("complete");
 
   return {
     products: results,
