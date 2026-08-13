@@ -156,7 +156,7 @@ describe("source offer identity", () => {
     );
   });
 
-  it("repairs the Airmaster base identity using explicit official line evidence", () => {
+  it("does not let official line evidence replace a historical base identity", () => {
     const men = makeProduct({ sourceProductId: "1914518" });
     const women = makeProduct({
       sourceProductId: "1914525",
@@ -181,9 +181,11 @@ describe("source offer identity", () => {
 
     expect(group.repairRequired).toBe(true);
     expect(
-      group.assignments.find((assignment) => assignment.slug === "yes-airmaster-3d")
-        .members[0].sourceProductId,
-    ).toBe("1914518");
+      group.assignments.find((assignment) => assignment.slug === "yes-airmaster-3d"),
+    ).toBeUndefined();
+    expect(group.officialSpecImpact.applicableAssignments).toEqual([
+      "yes-airmaster-3d-traektoria-1914518",
+    ]);
   });
 
   it("never mixes sizes and affiliate URL across compatible commerce offers", () => {
@@ -298,6 +300,242 @@ describe("source offer identity", () => {
     });
 
     expect(plan.resolvedProducts[0].slug).toBe("yes-airmaster-3d-women");
+  });
+
+  it.each([true, false])(
+    "keeps a compatible historical base owner when active is %s",
+    (isActive) => {
+      const current = makeProduct({
+        sourceProductId: "1914518",
+        seasonLabel: "2025/2026",
+        isActive: true,
+      });
+      const existing = {
+        ...current,
+        id: "historical-owner",
+        isActive,
+      };
+      delete existing.importMeta;
+
+      const plan = buildSourceIdentityPlan({
+        importedProducts: [current],
+        existingProducts: [existing],
+      });
+
+      expect(plan.logicalPlan.blockingIssues).toEqual([]);
+      expect(plan.logicalPlan.groups[0].assignments[0]).toMatchObject({
+        slug: "yes-airmaster-3d",
+        reason: "base-source-offer:coherent-existing-base",
+      });
+    },
+  );
+
+  it("fails closed when a historical base owner has no stable source identity", () => {
+    const current = makeProduct({ sourceProductId: "1914525" });
+    const existing = makeProduct({ id: "historical-owner" });
+    existing.affiliateUrl = "";
+    existing.sourceUrl = "";
+    delete existing.importMeta;
+
+    const plan = buildSourceIdentityPlan({
+      importedProducts: [current],
+      existingProducts: [existing],
+    });
+
+    expect(plan.logicalPlan.blockingIssues).toContain(
+      "Historical base slug yes-airmaster-3d has no stable source identity.",
+    );
+    expect(plan.resolvedProducts[0].slug).toBe(
+      "yes-airmaster-3d-traektoria-1914525",
+    );
+  });
+
+  it("reserves a historical base when only a different season remains", () => {
+    const existing = makeProduct({
+      id: "historical-owner",
+      sourceProductId: "1914518",
+      seasonLabel: "2025/2026",
+    });
+    delete existing.importMeta;
+    const olderSeason = makeProduct({
+      sourceProductId: "1914525",
+      seasonLabel: "2024/2025",
+    });
+
+    const plan = buildSourceIdentityPlan({
+      importedProducts: [olderSeason],
+      existingProducts: [existing],
+    });
+
+    expect(plan.resolvedProducts.map((product) => product.slug)).toEqual([
+      "yes-airmaster-3d-2024-2025",
+    ]);
+  });
+
+  it("uses the source identity fallback for an otherwise similar replacement", () => {
+    const existing = makeProduct({
+      id: "historical-owner",
+      sourceProductId: "1914518",
+    });
+    delete existing.importMeta;
+    const replacement = makeProduct({ sourceProductId: "1914525" });
+
+    const plan = buildSourceIdentityPlan({
+      importedProducts: [replacement],
+      existingProducts: [existing],
+    });
+
+    expect(plan.resolvedProducts[0].slug).toBe(
+      "yes-airmaster-3d-traektoria-1914525",
+    );
+  });
+
+  it("does not let the same source ID reuse base across a known season change", () => {
+    const existing = makeProduct({
+      id: "historical-owner",
+      seasonLabel: "2025/2026",
+    });
+    delete existing.importMeta;
+    const olderSeason = makeProduct({ seasonLabel: "2024/2025" });
+
+    const plan = buildSourceIdentityPlan({
+      importedProducts: [olderSeason],
+      existingProducts: [existing],
+    });
+
+    expect(plan.resolvedProducts[0].slug).toBe(
+      "yes-airmaster-3d-2024-2025",
+    );
+  });
+
+  it("does not let the same source ID reuse base across an explicit variant change", () => {
+    const existing = makeProduct({ id: "historical-owner" });
+    delete existing.importMeta;
+    const wide = makeProduct({ variantMarker: "wide" });
+
+    const plan = buildSourceIdentityPlan({
+      importedProducts: [wide],
+      existingProducts: [existing],
+    });
+
+    expect(plan.resolvedProducts[0].slug).toBe("yes-airmaster-3d-wide");
+  });
+
+  it("does not let the same source ID reuse base across a known line conflict", () => {
+    const existing = makeProduct({ id: "historical-owner", boardLine: "men" });
+    delete existing.importMeta;
+    const women = makeProduct({ boardLine: "women" });
+
+    const plan = buildSourceIdentityPlan({
+      importedProducts: [women],
+      existingProducts: [existing],
+    });
+
+    expect(plan.resolvedProducts[0].slug).toBe("yes-airmaster-3d-women");
+  });
+
+  it("reuses a compatible historical suffix while base remains reserved", () => {
+    const baseOwner = makeProduct({
+      id: "historical-owner",
+      sourceProductId: "1914518",
+      seasonLabel: "2025/2026",
+    });
+    delete baseOwner.importMeta;
+    const current = makeProduct({
+      sourceProductId: "1914525",
+      seasonLabel: "2024/2025",
+    });
+    const historicalSuffix = {
+      ...current,
+      id: "historical-suffix",
+      slug: "yes-airmaster-3d-2024-2025",
+    };
+    delete historicalSuffix.importMeta;
+
+    const plan = buildSourceIdentityPlan({
+      importedProducts: [current],
+      existingProducts: [baseOwner, historicalSuffix],
+    });
+
+    expect(plan.logicalPlan.groups[0].assignments[0]).toMatchObject({
+      slug: "yes-airmaster-3d-2024-2025",
+      reason: "stable-existing-source-slug",
+    });
+  });
+
+  it("keeps a compatible owner despite conflicting official board-line evidence", () => {
+    const women = makeProduct({
+      sourceProductId: "1914525",
+      boardLine: "women",
+    });
+    const existing = { ...women, id: "historical-owner" };
+    delete existing.importMeta;
+    const unisex = makeProduct({
+      sourceProductId: "1914999",
+      boardLine: "unisex",
+    });
+
+    const plan = buildSourceIdentityPlan({
+      importedProducts: [women, unisex],
+      existingProducts: [existing],
+      officialSpecs: new Map([
+        ["yes-airmaster-3d", { slug: "yes-airmaster-3d", boardLine: "men" }],
+      ]),
+    });
+    const group = plan.logicalPlan.groups[0];
+
+    expect(
+      group.assignments.find((assignment) => assignment.slug === "yes-airmaster-3d")
+        .members[0].sourceProductId,
+    ).toBe("1914525");
+    expect(group.officialSpecImpact.applicableAssignments).toEqual([]);
+  });
+
+  it("blocks when every reserved-base suffix belongs to another identity", () => {
+    const baseOwner = makeProduct({
+      id: "historical-owner",
+      sourceProductId: "1914518",
+    });
+    delete baseOwner.importMeta;
+    const current = makeProduct({ sourceProductId: "1914525" });
+    const occupiedFallback = makeProduct({
+      id: "occupied",
+      slug: "yes-airmaster-3d-traektoria-1914525",
+      sourceProductId: "9990001",
+    });
+    delete occupiedFallback.importMeta;
+
+    const plan = buildSourceIdentityPlan({
+      importedProducts: [current],
+      existingProducts: [baseOwner, occupiedFallback],
+    });
+
+    expect(plan.resolvedProducts).toEqual([]);
+    expect(plan.logicalPlan.blockingIssues).toContain(
+      "Unable to derive a unique collision slug for yes-airmaster-3d.",
+    );
+  });
+
+  it("keeps brand-new single and multi-cluster base assignment behavior", () => {
+    const single = buildSourceIdentityPlan({ importedProducts: [makeProduct()] });
+    expect(single.resolvedProducts[0].slug).toBe("yes-airmaster-3d");
+
+    const men = makeProduct({ sourceProductId: "1914518" });
+    const women = makeProduct({
+      sourceProductId: "1914525",
+      boardLine: "women",
+    });
+    const multiple = buildSourceIdentityPlan({
+      importedProducts: [women, men],
+      officialSpecs: new Map([
+        ["yes-airmaster-3d", { slug: "yes-airmaster-3d", boardLine: "men" }],
+      ]),
+    });
+
+    expect(multiple.resolvedProducts.map((product) => product.slug)).toEqual([
+      "yes-airmaster-3d",
+      "yes-airmaster-3d-women",
+    ]);
   });
 
   it("produces the same logical plan and hash for reordered input", () => {

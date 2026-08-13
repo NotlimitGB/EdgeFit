@@ -329,6 +329,10 @@ function isExistingIdentityCompatible(existingProduct, sourceProduct) {
     return false;
   }
 
+  if (existing.variantMarker !== source.variantMarker) {
+    return false;
+  }
+
   return true;
 }
 
@@ -341,7 +345,7 @@ function findExistingSlugsForCluster(cluster, existingProducts, baseSlug) {
         continue;
       }
 
-      if (existingProduct.slug !== baseSlug || existingProduct.slug === sourceProduct.slug) {
+      if (existingProduct.slug !== baseSlug) {
         matches.add(existingProduct.slug);
       }
     }
@@ -360,16 +364,71 @@ function getOfficialSpec(officialSpecs, slug) {
   ) ?? null;
 }
 
-function chooseBaseCluster(clusters, existingProducts, officialSpec, baseSlug) {
-  const existingMatches = clusters
-    .map((cluster, index) => ({
-      index,
-      slugs: findExistingSlugsForCluster(cluster, existingProducts, baseSlug),
-    }))
-    .filter((entry) => entry.slugs.includes(baseSlug));
+function chooseBaseCluster({
+  clusters,
+  existingProducts,
+  officialSpec,
+  baseSlug,
+  blockingIssues,
+}) {
+  const historicalOwners = existingProducts.filter(
+    (product) => product.slug === baseSlug,
+  );
 
-  if (existingMatches.length === 1) {
-    return { index: existingMatches[0].index, reason: "coherent-existing-base" };
+  if (historicalOwners.length > 0) {
+    const historicalOwner = historicalOwners[0];
+    const historicalIdentity = getExistingIdentity(historicalOwner);
+
+    if (historicalOwners.length > 1) {
+      blockingIssues.push(
+        `Historical base slug ${baseSlug} has multiple existing owners.`,
+      );
+      return {
+        index: null,
+        reason: "historical-base-reserved",
+        historicalIdentity: null,
+      };
+    }
+
+    if (!historicalIdentity.key) {
+      blockingIssues.push(
+        `Historical base slug ${baseSlug} has no stable source identity.`,
+      );
+      return {
+        index: null,
+        reason: "historical-base-reserved",
+        historicalIdentity,
+      };
+    }
+
+    const compatibleClusters = clusters
+      .map((cluster, index) => ({
+        index,
+        compatible: cluster.some((product) =>
+          isExistingIdentityCompatible(historicalOwner, product),
+        ),
+      }))
+      .filter((entry) => entry.compatible);
+
+    if (compatibleClusters.length === 1) {
+      return {
+        index: compatibleClusters[0].index,
+        reason: "coherent-existing-base",
+        historicalIdentity,
+      };
+    }
+
+    if (compatibleClusters.length > 1) {
+      blockingIssues.push(
+        `Historical base slug ${baseSlug} matches multiple current source clusters.`,
+      );
+    }
+
+    return {
+      index: null,
+      reason: "historical-base-reserved",
+      historicalIdentity,
+    };
   }
 
   if (officialSpec?.boardLine) {
@@ -378,19 +437,29 @@ function chooseBaseCluster(clusters, existingProducts, officialSpec, baseSlug) {
       .filter((entry) => entry.identity.boardLine === officialSpec.boardLine);
 
     if (specMatches.length === 1) {
-      return { index: specMatches[0].index, reason: "official-spec-board-line" };
+      return {
+        index: specMatches[0].index,
+        reason: "official-spec-board-line",
+        historicalIdentity: null,
+      };
     }
   }
 
-  return { index: 0, reason: "deterministic-source-order" };
+  return {
+    index: 0,
+    reason: "deterministic-source-order",
+    historicalIdentity: null,
+  };
 }
 
-function getCandidateSuffixes(cluster, baseCluster, clusters) {
+function getCandidateSuffixes(cluster, referenceIdentity, clusters) {
   const identity = getClusterIdentity(cluster);
-  const baseIdentity = getClusterIdentity(baseCluster);
   const suffixes = [];
 
-  if (identity.boardLine && identity.boardLine !== baseIdentity.boardLine) {
+  if (
+    identity.boardLine &&
+    identity.boardLine !== referenceIdentity?.boardLine
+  ) {
     const sameLineCount = clusters.filter(
       (candidate) => getClusterIdentity(candidate).boardLine === identity.boardLine,
     ).length;
@@ -401,12 +470,12 @@ function getCandidateSuffixes(cluster, baseCluster, clusters) {
 
   if (
     identity.variantMarker &&
-    identity.variantMarker !== baseIdentity.variantMarker
+    identity.variantMarker !== referenceIdentity?.variantMarker
   ) {
     suffixes.push(identity.variantMarker);
   }
 
-  if (identity.season && identity.season !== baseIdentity.season) {
+  if (identity.season && identity.season !== referenceIdentity?.season) {
     suffixes.push(identity.season);
   }
 
@@ -428,6 +497,7 @@ function resolveClusterSlug({
   existingProducts,
   usedSlugs,
   blockingIssues,
+  historicalIdentity,
 }) {
   const priorSlugs = findExistingSlugsForCluster(cluster, existingProducts, baseSlug);
 
@@ -446,7 +516,7 @@ function resolveClusterSlug({
     return { slug: null, reason: "blocking-existing-identity-duplication" };
   }
 
-  if (clusterIndex === baseClusterIndex) {
+  if (baseClusterIndex !== null && clusterIndex === baseClusterIndex) {
     usedSlugs.add(baseSlug);
     return { slug: baseSlug, reason: "base-source-offer" };
   }
@@ -454,7 +524,9 @@ function resolveClusterSlug({
   const existingBySlug = new Map(existingProducts.map((product) => [product.slug, product]));
   const suffixes = getCandidateSuffixes(
     cluster,
-    clusters[baseClusterIndex],
+    baseClusterIndex === null
+      ? historicalIdentity
+      : getClusterIdentity(clusters[baseClusterIndex]),
     clusters,
   );
 
@@ -600,14 +672,19 @@ export function buildSourceIdentityPlan({
   )) {
     const clusters = buildCompatibleClusters(groupProducts);
     const officialSpec = getOfficialSpec(officialSpecs, baseSlug);
-    const baseChoice = chooseBaseCluster(
+    const baseChoice = chooseBaseCluster({
       clusters,
-      existing,
+      existingProducts: existing,
       officialSpec,
       baseSlug,
-    );
+      blockingIssues,
+    });
     const classification = getGroupClassification(groupProducts, clusters);
     const assignments = [];
+
+    if (baseChoice.index === null) {
+      usedSlugs.add(baseSlug);
+    }
 
     clusters.forEach((cluster, clusterIndex) => {
       const resolved = resolveClusterSlug({
@@ -619,6 +696,7 @@ export function buildSourceIdentityPlan({
         existingProducts: existing,
         usedSlugs,
         blockingIssues,
+        historicalIdentity: baseChoice.historicalIdentity,
       });
 
       if (!resolved.slug) {
