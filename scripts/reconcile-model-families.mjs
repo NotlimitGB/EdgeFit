@@ -10,7 +10,10 @@ import {
 import {
   BACKFILL_LOCK_KEY,
   RECONCILIATION_LOCK_KEY,
+  assertModelFamilyMutationCounts,
+  assertModelFamilyMutationPlanFingerprint,
   buildModelFamilyReconciliationPlan,
+  getModelFamilyMutationPlanFingerprint,
   hasReconciliationMutations,
 } from "./lib/model-family-reconciliation.mjs";
 
@@ -32,9 +35,17 @@ const REQUIRED_PRODUCT_COLUMNS = [
 ];
 
 function parseMode(args) {
-  if (args.length === 0) return "PREVIEW";
-  if (args.length === 1 && args[0] === "--apply") return "APPLY";
-  throw new Error(`Unknown arguments: ${args.join(" ")}. Supported modes are PREVIEW and --apply.`);
+  if (args.length === 0) return { mode: "PREVIEW", expectedPlanFingerprint: null };
+  if (args[0] !== "--apply") {
+    throw new Error(`Unknown arguments: ${args.join(" ")}. Supported modes are PREVIEW and --apply.`);
+  }
+  if (args.length !== 3 || args[1] !== "--expected-plan-fingerprint") {
+    throw new Error("APPLY requires --expected-plan-fingerprint <64-lowercase-hex>.");
+  }
+  if (!/^[0-9a-f]{64}$/.test(args[2])) {
+    throw new Error("Expected plan fingerprint must be 64 lowercase hexadecimal characters.");
+  }
+  return { mode: "APPLY", expectedPlanFingerprint: args[2] };
 }
 
 async function writeReport(report) {
@@ -300,11 +311,14 @@ function beyondMedalsEvidence(current) {
     : null;
 }
 
-function reportFor(mode, before, after, mutation, settings) {
+function reportFor(mode, before, after, mutation, settings, planAuthorization) {
   const plan = before.plan;
   return {
     version: plan.version,
     generatedAt: new Date().toISOString(), mode,
+    planFingerprint: planAuthorization.fingerprint,
+    expectedPlanFingerprint: planAuthorization.expectedFingerprint,
+    planFingerprintMatch: planAuthorization.match,
     transaction: settings,
     sourceAudit: {
       high: before.analysis.summary.highConfidenceWidthFamilyCount,
@@ -327,26 +341,37 @@ async function runPreview(sql) {
     if (settings.readOnly !== "on" || settings.isolation !== "repeatable read") throw new Error("PREVIEW is not REPEATABLE READ READ ONLY.");
     return { ...(await buildCurrent(tx)), settings };
   });
-  const report = reportFor("PREVIEW", current, null, { insertedFamilies: 0, assignedProducts: 0, updatedFamilies: 0 }, current.settings);
+  const fingerprint = getModelFamilyMutationPlanFingerprint(current.plan);
+  const report = reportFor("PREVIEW", current, null, { insertedFamilies: 0, assignedProducts: 0, updatedFamilies: 0 }, current.settings, {
+    fingerprint,
+    expectedFingerprint: null,
+    match: null,
+  });
   await writeReport(report);
   console.log("Model family refresh reconciliation");
   console.log("mode: PREVIEW (read only)");
   console.log(`compatible: ${current.plan.compatibleExisting.length}; historical: ${current.plan.historicalRetained.length}`);
   console.log(`new families: ${current.plan.newFamilies.length}; metadata updates: ${current.plan.canonicalMetadataUpdates.length}`);
   console.log(`blocking conflicts: ${current.plan.blockingConflicts.length}`);
+  console.log(`plan fingerprint: ${fingerprint}`);
   console.log(`report: ${REPORT_PATH}`);
   if (current.plan.blockingConflicts.length) throw new Error("Reconciliation has blocking conflicts.");
   return report;
 }
 
-async function runApply(sql) {
+async function runApply(sql, expectedPlanFingerprint) {
   const result = await sql.begin("isolation level serializable", async (tx) => {
     await tx`select pg_advisory_xact_lock(hashtext(${BACKFILL_LOCK_KEY}))`;
     await tx`select pg_advisory_xact_lock(hashtext(${RECONCILIATION_LOCK_KEY}))`;
     const [settings] = await tx`select current_setting('transaction_isolation') as isolation, transaction_timestamp()::text as "transactionTimestamp"`;
     const before = await buildCurrent(tx);
     if (before.plan.blockingConflicts.length) throw new Error("Reconciliation has blocking conflicts; transaction rolled back.");
+    const planFingerprint = assertModelFamilyMutationPlanFingerprint(
+      before.plan,
+      expectedPlanFingerprint,
+    );
     const mutation = await applyMutations(tx, before, settings.transactionTimestamp);
+    assertModelFamilyMutationCounts(before.plan, mutation);
     const after = await buildCurrent(tx);
     if (after.plan.blockingConflicts.length || hasReconciliationMutations(after.plan)) {
       throw new Error("Post-state is not idempotent; transaction rolled back.");
@@ -357,9 +382,13 @@ async function runApply(sql) {
     if (!hasReconciliationMutations(before.plan) && canonicalStringify(before.familySnapshot) !== canonicalStringify(after.familySnapshot)) {
       throw new Error("NOOP changed family state; transaction rolled back.");
     }
-    return { before, after, mutation, settings };
+    return { before, after, mutation, settings, planFingerprint };
   });
-  const report = reportFor("APPLY", result.before, result.after, result.mutation, result.settings);
+  const report = reportFor("APPLY", result.before, result.after, result.mutation, result.settings, {
+    fingerprint: result.planFingerprint,
+    expectedFingerprint: expectedPlanFingerprint,
+    match: true,
+  });
   await writeReport(report);
   console.log("Model family refresh reconciliation");
   console.log("mode: APPLY");
@@ -367,20 +396,23 @@ async function runApply(sql) {
   console.log(`families inserted: ${result.mutation.insertedFamilies}`);
   console.log(`Products assigned: ${result.mutation.assignedProducts}`);
   console.log(`families metadata-updated: ${result.mutation.updatedFamilies}`);
+  console.log(`plan fingerprint: ${result.planFingerprint} (MATCH)`);
   console.log("post-state idempotency: PASS");
   console.log(`report: ${REPORT_PATH}`);
   return report;
 }
 
 async function main() {
-  const mode = parseMode(process.argv.slice(2));
+  const { mode, expectedPlanFingerprint } = parseMode(process.argv.slice(2));
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is not set.");
   const sql = postgres(process.env.DATABASE_URL, {
     ssl: process.env.DATABASE_SSL === "disable" ? false : "require",
     prepare: false, max: 1, connect_timeout: 15, onnotice: () => {},
   });
   try {
-    return mode === "PREVIEW" ? await runPreview(sql) : await runApply(sql);
+    return mode === "PREVIEW"
+      ? await runPreview(sql)
+      : await runApply(sql, expectedPlanFingerprint);
   } finally {
     await sql.end({ timeout: 1 });
   }

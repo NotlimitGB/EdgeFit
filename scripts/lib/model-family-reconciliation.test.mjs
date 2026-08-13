@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertModelFamilyMutationCounts,
+  assertModelFamilyMutationPlanFingerprint,
+  buildModelFamilyMutationProjection,
   buildModelFamilyReconciliationPlan,
+  getModelFamilyMutationPlanFingerprint,
   hasReconciliationMutations,
 } from "./model-family-reconciliation.mjs";
 
@@ -202,5 +206,92 @@ describe("model family refresh reconciliation", () => {
     const applied = family();
     expect(plan({ existingFamilies: [applied] }).newFamilies).toHaveLength(0);
     expect(hasReconciliationMutations(plan({ existingFamilies: [applied] }))).toBe(false);
+  });
+
+  it("fingerprints the canonical mutation projection independently of object-key ordering", () => {
+    const result = plan({ existingFamilies: [], products: [product("1"), product("2")] });
+    const reordered = Object.fromEntries(Object.entries(result).reverse());
+    reordered.newFamilies = result.newFamilies.map((item) =>
+      Object.fromEntries(Object.entries(item).reverse()),
+    );
+    reordered.newMemberships = result.newMemberships.map((item) =>
+      Object.fromEntries(Object.entries(item).reverse()),
+    );
+    expect(getModelFamilyMutationPlanFingerprint(reordered)).toBe(
+      getModelFamilyMutationPlanFingerprint(result),
+    );
+  });
+
+  it("excludes report and logging metadata from the mutation fingerprint", () => {
+    const result = plan({ existingFamilies: [], products: [product("1"), product("2")] });
+    const decorated = {
+      ...result,
+      generatedAt: "2099-01-01T00:00:00.000Z",
+      reportPath: "C:/temporary/report.json",
+      logging: { requestId: "diagnostic-only" },
+    };
+    expect(buildModelFamilyMutationProjection(decorated)).toEqual(
+      buildModelFamilyMutationProjection(result),
+    );
+    expect(getModelFamilyMutationPlanFingerprint(decorated)).toBe(
+      getModelFamilyMutationPlanFingerprint(result),
+    );
+  });
+
+  it("changes the fingerprint for every mutation-relevant family or membership field", () => {
+    const result = plan({ existingFamilies: [], products: [product("1"), product("2")] });
+    const baseline = getModelFamilyMutationPlanFingerprint(result);
+    const changes = [
+      (copy) => { copy.newFamilies[0].identityKey = "changed-identity"; },
+      (copy) => { copy.newFamilies[0].canonicalFamily.flex = 9; },
+      (copy) => { copy.newFamilies[0].memberProposals[0].productId = "changed-product"; },
+      (copy) => { copy.newFamilies[0].memberProposals[0].productSlug = "changed-slug"; },
+      (copy) => { copy.newFamilies[0].memberProposals[0].role = "wide"; },
+      (copy) => { copy.newMemberships[0].matchMethod = "manual"; },
+      (copy) => { copy.newMemberships[0].confidence = "medium"; },
+      (copy) => { copy.newMemberships[0].manualOverride = true; },
+    ];
+    for (const mutate of changes) {
+      const copy = structuredClone(result);
+      mutate(copy);
+      expect(getModelFamilyMutationPlanFingerprint(copy)).not.toBe(baseline);
+    }
+  });
+
+  it("changes the fingerprint when a canonical metadata update changes", () => {
+    const existing = family();
+    existing.canonicalFamily.descriptionShort = "Old copy";
+    const result = plan({ existingFamilies: [existing] });
+    const baseline = getModelFamilyMutationPlanFingerprint(result);
+    const copy = structuredClone(result);
+    copy.canonicalMetadataUpdates[0].changes.descriptionShort = "Different copy";
+    expect(getModelFamilyMutationPlanFingerprint(copy)).not.toBe(baseline);
+  });
+
+  it("fails closed on a mismatched expected fingerprint", () => {
+    const result = plan({ existingFamilies: [], products: [product("1"), product("2")] });
+    const fingerprint = getModelFamilyMutationPlanFingerprint(result);
+    expect(assertModelFamilyMutationPlanFingerprint(result, fingerprint)).toBe(fingerprint);
+    expect(() => assertModelFamilyMutationPlanFingerprint(result, "0".repeat(64))).toThrow(
+      "Model-family plan fingerprint mismatch",
+    );
+  });
+
+  it("fails closed when actual mutation counts differ from the validated plan", () => {
+    const result = plan({ existingFamilies: [], products: [product("1"), product("2")] });
+    expect(
+      assertModelFamilyMutationCounts(result, {
+        insertedFamilies: 1,
+        assignedProducts: 2,
+        updatedFamilies: 0,
+      }),
+    ).toEqual({ insertedFamilies: 1, assignedProducts: 2, updatedFamilies: 0 });
+    expect(() =>
+      assertModelFamilyMutationCounts(result, {
+        insertedFamilies: 1,
+        assignedProducts: 1,
+        updatedFamilies: 0,
+      }),
+    ).toThrow("Model-family mutation count mismatch");
   });
 });

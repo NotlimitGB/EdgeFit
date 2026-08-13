@@ -4,6 +4,7 @@ import {
   MATCH_CONFIDENCE,
   MATCH_REASON,
   canonicalStringify,
+  hashCanonicalValue,
 } from "./model-family-backfill.mjs";
 
 export const RECONCILIATION_VERSION = "model-family-reconciliation-v1";
@@ -282,4 +283,64 @@ export function hasReconciliationMutations(plan) {
     plan.newMemberships.length > 0 ||
     plan.canonicalMetadataUpdates.length > 0
   );
+}
+
+export function buildModelFamilyMutationProjection(plan) {
+  return {
+    newFamilies: plan.newFamilies.map((family) => ({
+      identityKey: family.identityKey,
+      slug: family.slug,
+      brand: family.brand,
+      modelName: family.modelName,
+      seasonLabel: family.seasonLabel,
+      canonicalFamily: family.canonicalFamily,
+      memberProposals: family.memberProposals.map((member) => ({
+        productId: member.productId,
+        productSlug: member.productSlug,
+        role: member.role,
+      })),
+    })),
+    newMemberships: plan.newMemberships.map((member) => ({
+      identityKey: member.identityKey,
+      productId: member.productId,
+      productSlug: member.productSlug,
+      role: member.role,
+      matchMethod: member.matchMethod,
+      confidence: member.confidence,
+      manualOverride: member.manualOverride,
+    })),
+    canonicalMetadataUpdates: plan.canonicalMetadataUpdates.map((update) => ({
+      familyId: update.familyId,
+      identityKey: update.identityKey,
+      changes: update.changes,
+    })),
+  };
+}
+
+export function getModelFamilyMutationPlanFingerprint(plan) {
+  return hashCanonicalValue(buildModelFamilyMutationProjection(plan));
+}
+
+export function assertModelFamilyMutationPlanFingerprint(plan, expectedFingerprint) {
+  const actualFingerprint = getModelFamilyMutationPlanFingerprint(plan);
+  if (actualFingerprint !== expectedFingerprint) {
+    throw new Error(
+      `Model-family plan fingerprint mismatch: expected ${expectedFingerprint}, got ${actualFingerprint}.`,
+    );
+  }
+  return actualFingerprint;
+}
+
+export function assertModelFamilyMutationCounts(plan, mutation) {
+  const expected = {
+    insertedFamilies: plan.newFamilies.length,
+    assignedProducts: plan.newMemberships.length,
+    updatedFamilies: plan.canonicalMetadataUpdates.length,
+  };
+  if (canonicalStringify(mutation) !== canonicalStringify(expected)) {
+    throw new Error(
+      `Model-family mutation count mismatch: expected ${canonicalStringify(expected)}, got ${canonicalStringify(mutation)}.`,
+    );
+  }
+  return expected;
 }
