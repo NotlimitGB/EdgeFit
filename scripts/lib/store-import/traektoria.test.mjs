@@ -2,9 +2,70 @@ import { describe, expect, it, vi } from "vitest";
 import {
   importTraektoriaProducts,
   revalidateTraektoriaProducts,
+  resolveTraektoriaBoardLineMetadata,
 } from "./traektoria.mjs";
 
 const EXTRA_IDS = ["1890639", "1890653"];
+
+describe("Traektoria trusted board-line corrections", () => {
+  it.each([
+    ["other-women", "women", "women"],
+    ["other-men", "men", "men"],
+    ["other-unisex", "unisex", "unisex"],
+  ])("preserves raw metadata when %s has no correction", (sourceId, raw, expected) => {
+    expect(resolveTraektoriaBoardLineMetadata(sourceId, raw)).toMatchObject({
+      status: "resolved",
+      boardLine: expected,
+      evidence: "known",
+      correctionApplied: false,
+    });
+  });
+
+  it.each(["1890654", "1890652"])(
+    "corrects trusted men source %s while the merchant reports unisex",
+    (sourceId) => {
+      expect(
+        resolveTraektoriaBoardLineMetadata(sourceId, "unisex"),
+      ).toMatchObject({
+        status: "resolved",
+        boardLine: "men",
+        evidence: "known",
+        correctionApplied: true,
+      });
+      expect(resolveTraektoriaBoardLineMetadata(sourceId, "men")).toMatchObject({
+        status: "resolved",
+        boardLine: "men",
+        evidence: "known",
+        correctionApplied: false,
+      });
+    },
+  );
+
+  it.each(["1890654", "1890652"])(
+    "fails closed when trusted source %s reports women or ambiguous metadata",
+    (sourceId) => {
+      expect(resolveTraektoriaBoardLineMetadata(sourceId, "women")).toMatchObject({
+        status: "conflict",
+        category: "source_metadata_conflict",
+      });
+      expect(resolveTraektoriaBoardLineMetadata(sourceId, "")).toMatchObject({
+        status: "conflict",
+        category: "source_metadata_conflict",
+      });
+    },
+  );
+
+  it("leaves the audited Jones women sources unchanged", () => {
+    expect(resolveTraektoriaBoardLineMetadata("1890645", "women")).toMatchObject({
+      boardLine: "women",
+      correctionApplied: false,
+    });
+    expect(resolveTraektoriaBoardLineMetadata("1890637", "women")).toMatchObject({
+      boardLine: "women",
+      correctionApplied: false,
+    });
+  });
+});
 
 const COLUMN_TABLE = `
   <table>
@@ -26,6 +87,7 @@ function makeProductPayload({
   modelName = "Test Board",
   table = COLUMN_TABLE,
   thingType = "сноуборд",
+  gender = "унисекс",
   skuList,
 } = {}) {
   return {
@@ -38,7 +100,7 @@ function makeProductPayload({
               name: `Test ${modelName}`,
               model_name: modelName,
               thing_type: thingType,
-              gender: "унисекс",
+              gender,
             },
             photo_list: [],
             sku_list:
@@ -67,7 +129,10 @@ function getRequestedProductId(url) {
   return String(url).match(/\/slim\/pages\/product\/(\d+)\//u)?.[1] ?? null;
 }
 
-function createImporterFetch(payloads, { failures = new Set() } = {}) {
+function createImporterFetch(
+  payloads,
+  { failures = new Set(), listingIds = [] } = {},
+) {
   return vi.fn(async (url) => {
     if (String(url).includes("/slim/pages/section/")) {
       return {
@@ -75,7 +140,9 @@ function createImporterFetch(payloads, { failures = new Set() } = {}) {
           MAIN: {
             content: {
               navigation: { data: { page_count: 1 } },
-              products: [],
+              products: listingIds.map((id) => ({
+                url: `/product/${id}_test-board/`,
+              })),
             },
           },
         },
@@ -106,6 +173,60 @@ function makeExistingProduct(sourceProductId, slug = `board-${sourceProductId}`)
     affiliateUrl: `https://www.traektoria.ru/product/${sourceProductId}_${slug}/`,
   };
 }
+
+describe("Traektoria corrected Product identity", () => {
+  it("emits corrected board-line metadata consistently for Jones Stratos men", async () => {
+    const result = await importExtras(
+      {
+        [EXTRA_IDS[0]]: makeProductPayload(),
+        [EXTRA_IDS[1]]: makeProductPayload(),
+        "1890654": makeProductPayload({ modelName: "Jones Stratos" }),
+      },
+      { listingIds: ["1890654"] },
+    );
+    const corrected = result.products.find(
+      (product) => product.importMeta.sourceProductId === "1890654",
+    );
+
+    expect(corrected).toMatchObject({
+      boardLine: "men",
+      importMeta: {
+        sourceProductId: "1890654",
+        boardLineEvidence: "known",
+      },
+    });
+    expect(result.diagnostics).toMatchObject({
+      unsafeFailureCount: 0,
+      staleSafe: true,
+    });
+  });
+
+  it("turns contradictory trusted metadata into an unsafe failure", async () => {
+    const result = await importExtras(
+      {
+        [EXTRA_IDS[0]]: makeProductPayload(),
+        [EXTRA_IDS[1]]: makeProductPayload(),
+        "1890652": makeProductPayload({
+          modelName: "Jones Tweaker",
+          gender: "women",
+        }),
+      },
+      { listingIds: ["1890652"] },
+    );
+
+    expect(
+      result.products.some(
+        (product) => product.importMeta.sourceProductId === "1890652",
+      ),
+    ).toBe(false);
+    expect(result.diagnostics.failuresByCategory.source_metadata_conflict).toBe(1);
+    expect(result.diagnostics).toMatchObject({
+      unsafeFailureCount: 1,
+      staleSafe: false,
+      importComplete: false,
+    });
+  });
+});
 
 describe("Traektoria size-table parsing", () => {
   it("preserves column-oriented tables and supports semantic row-oriented tables", async () => {

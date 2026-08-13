@@ -31,6 +31,62 @@ const EXTRA_PRODUCT_URLS = [
   `${TRAEKTORIA_BASE_URL}/product/1890653_snoubord-jones-mountain-twin/`,
 ];
 
+export const TRAEKTORIA_SOURCE_METADATA_CORRECTIONS = Object.freeze({
+  "1890654": Object.freeze({
+    expectedBoardLine: "unisex",
+    correctedBoardLine: "men",
+    reason:
+      "Verified Jones Stratos men identity; merchant labels this source as unisex.",
+  }),
+  "1890652": Object.freeze({
+    expectedBoardLine: "unisex",
+    correctedBoardLine: "men",
+    reason:
+      "Verified Jones Tweaker men identity; merchant labels this source as unisex.",
+  }),
+});
+
+export function resolveTraektoriaBoardLineMetadata(
+  sourceProductId,
+  rawGender,
+) {
+  const raw = getBoardLineEvidence(rawGender);
+  const correction =
+    TRAEKTORIA_SOURCE_METADATA_CORRECTIONS[String(sourceProductId ?? "")] ??
+    null;
+
+  if (!correction) {
+    return {
+      status: "resolved",
+      boardLine: raw.boardLine,
+      evidence: raw.evidence,
+      correctionApplied: false,
+      reason: null,
+    };
+  }
+
+  if (
+    raw.evidence !== "known" ||
+    (raw.boardLine !== correction.expectedBoardLine &&
+      raw.boardLine !== correction.correctedBoardLine)
+  ) {
+    return {
+      status: "conflict",
+      category: "source_metadata_conflict",
+      correctionApplied: false,
+      reason: correction.reason,
+    };
+  }
+
+  return {
+    status: "resolved",
+    boardLine: correction.correctedBoardLine,
+    evidence: "known",
+    correctionApplied: raw.boardLine === correction.expectedBoardLine,
+    reason: correction.reason,
+  };
+}
+
 function extractProductId(productUrl) {
   const match = productUrl.match(/\/product\/(\d+)_/u);
   return match?.[1] ?? null;
@@ -259,7 +315,12 @@ function mapTraektoriaSizesAvailability(sizes, availableSkus) {
   }));
 }
 
-function buildTraektoriaProduct(productUrl, productPayload, checkedAt) {
+function buildTraektoriaProduct(
+  productUrl,
+  productPayload,
+  checkedAt,
+  boardLineIdentity,
+) {
   const content = productPayload?.data?.MAIN?.content;
   const model = content?.model;
   const props = model?.props;
@@ -295,7 +356,6 @@ function buildTraektoriaProduct(productUrl, productPayload, checkedAt) {
   const shapeType = mapShapeType(filterMap.get("SHAPE"));
   const flex = getFlexFromTraektoriaProduct(model, content.descriptions, filterMap);
   const ridingStyle = mapRidingStyle(filterMap.get("RIDING_STYLE"));
-  const boardLineIdentity = getBoardLineEvidence(props.gender);
   const boardLine = boardLineIdentity.boardLine;
   const skillLevel = mapSkillLevel({
     levelText: filterMap.get("LEVEL"),
@@ -365,6 +425,7 @@ export const TRAEKTORIA_FAILURE_CATEGORIES = Object.freeze({
   sizeTableParse: "size_table_parse_failure",
   identity: "identity_failure",
   availabilityParse: "availability_parse_failure",
+  sourceMetadataConflict: "source_metadata_conflict",
   other: "other_failure",
 });
 
@@ -417,6 +478,17 @@ function buildTraektoriaProductOutcome(productUrl, productPayload, checkedAt) {
     };
   }
 
+  const boardLineIdentity = resolveTraektoriaBoardLineMetadata(
+    sourceProductId,
+    props.gender,
+  );
+  if (boardLineIdentity.status === "conflict") {
+    return {
+      status: "unsafe_failure",
+      category: TRAEKTORIA_FAILURE_CATEGORIES.sourceMetadataConflict,
+    };
+  }
+
   const availability = getTraektoriaAvailability(model);
   if (availability.status === "unknown") {
     return {
@@ -447,7 +519,12 @@ function buildTraektoriaProductOutcome(productUrl, productPayload, checkedAt) {
   }
 
   try {
-    const product = buildTraektoriaProduct(productUrl, productPayload, checkedAt);
+    const product = buildTraektoriaProduct(
+      productUrl,
+      productPayload,
+      checkedAt,
+      boardLineIdentity,
+    );
     return product
       ? { status: "resolved", product }
       : {
