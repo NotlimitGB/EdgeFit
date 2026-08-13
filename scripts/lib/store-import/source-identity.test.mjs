@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { applyOfficialProductSpecs } from "../official-specs.mjs";
+import {
+  applyOfficialProductSpecs,
+  loadOfficialProductSpecs,
+} from "../official-specs.mjs";
 import { mergeImportedProducts } from "./common.mjs";
 import {
   buildSourceIdentityPlan,
@@ -81,6 +84,73 @@ function makeProduct({
 }
 
 describe("source offer identity", () => {
+  it("targets Jones men official specs at the stable suffix identities", async () => {
+    const specs = await loadOfficialProductSpecs();
+    const stratosSpec = specs.get("jones-stratos-unisex");
+    const tweakerSpec = specs.get("jones-tweaker-unisex");
+
+    expect(specs.has("jones-stratos")).toBe(false);
+    expect(specs.has("jones-tweaker")).toBe(false);
+    expect(stratosSpec).toMatchObject({
+      slug: "jones-stratos-unisex",
+      flex: 6,
+      camberProfile: "hybrid-camber",
+      shapeType: "directional",
+      boardLine: "men",
+    });
+    expect(tweakerSpec).toMatchObject({
+      slug: "jones-tweaker-unisex",
+      flex: 4,
+      camberProfile: "camber",
+      shapeType: "twin",
+      boardLine: "men",
+    });
+
+    const womenStratos = makeProduct({
+      slug: "jones-stratos",
+      brand: "Jones",
+      modelName: "Stratos",
+      boardLine: "women",
+      flex: 3,
+    });
+    const womenTweaker = makeProduct({
+      slug: "jones-tweaker",
+      brand: "Jones",
+      modelName: "Tweaker",
+      boardLine: "women",
+      flex: 3,
+    });
+    const menStratos = makeProduct({
+      slug: "jones-stratos-unisex",
+      brand: "Jones",
+      modelName: "Stratos",
+      boardLine: "men",
+      flex: 3,
+    });
+    const menTweaker = makeProduct({
+      slug: "jones-tweaker-unisex",
+      brand: "Jones",
+      modelName: "Tweaker",
+      boardLine: "men",
+      flex: 3,
+    });
+
+    expect(applyOfficialProductSpecs(womenStratos, specs.get(womenStratos.slug)))
+      .toBe(womenStratos);
+    expect(applyOfficialProductSpecs(womenTweaker, specs.get(womenTweaker.slug)))
+      .toBe(womenTweaker);
+    expect(applyOfficialProductSpecs(menStratos, stratosSpec)).toMatchObject({
+      flex: 6,
+      boardLine: "men",
+      dataStatus: "verified",
+    });
+    expect(applyOfficialProductSpecs(menTweaker, tweakerSpec)).toMatchObject({
+      flex: 4,
+      boardLine: "men",
+      dataStatus: "verified",
+    });
+  });
+
   it("recognizes explicit board-line evidence without treating missing copy as known unisex", () => {
     expect(getBoardLineEvidence("Женский")).toEqual({
       boardLine: "women",
