@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
-import { runCatalogAudit } from "../../../../../scripts/audit-catalog.mjs";
-import { runStoreImport } from "../../../../../scripts/import-from-stores.mjs";
+import {
+  isCatalogRefreshPipelineError,
+  runCatalogRefreshPipeline,
+} from "../../../../../scripts/lib/catalog-refresh-pipeline.mjs";
 import { базаНастроена } from "@/lib/database/config";
 
 export const runtime = "nodejs";
@@ -47,42 +49,32 @@ export async function GET(request: Request) {
       );
     }
 
-    const refresh = await runStoreImport({ logger: console });
-    const audit = await runCatalogAudit({
+    const result = await runCatalogRefreshPipeline({
       logger: console,
-      writeReportToFile: false,
     });
 
-    if (audit.failedChecks.length > 0) {
+    return NextResponse.json({
+      message: "Catalog refresh pipeline completed successfully.",
+      state: result.state,
+      refresh: result.refresh,
+      audit: result.audit,
+      familyReconciliation: result.familyReconciliation,
+    });
+  } catch (error) {
+    if (isCatalogRefreshPipelineError(error)) {
       return NextResponse.json(
         {
-          message: "Catalog refresh finished, but audit found blocking issues.",
-          refresh,
-          audit: {
-            failedChecks: audit.failedChecks,
-            warningChecks: audit.warningChecks,
-            summary: audit.report.summary,
-          },
+          message: error.message,
+          stage: error.stage,
+          state: error.state,
+          catalogMayHaveCommitted: error.catalogMayHaveCommitted,
         },
         { status: 500 },
       );
     }
-
-    return NextResponse.json({
-      message: "Catalog refresh completed successfully.",
-      refresh,
-      audit: {
-        warningChecks: audit.warningChecks,
-        summary: audit.report.summary,
-      },
-    });
-  } catch (error) {
     return NextResponse.json(
       {
-        message:
-          error instanceof Error
-            ? error.message
-            : "Catalog refresh failed.",
+        message: "Catalog refresh pipeline failed.",
       },
       { status: 500 },
     );

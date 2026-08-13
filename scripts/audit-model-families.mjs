@@ -930,7 +930,7 @@ export function analyzeCatalog(products, databaseSafety) {
 }
 
 async function writeReport(report, reportPath) {
-  const targetPath = path.resolve(reportPath);
+  const targetPath = path.resolve(/* turbopackIgnore: true */ reportPath);
   await mkdir(path.dirname(targetPath), { recursive: true });
   await writeFile(targetPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
   return targetPath;
