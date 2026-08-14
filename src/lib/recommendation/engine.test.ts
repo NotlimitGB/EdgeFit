@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { Product, ProductSize, QuizInput } from "@/types/domain";
+import {
+  getStoreDestinationPresentation,
+  resolveProductStoreUrl,
+} from "@/lib/store-redirect";
 import { ALGORITHM_VERSION, getRecommendation } from "./engine";
 
 const baseInput: QuizInput = {
@@ -1221,6 +1225,9 @@ describe("getRecommendation", () => {
 });
 
 describe("canonical recommendation family collapse", () => {
+  const outerspaceBaseId = "5dd7cd10-b971-4646-8d13-29f26109a590";
+  const outerspaceWideId = "0c108449-3d3f-4e55-b6ae-ccaaf0833fe8";
+
   function getResultSlugs(result: ReturnType<typeof getRecommendation>) {
     return [...result.recommendedBoards, ...result.avoidBoards].map(
       (match) => match.product.slug,
@@ -1237,6 +1244,188 @@ describe("canonical recommendation family collapse", () => {
       ),
     };
   }
+
+  function createOuterspaceProducts() {
+    const base = createProduct(
+      {
+        id: outerspaceBaseId,
+        slug: "capita-outerspace-living",
+        brand: "Capita",
+        modelName: "Outerspace Living",
+        seasonLabel: "2025/2026",
+        boardLine: "men",
+        affiliateUrl:
+          "https://www.traektoria.ru/product/1837462_snoubord-capita-outerspace-living/",
+      },
+      {
+        sizeCm: 156,
+        sizeLabel: "156",
+        waistWidthMm: 252,
+        widthType: "regular",
+      },
+    );
+    const wide = createProduct(
+      {
+        id: outerspaceWideId,
+        slug: "capita-outerspace-living-wide",
+        brand: "Capita",
+        modelName: "Outerspace Living Wide",
+        seasonLabel: "2025/2026",
+        boardLine: "men",
+        affiliateUrl:
+          "https://www.traektoria.ru/product/1837463_snoubord-capita-outerspace-living-wide/",
+      },
+      {
+        sizeCm: 157,
+        sizeLabel: "157W",
+        waistWidthMm: 264,
+        widthType: "wide",
+      },
+    );
+
+    return { base, wide };
+  }
+
+  function getAllMatches(result: ReturnType<typeof getRecommendation>) {
+    return [...result.recommendedBoards, ...result.avoidBoards];
+  }
+
+  function expectOuterspaceWinnerPreservesConcreteOffer(
+    winner: ReturnType<typeof getAllMatches>[number],
+    product: Product,
+    expectedScore: number,
+  ) {
+    expect(winner.product).toBe(product);
+    expect(winner.product.id).toBe(product.id);
+    expect(winner.size).toBe(product.sizes[0]);
+    expect(winner.size.sizeLabel).toBe(product.sizes[0].sizeLabel);
+    expect(winner.score).toBe(expectedScore);
+    expect(getStoreDestinationPresentation(winner.product.affiliateUrl)).toMatchObject({
+      mode: "direct",
+      merchantLabel: "Траектория",
+    });
+    expect(resolveProductStoreUrl(winner.product)).toBe(product.affiliateUrl);
+    expect(winner.product.affiliateUrl).toBe(product.affiliateUrl);
+  }
+
+  it("keeps the production-shaped Outerspace base offer and its own commerce data when base scores higher", () => {
+    expect(ALGORITHM_VERSION).toBe("v1.6.4");
+    const { base, wide } = createOuterspaceProducts();
+    const independent = getRecommendation(baseInput, [base, wide]);
+    const independentMatches = getAllMatches(independent);
+    const baseMatch = independentMatches.find(({ product }) => product.id === base.id);
+    const wideMatch = independentMatches.find(({ product }) => product.id === wide.id);
+
+    expect(baseMatch).toBeDefined();
+    expect(wideMatch).toBeDefined();
+    expect(baseMatch!.score).toBeGreaterThan(wideMatch!.score);
+
+    const collapsed = getRecommendation(
+      baseInput,
+      [base, wide],
+      groupProducts([base, wide], "family:test-outerspace"),
+    );
+    const familyMatches = getAllMatches(collapsed).filter(({ product }) =>
+      [base.id, wide.id].includes(product.id),
+    );
+
+    expect(familyMatches).toHaveLength(1);
+    expectOuterspaceWinnerPreservesConcreteOffer(
+      familyMatches[0],
+      base,
+      baseMatch!.score,
+    );
+  });
+
+  it("keeps the production-shaped Outerspace Wide offer and its own commerce data when Wide scores higher", () => {
+    const input: QuizInput = {
+      ...baseInput,
+      bootSizeEu: 46,
+      stanceType: "duck",
+    };
+    const { base, wide } = createOuterspaceProducts();
+    const independent = getRecommendation(input, [base, wide]);
+    const independentMatches = getAllMatches(independent);
+    const baseMatch = independentMatches.find(({ product }) => product.id === base.id);
+    const wideMatch = independentMatches.find(({ product }) => product.id === wide.id);
+
+    expect(baseMatch).toBeDefined();
+    expect(wideMatch).toBeDefined();
+    expect(wideMatch!.score).toBeGreaterThan(baseMatch!.score);
+
+    const collapsed = getRecommendation(
+      input,
+      [base, wide],
+      groupProducts([base, wide], "family:test-outerspace"),
+    );
+    const familyMatches = getAllMatches(collapsed).filter(({ product }) =>
+      [base.id, wide.id].includes(product.id),
+    );
+
+    expect(familyMatches).toHaveLength(1);
+    expectOuterspaceWinnerPreservesConcreteOffer(
+      familyMatches[0],
+      wide,
+      wideMatch!.score,
+    );
+  });
+
+  it("promotes the next unrelated Product without changing unrelated order when Outerspace collapses", () => {
+    const { base, wide } = createOuterspaceProducts();
+    const peers = [154, 155, 153].map((sizeCm, index) =>
+      createProduct(
+        {
+          id: `outerspace-peer-${index + 1}`,
+          slug: `outerspace-peer-${index + 1}`,
+          modelName: `Outerspace Peer ${index + 1}`,
+          ridingStyle: "park",
+          dataStatus: "draft",
+          affiliateUrl: `https://example.com/outerspace-peer-${index + 1}`,
+          sourceName: null,
+          sourceUrl: null,
+          sourceCheckedAt: null,
+        },
+        { sizeCm, sizeLabel: String(sizeCm) },
+      ),
+    );
+    const products = [base, wide, ...peers];
+    const independent = getRecommendation(baseInput, products);
+    const independentRecommendedIds = independent.recommendedBoards.map(
+      ({ product }) => product.id,
+    );
+    const nextUnrelated = independent.avoidBoards.find(
+      ({ product }) => ![base.id, wide.id].includes(product.id),
+    );
+
+    expect(
+      independentRecommendedIds.filter((id) => [base.id, wide.id].includes(id)),
+    ).toHaveLength(2);
+    expect(nextUnrelated).toBeDefined();
+
+    const collapsed = getRecommendation(
+      baseInput,
+      products,
+      groupProducts([base, wide], "family:test-outerspace"),
+    );
+    const collapsedRecommendedIds = collapsed.recommendedBoards.map(
+      ({ product }) => product.id,
+    );
+
+    expect(
+      collapsedRecommendedIds.filter((id) => [base.id, wide.id].includes(id)),
+    ).toHaveLength(1);
+    expect(collapsedRecommendedIds).toContain(nextUnrelated!.product.id);
+
+    const outerspaceIds = new Set([base.id, wide.id]);
+    const independentUnrelatedOrder = getAllMatches(independent)
+      .map(({ product }) => product.id)
+      .filter((id) => !outerspaceIds.has(id));
+    const collapsedUnrelatedOrder = getAllMatches(collapsed)
+      .map(({ product }) => product.id)
+      .filter((id) => !outerspaceIds.has(id));
+
+    expect(collapsedUnrelatedOrder).toEqual(independentUnrelatedOrder);
+  });
 
   it("keeps only the highest-scoring sibling after every Product has been scored", () => {
     const base = createProduct(

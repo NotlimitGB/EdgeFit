@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { analyzeCatalog } from "../audit-model-families.mjs";
+import { buildBackfillLogicalPlan } from "./model-family-backfill.mjs";
 import {
   assertModelFamilyMutationCounts,
   assertModelFamilyMutationPlanFingerprint,
@@ -7,6 +9,98 @@ import {
   getModelFamilyMutationPlanFingerprint,
   hasReconciliationMutations,
 } from "./model-family-reconciliation.mjs";
+
+const outerspaceSnapshot = {
+  products: 2,
+  activeProducts: 2,
+  productSizes: 2,
+  maxUpdatedAt: "2026-08-14T00:00:00.000Z",
+  productChecksum: "outerspace-products",
+  productSizeChecksum: "outerspace-sizes",
+};
+
+function outerspaceProduct(overrides = {}) {
+  return {
+    id: "5dd7cd10-b971-4646-8d13-29f26109a590",
+    slug: "capita-outerspace-living",
+    brand: "Capita",
+    modelName: "Outerspace Living",
+    seasonLabel: "2025/2026",
+    descriptionShort: "Outerspace base",
+    descriptionFull: "Outerspace base description",
+    ridingStyle: "all-mountain",
+    skillLevel: "intermediate",
+    flex: 6,
+    boardLine: "men",
+    shapeType: "directional-twin",
+    camberProfile: "hybrid-camber",
+    sourceName: "Official CAPiTA Outerspace Living 2026",
+    sourceUrl: "https://capitasnowboarding.com/outerspace-living/",
+    sourceCheckedAt: "2026-08-14",
+    dataStatus: "verified",
+    affiliateUrl:
+      "https://www.traektoria.ru/product/1837462_snoubord-capita-outerspace-living/",
+    isActive: true,
+    familyId: null,
+    familyManualOverride: false,
+    familyMatchMethod: null,
+    sizes: [
+      {
+        sizeCm: 156,
+        sizeLabel: "156",
+        waistWidthMm: 252,
+        recommendedWeightMin: 65,
+        recommendedWeightMax: 80,
+        widthType: "regular",
+        isAvailable: true,
+      },
+    ],
+    ...overrides,
+  };
+}
+
+function outerspaceProducts(overrides = {}) {
+  return [
+    outerspaceProduct(overrides.base),
+    outerspaceProduct({
+      id: "0c108449-3d3f-4e55-b6ae-ccaaf0833fe8",
+      slug: "capita-outerspace-living-wide",
+      modelName: "Outerspace Living Wide",
+      descriptionShort: "Outerspace Wide",
+      descriptionFull: "Outerspace Wide description",
+      affiliateUrl:
+        "https://www.traektoria.ru/product/1837463_snoubord-capita-outerspace-living-wide/",
+      sizes: [
+        {
+          sizeCm: 157,
+          sizeLabel: "157W",
+          waistWidthMm: 264,
+          recommendedWeightMin: 70,
+          recommendedWeightMax: 85,
+          widthType: "wide",
+          isAvailable: true,
+        },
+      ],
+      ...overrides.wide,
+    }),
+  ];
+}
+
+function analyzeOuterspace(products) {
+  return analyzeCatalog(products, {
+    before: outerspaceSnapshot,
+    after: outerspaceSnapshot,
+  });
+}
+
+function buildOuterspaceBackfill(analysis, products) {
+  return buildBackfillLogicalPlan({
+    analysis,
+    products,
+    baselineRepositorySha: "test-baseline",
+    snapshot: outerspaceSnapshot,
+  });
+}
 
 function product(id, overrides = {}) {
   return {
@@ -89,6 +183,85 @@ function plan(overrides = {}) {
 }
 
 describe("model family refresh reconciliation", () => {
+  it("reconciles production-shaped Outerspace Base and Wide from the same season", () => {
+    const products = outerspaceProducts();
+    const analysis = analyzeOuterspace(products);
+
+    expect(analysis.highConfidenceWidthFamilies).toHaveLength(1);
+    expect(analysis.highConfidenceWidthFamilies[0]).toMatchObject({
+      classification: "HIGH_CONFIDENCE_WIDTH_FAMILY",
+      canonicalCandidateModelName: "outerspace living",
+      normalizedSeason: "2025/2026",
+    });
+
+    const backfill = buildOuterspaceBackfill(analysis, products);
+    expect(backfill.families).toHaveLength(1);
+    expect(backfill.families[0].identityKey).toBe(
+      "v1|capita|outerspace living|2025/2026",
+    );
+    expect(backfill.families[0].memberProposals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          productId: "5dd7cd10-b971-4646-8d13-29f26109a590",
+          role: "base",
+        }),
+        expect.objectContaining({
+          productId: "0c108449-3d3f-4e55-b6ae-ccaaf0833fe8",
+          role: "wide",
+        }),
+      ]),
+    );
+
+    const result = buildModelFamilyReconciliationPlan({
+      candidateFamilies: backfill.families,
+      existingFamilies: [],
+      products,
+      reviewFamilies: analysis.reviewWidthFamilies,
+      keepSeparateFamilies: analysis.keepSeparate,
+    });
+
+    expect(result.newFamilies).toHaveLength(1);
+    expect(result.newMemberships).toHaveLength(2);
+    expect(result.newMemberships.map(({ role }) => role).sort()).toEqual([
+      "base",
+      "wide",
+    ]);
+    expect(result.blockingConflicts).toHaveLength(0);
+  });
+
+  it("keeps production-shaped Outerspace Base and Wide from different seasons separate", () => {
+    const products = outerspaceProducts({
+      base: { seasonLabel: "2024/2025" },
+      wide: { seasonLabel: "2025/2026" },
+    });
+    const analysis = analyzeOuterspace(products);
+
+    expect(analysis.highConfidenceWidthFamilies).toHaveLength(0);
+    expect(analysis.keepSeparate).toHaveLength(1);
+    expect(analysis.keepSeparate[0]).toMatchObject({
+      classification: "KEEP_SEPARATE",
+      normalizedSeason: null,
+    });
+    expect(analysis.keepSeparate[0].reasons).toContain(
+      "Both seasons are known and different.",
+    );
+
+    const backfill = buildOuterspaceBackfill(analysis, products);
+    expect(backfill.families).toHaveLength(0);
+
+    const result = buildModelFamilyReconciliationPlan({
+      candidateFamilies: backfill.families,
+      existingFamilies: [],
+      products,
+      reviewFamilies: analysis.reviewWidthFamilies,
+      keepSeparateFamilies: analysis.keepSeparate,
+    });
+
+    expect(result.newFamilies).toHaveLength(0);
+    expect(result.newMemberships).toHaveLength(0);
+    expect(hasReconciliationMutations(result)).toBe(false);
+  });
+
   it("classifies a compatible automatic family as a no-op", () => {
     const result = plan();
     expect(result.compatibleExisting).toHaveLength(1);
