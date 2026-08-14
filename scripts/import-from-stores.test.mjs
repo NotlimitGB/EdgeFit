@@ -3,6 +3,7 @@ import {
   assertTraektoriaStaleSafe,
   assertTrialSportStaleSafe,
   buildStaleProductDecision,
+  mergeWithExistingProduct,
 } from "./import-from-stores.mjs";
 
 function makeProduct({
@@ -47,6 +48,50 @@ describe("Traektoria stale-safety gate", () => {
     expect(() =>
       assertTraektoriaStaleSafe({ importComplete: false, staleSafe: true }),
     ).not.toThrow();
+  });
+});
+
+describe("trusted existing identity preservation", () => {
+  it("does not erase known season or line when fresh merchant evidence is missing", () => {
+    const existing = {
+      dataStatus: "draft",
+      boardLine: "men",
+      seasonLabel: "2025/2026",
+    };
+    const imported = {
+      boardLine: "unisex",
+      seasonLabel: null,
+      importMeta: { boardLineEvidence: "missing" },
+      sizes: [],
+    };
+
+    expect(mergeWithExistingProduct(existing, imported)).toEqual(
+      expect.objectContaining({
+        boardLine: "men",
+        seasonLabel: "2025/2026",
+      }),
+    );
+  });
+
+  it("accepts explicit current merchant identity evidence", () => {
+    const existing = {
+      dataStatus: "draft",
+      boardLine: "men",
+      seasonLabel: null,
+    };
+    const imported = {
+      boardLine: "women",
+      seasonLabel: "2026/2027",
+      importMeta: { boardLineEvidence: "known" },
+      sizes: [],
+    };
+
+    expect(mergeWithExistingProduct(existing, imported)).toEqual(
+      expect.objectContaining({
+        boardLine: "women",
+        seasonLabel: "2026/2027",
+      }),
+    );
   });
 });
 

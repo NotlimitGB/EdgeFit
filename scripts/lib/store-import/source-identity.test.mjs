@@ -304,6 +304,20 @@ describe("source offer identity", () => {
     expect(plan.resolvedProducts).toHaveLength(2);
   });
 
+  it("treats an official terminal year and merchant winter range as one season", () => {
+    const official = makeProduct({ seasonLabel: "2026" });
+    const merchant = makeProduct({
+      storeCode: "trial-sport",
+      sourceProductId: "3131513",
+      seasonLabel: "2025/2026",
+    });
+
+    expect(getSourceOfferCompatibility(official, merchant)).toEqual({
+      compatible: true,
+      reasons: [],
+    });
+  });
+
   it("keeps regular and explicit Wide offers separate", () => {
     const regular = makeProduct();
     const wide = makeProduct({

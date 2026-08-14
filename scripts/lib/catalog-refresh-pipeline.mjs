@@ -1,5 +1,6 @@
 import { runCatalogAudit } from "../audit-catalog.mjs";
 import { runStoreImport } from "../import-from-stores.mjs";
+import { isSourceIdentityAuthorizationError } from "./store-import/source-identity-authorization.mjs";
 import {
   applyModelFamilyReconciliation,
   hasFamilyReconciliationActions,
@@ -28,6 +29,7 @@ function compactRefresh(refresh) {
   return {
     checkedAt: refresh.checkedAt,
     sourceIdentityPlanHash: refresh.sourceIdentityPlanHash,
+    sourceIdentityAuthorization: refresh.sourceIdentityAuthorization,
     sourceFilter: refresh.sourceFilter,
     warningCount: refresh.warnings?.length ?? 0,
     importedModels: refresh.importedModels,
@@ -56,12 +58,20 @@ function cloneState(state) {
 }
 
 export class CatalogRefreshPipelineError extends Error {
-  constructor({ stage, message, state, cause, catalogMayHaveCommitted }) {
+  constructor({
+    stage,
+    message,
+    state,
+    cause,
+    catalogMayHaveCommitted,
+    sourceIdentityAuthorization = null,
+  }) {
     super(message, cause ? { cause } : undefined);
     this.name = "CatalogRefreshPipelineError";
     this.stage = stage;
     this.state = cloneState(state);
     this.catalogMayHaveCommitted = catalogMayHaveCommitted;
+    this.sourceIdentityAuthorization = sourceIdentityAuthorization;
   }
 }
 
@@ -71,6 +81,7 @@ function fail(
   state,
   cause,
   catalogMayHaveCommitted = state.catalogRefreshCompleted,
+  sourceIdentityAuthorization = null,
 ) {
   throw new CatalogRefreshPipelineError({
     stage,
@@ -78,6 +89,7 @@ function fail(
     state,
     cause,
     catalogMayHaveCommitted,
+    sourceIdentityAuthorization,
   });
 }
 
@@ -99,6 +111,13 @@ export async function runCatalogRefreshPipeline(options = {}) {
     sslMode: options.sslMode,
     logger,
   };
+  const importOptions = { ...commonOptions };
+  if (options.expectedIdentityReviewHash) {
+    importOptions.expectedIdentityReviewHash = options.expectedIdentityReviewHash;
+  }
+  if (options.expectedPlanHash) {
+    importOptions.expectedPlanHash = options.expectedPlanHash;
+  }
   const state = {
     stage: "catalog-import",
     catalogRefreshCompleted: false,
@@ -115,9 +134,19 @@ export async function runCatalogRefreshPipeline(options = {}) {
   let familyPostPreview = null;
 
   try {
-    refresh = await importCatalog(commonOptions);
+    refresh = await importCatalog(importOptions);
     state.catalogRefreshCompleted = true;
   } catch (error) {
+    if (isSourceIdentityAuthorizationError(error)) {
+      fail(
+        "source-identity-authorization",
+        "Catalog source identity authorization failed.",
+        state,
+        error,
+        false,
+        error.authorization,
+      );
+    }
     // runStoreImport may throw after its bulk transaction committed (for example,
     // during post-import cleanup), so callers must treat this outcome as uncertain.
     fail("catalog-import", "Catalog import failed.", state, error, true);

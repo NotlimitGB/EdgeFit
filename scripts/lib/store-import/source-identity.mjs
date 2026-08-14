@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   mergeImportedProducts,
+  normalizeSeasonIdentity,
   normalizeWhitespace,
   slugifyBoard,
 } from "./common.mjs";
@@ -109,7 +110,7 @@ export function getStoreIdentityFromUrl(value) {
 }
 
 function normalizeSeason(value) {
-  const normalized = normalizeNullable(value);
+  const normalized = normalizeSeasonIdentity(value);
   return normalized ? normalizeSourceIdentityText(normalized) : null;
 }
 

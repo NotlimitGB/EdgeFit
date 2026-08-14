@@ -108,7 +108,7 @@ function normalizeSeasonYear(value) {
   return null;
 }
 
-export function parseSeasonLabel(value) {
+export function parseSeasonLabel(value, { asWinterSeason = false } = {}) {
   const normalized = normalizeWhitespace(value);
   if (!normalized) {
     return null;
@@ -136,12 +136,37 @@ export function parseSeasonLabel(value) {
     }
   }
 
+  const winterMatch = normalized.match(/\bFW\s*['’]?\s*(\d{2}|20\d{2})\b/iu);
+  if (winterMatch) {
+    const endYear = normalizeSeasonYear(winterMatch[1]);
+    if (endYear) {
+      return `${endYear - 1}/${endYear}`;
+    }
+  }
+
   const yearMatch = normalized.match(/\b(20\d{2})\b/u);
   if (yearMatch) {
-    return yearMatch[1];
+    const year = Number.parseInt(yearMatch[1], 10);
+    return asWinterSeason ? `${year - 1}/${year}` : yearMatch[1];
   }
 
   return null;
+}
+
+export function normalizeSeasonIdentity(value) {
+  const normalized = normalizeWhitespace(value);
+  if (!normalized) {
+    return null;
+  }
+
+  const canonicalRangeMatch = normalized.match(
+    /^(20\d{2})\s+(20\d{2})$/u,
+  );
+  if (canonicalRangeMatch) {
+    return `${canonicalRangeMatch[1]}/${canonicalRangeMatch[2]}`;
+  }
+
+  return parseSeasonLabel(normalized, { asWinterSeason: true }) ?? normalized;
 }
 
 export function getSeasonRank(seasonLabel) {

@@ -3,15 +3,16 @@ import { describe, expect, it, vi } from "vitest";
 import {
   importTrialSportProducts,
   revalidateTrialSportProducts,
+  resolveTrialSportBoardLineMetadata,
   TRIAL_SPORT_FAILURE_CATEGORIES,
 } from "./trial-sport.mjs";
 import { CatalogHttpTimeoutError } from "./catalog-http.mjs";
 import { buildSourceIdentityPlan } from "./source-identity.mjs";
+import { parseSeasonLabel } from "./common.mjs";
 
 const sectionUrl =
   "https://trial-sport.ru/gds.php?s=51526&c1=1070639&c2=1078224&gpp=100";
 const productUrl = "https://trial-sport.ru/goods/51526/1001.html";
-const secondProductUrl = "https://trial-sport.ru/goods/51526/1002.html";
 const specUrl = "https://trial-sport.ru/svdownload.php?svid=7";
 
 function buildListing(...ids) {
@@ -83,15 +84,16 @@ function createFetchText({
       return buildListing(...listingIds);
     }
 
-    if (url === productUrl || url === secondProductUrl) {
+    if (/\/goods\/51526\/\d+\.html$/u.test(url)) {
       if (productFailure && url === productUrl) {
         throw new Error("HTTP 503");
       }
 
+      const id = url.match(/\/(\d+)\.html$/u)?.[1] ?? "";
       return productPageTransform(
         buildProductPage({
           availability,
-          id: url === productUrl ? "1001" : "1002",
+          id,
         }),
       );
     }
@@ -103,6 +105,70 @@ function createFetchText({
 const silentLogger = { log: vi.fn(), warn: vi.fn(), error: vi.fn() };
 
 describe("Trial Sport source diagnostics", () => {
+  it("normalizes merchant winter-season evidence without changing default year parsing", () => {
+    expect(parseSeasonLabel("Nidecker Escape FW26", { asWinterSeason: true })).toBe(
+      "2025/2026",
+    );
+    expect(parseSeasonLabel("Nidecker Escape FW22", { asWinterSeason: true })).toBe(
+      "2021/2022",
+    );
+    expect(parseSeasonLabel("Nitro Team 2026", { asWinterSeason: true })).toBe(
+      "2025/2026",
+    );
+    expect(parseSeasonLabel("Nitro Team 2026")).toBe("2026");
+  });
+
+  it("applies reviewed Trial board-line evidence and fails closed on source drift", () => {
+    expect(
+      resolveTrialSportBoardLineMetadata("3131268", "", {
+        brand: "BATALEON",
+        modelName: "EVIL TWIN",
+      }),
+    ).toMatchObject({
+      status: "resolved",
+      boardLine: "men",
+      evidence: "known",
+      correctionApplied: true,
+    });
+    expect(
+      resolveTrialSportBoardLineMetadata("3131268", "женская модель", {
+        brand: "Bataleon",
+        modelName: "Evil Twin",
+      }),
+    ).toMatchObject({ status: "conflict", category: "source_metadata_conflict" });
+    expect(
+      resolveTrialSportBoardLineMetadata("3131268", "", {
+        brand: "Other",
+        modelName: "Evil Twin",
+      }),
+    ).toMatchObject({ status: "conflict", category: "source_metadata_conflict" });
+  });
+
+  it("attaches trusted line evidence to an exact reviewed Trial Product", async () => {
+    const result = await importTrialSportProducts({
+      fetchText: createFetchText({
+        listingIds: ["3131268"],
+        productPageTransform: (page) =>
+          page.replaceAll("TEST", "Bataleon").replace("Model", "Evil Twin"),
+      }),
+      fetchArrayBuffer: vi.fn(async () =>
+        buildSpecWorkbook({ modelName: "Evil Twin" }),
+      ),
+      checkedAt: "2026-08-14",
+      logger: silentLogger,
+    });
+
+    expect(result.diagnostics.staleSafe).toBe(true);
+    expect(result.products).toHaveLength(1);
+    expect(result.products[0]).toMatchObject({
+      boardLine: "men",
+      importMeta: {
+        boardLineEvidence: "known",
+        sourceMetadataCorrectionApplied: true,
+      },
+    });
+  });
+
   it("marks a fully resolved snapshot complete", async () => {
     const result = await importTrialSportProducts({
       fetchText: createFetchText(),

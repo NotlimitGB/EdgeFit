@@ -349,8 +349,8 @@ function buildTraektoriaProduct(
   const brand = normalizeWhitespace(model.brand?.name || props.name.split(" ")[0]);
   const modelName = normalizeWhitespace(props.model_name || props.name.replace(brand, ""));
   const seasonLabel =
-    parseSeasonLabel(props.name) ??
-    parseSeasonLabel(props.model_name) ??
+    parseSeasonLabel(props.name, { asWinterSeason: true }) ??
+    parseSeasonLabel(props.model_name, { asWinterSeason: true }) ??
     null;
   const slug = slugifyBoard(`${brand} ${modelName}`);
   const shapeType = mapShapeType(filterMap.get("SHAPE"));

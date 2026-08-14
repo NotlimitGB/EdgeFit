@@ -16,6 +16,10 @@ import {
   buildSourceOfferIdentity,
   SOURCE_IDENTITY_CLASSES,
 } from "./lib/store-import/source-identity.mjs";
+import {
+  buildSourceIdentityAuthorizationPlan,
+  compactSourceIdentityAuthorization,
+} from "./lib/store-import/source-identity-authorization.mjs";
 
 const DEFAULT_REPORT_PATH = "reports/catalog-source-identity-plan.json";
 
@@ -231,6 +235,12 @@ export async function runSourceIdentityAudit(options = {}) {
       existingProducts: database.existingCatalog,
       officialSpecs,
     });
+    const identityAuthorization = buildSourceIdentityAuthorizationPlan({
+      identityPlan,
+      importedProducts: source.products,
+      existingProducts: database.existingCatalog,
+      officialSpecs,
+    });
     const groups = identityPlan.logicalPlan.groups;
     const airmaster = groups.find(
       (group) => group.baseSlug === "yes-airmaster-3d",
@@ -275,6 +285,9 @@ export async function runSourceIdentityAudit(options = {}) {
       generatedAt: new Date().toISOString(),
       transaction: database.settings,
       planHash: identityPlan.planHash,
+      identityAuthorization: compactSourceIdentityAuthorization(
+        identityAuthorization,
+      ),
       databaseSnapshot: database.snapshot,
       sourceSummary: {
         sourceFilter,
@@ -334,6 +347,10 @@ export async function runSourceIdentityAudit(options = {}) {
 
     logger.log(`Source identity plan: ${reportPath}`);
     logger.log(`Plan hash: ${report.planHash}`);
+    logger.log(
+      `Identity authorization: AUTO=${identityAuthorization.autoGroups.length}, REVIEW=${identityAuthorization.reviewGroups.length}, BLOCK=${identityAuthorization.blockGroups.length}`,
+    );
+    logger.log(`Identity review hash: ${identityAuthorization.identityReviewPlanHash}`);
     logger.log(`Airmaster detected: ${report.airmasterDetected ? "yes" : "no"}`);
     logger.log(`Confirmed repairs required: ${unresolvedConfirmed.length}`);
     logger.log(

@@ -3,6 +3,7 @@ import {
   CatalogRefreshPipelineError,
   runCatalogRefreshPipeline,
 } from "./catalog-refresh-pipeline.mjs";
+import { SourceIdentityAuthorizationError } from "./store-import/source-identity-authorization.mjs";
 
 function refreshResult() {
   return {
@@ -134,6 +135,45 @@ describe("shared catalog refresh pipeline", () => {
     ).toBe(false);
     expect(result.familyReconciliation.mode).toBe("NOOP");
     expect(result.state.familyPostPreviewNoop).toBe(true);
+  });
+
+  it("passes an execution-scoped identity review hash only to the importer", async () => {
+    const deps = dependencies();
+    const expectedIdentityReviewHash = "b".repeat(64);
+    await runCatalogRefreshPipeline({
+      ...deps,
+      expectedIdentityReviewHash,
+    });
+
+    expect(deps.runStoreImport).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedIdentityReviewHash }),
+    );
+    expect(deps.runCatalogAudit.mock.calls[0][0]).not.toHaveProperty(
+      "expectedIdentityReviewHash",
+    );
+  });
+
+  it("reports a fail-closed identity authorization gate as pre-commit", async () => {
+    const authorization = {
+      counts: { AUTO: 9, REVIEW: 1, BLOCK: 0 },
+      reviewGroups: [{ baseSlug: "review-board", reasonCodes: ["COLLISION_SUFFIX_REVIEW"] }],
+      blockGroups: [],
+      identityReviewPlanHash: "c".repeat(64),
+    };
+    const error = new SourceIdentityAuthorizationError({
+      code: "SOURCE_IDENTITY_REVIEW_REQUIRED",
+      message: "review required",
+    });
+    error.authorization = authorization;
+    const deps = dependencies({ runStoreImport: vi.fn().mockRejectedValue(error) });
+
+    await expect(runCatalogRefreshPipeline(deps)).rejects.toMatchObject({
+      stage: "source-identity-authorization",
+      catalogMayHaveCommitted: false,
+      sourceIdentityAuthorization: authorization,
+      state: { catalogRefreshCompleted: false },
+    });
+    expect(deps.runCatalogAudit).not.toHaveBeenCalled();
   });
 
   it("conservatively reports that a failed import may already have committed", async () => {

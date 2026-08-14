@@ -30,6 +30,77 @@ const TRIAL_BASE_URL = "https://trial-sport.ru";
 const TRIAL_SECTION_URL =
   `${TRIAL_BASE_URL}/gds.php?s=51526&c1=1070639&c2=1078224&gpp=100`;
 
+export const TRIAL_SPORT_SOURCE_METADATA_CORRECTIONS = Object.freeze({
+  "3131268": Object.freeze({
+    expectedBrand: "Bataleon",
+    expectedModel: "Evil Twin",
+    correctedBoardLine: "men",
+    reason: "Verified Bataleon Evil Twin 2025/2026 men identity.",
+  }),
+  "3131513": Object.freeze({
+    expectedBrand: "Nitro",
+    expectedModel: "Team",
+    correctedBoardLine: "men",
+    reason: "Verified Nitro Team 2025/2026 men identity.",
+  }),
+  "3137774": Object.freeze({
+    expectedBrand: "Ride",
+    expectedModel: "Warpig",
+    correctedBoardLine: "men",
+    reason: "Verified RIDE Warpig 2025/2026 men identity.",
+  }),
+});
+
+export function resolveTrialSportBoardLineMetadata(
+  sourceProductId,
+  descriptionText,
+  { brand, modelName } = {},
+) {
+  const raw = getBoardLineEvidence(descriptionText);
+  const correction =
+    TRIAL_SPORT_SOURCE_METADATA_CORRECTIONS[String(sourceProductId ?? "")] ??
+    null;
+
+  if (!correction) {
+    return {
+      status: "resolved",
+      boardLine: raw.boardLine,
+      evidence: raw.evidence,
+      correctionApplied: false,
+      reason: null,
+    };
+  }
+
+  if (
+    normalizeBoardKey(brand) !== normalizeBoardKey(correction.expectedBrand) ||
+    normalizeBoardKey(modelName) !== normalizeBoardKey(correction.expectedModel)
+  ) {
+    return {
+      status: "conflict",
+      category: "source_metadata_conflict",
+      correctionApplied: false,
+      reason: correction.reason,
+    };
+  }
+
+  if (raw.evidence === "known" && raw.boardLine !== correction.correctedBoardLine) {
+    return {
+      status: "conflict",
+      category: "source_metadata_conflict",
+      correctionApplied: false,
+      reason: correction.reason,
+    };
+  }
+
+  return {
+    status: "resolved",
+    boardLine: correction.correctedBoardLine,
+    evidence: "known",
+    correctionApplied: raw.evidence !== "known",
+    reason: correction.reason,
+  };
+}
+
 function isReliableTrialSize(sizeCm, waistWidthMm) {
   return isPlausibleWaistWidthMm(sizeCm, waistWidthMm);
 }
@@ -310,8 +381,12 @@ function extractTrialSeasonLabel(htmlText) {
   const h1Match = htmlText.match(/<h1[^>]*>\s*([^<]+)\s*<\/h1>/iu);
   const titleMatch = htmlText.match(/<title>([^<]+)<\/title>/iu);
   return (
-    parseSeasonLabel(stripHtml(h1Match?.[1] ?? "")) ??
-    parseSeasonLabel(stripHtml(titleMatch?.[1] ?? "")) ??
+    parseSeasonLabel(stripHtml(h1Match?.[1] ?? ""), {
+      asWinterSeason: true,
+    }) ??
+    parseSeasonLabel(stripHtml(titleMatch?.[1] ?? ""), {
+      asWinterSeason: true,
+    }) ??
     null
   );
 }
@@ -489,7 +564,18 @@ function buildTrialProduct(
   const descriptionText = extractTrialDescription(htmlText, brand);
   const imageUrls = extractTrialImageUrls(htmlText);
   const seasonLabel = extractTrialSeasonLabel(htmlText);
-  const boardLineIdentity = getBoardLineEvidence(descriptionText);
+  const boardLineIdentity = resolveTrialSportBoardLineMetadata(
+    sourceProductId,
+    descriptionText,
+    { brand, modelName },
+  );
+  if (boardLineIdentity.status === "conflict") {
+    return {
+      status: "unsafe_failure",
+      category: TRIAL_SPORT_FAILURE_CATEGORIES.sourceMetadataConflict,
+      reason: "source_metadata_conflict",
+    };
+  }
   const boardLine = boardLineIdentity.boardLine;
   const skillLevel = mapSkillLevel({
     levelText: "",
@@ -524,6 +610,7 @@ function buildTrialProduct(
       sourceProductId,
       baseSlug: slugifyBoard(`${brand} ${modelName}`),
       boardLineEvidence: boardLineIdentity.evidence,
+      sourceMetadataCorrectionApplied: boardLineIdentity.correctionApplied,
       variantMarker: getExplicitVariantMarker(modelName),
       storeName: "Триал-Спорт",
     },
@@ -554,6 +641,7 @@ export const TRIAL_SPORT_FAILURE_CATEGORIES = Object.freeze({
   specParse: "spec_parse_failure",
   productParse: "product_parse_failure",
   availabilityParse: "availability_parse_failure",
+  sourceMetadataConflict: "source_metadata_conflict",
   other: "other_failure",
 });
 
@@ -837,7 +925,7 @@ export async function importTrialSportProducts({
     }
 
     recordFailure(
-      TRIAL_SPORT_FAILURE_CATEGORIES.productParse,
+      outcome.category ?? TRIAL_SPORT_FAILURE_CATEGORIES.productParse,
       `Trial Sport: unable to build Product for ${productUrl}`,
     );
   }
@@ -958,7 +1046,7 @@ export async function importTrialSportProducts({
             recordFailure(
               outcome.status === "safe_unimportable"
                 ? TRIAL_SPORT_FAILURE_CATEGORIES.safeUnimportableSpecGroupMissing
-                : TRIAL_SPORT_FAILURE_CATEGORIES.productParse,
+                : outcome.category ?? TRIAL_SPORT_FAILURE_CATEGORIES.productParse,
               `Триал-Спорт: не удалось собрать карточку для ${productUrl}`,
             );
           }

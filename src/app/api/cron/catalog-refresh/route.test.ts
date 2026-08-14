@@ -141,6 +141,42 @@ describe("catalog refresh cron route", () => {
     expect(JSON.stringify(body)).not.toContain("secret-value");
   });
 
+  it("returns sanitized identity-review evidence and proves no catalog commit", async () => {
+    const sourceIdentityAuthorization = {
+      counts: { AUTO: 376, REVIEW: 1, BLOCK: 0 },
+      reasonCounts: { COLLISION_SUFFIX_REVIEW: 1 },
+      identityReviewPlanHash: "a".repeat(64),
+      reviewGroups: [
+        { baseSlug: "review-board", reasonCodes: ["COLLISION_SUFFIX_REVIEW"] },
+      ],
+      blockGroups: [],
+    };
+    const error = Object.assign(new Error("hidden raw URL"), {
+      isPipelineError: true,
+      stage: "source-identity-authorization",
+      state: {
+        catalogRefreshCompleted: false,
+        familyApplyExecuted: false,
+      },
+      catalogMayHaveCommitted: false,
+      sourceIdentityAuthorization,
+    });
+    mocks.runPipeline.mockRejectedValue(error);
+
+    const response = await GET(request("cron-secret"));
+    const body = await response.json();
+    expect(response.status).toBe(500);
+    expect(body).toEqual({
+      message: "hidden raw URL",
+      stage: "source-identity-authorization",
+      state: error.state,
+      catalogMayHaveCommitted: false,
+      sourceIdentityAuthorization,
+    });
+    expect(JSON.stringify(body)).not.toContain("trial-sport.ru");
+    expect(JSON.stringify(body)).not.toContain("traektoria.ru");
+  });
+
   it("does not expose unexpected error details", async () => {
     mocks.runPipeline.mockRejectedValue(
       new Error("postgres://user:password@example.test/database"),

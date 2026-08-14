@@ -68,6 +68,7 @@ export async function GET(request: Request) {
           stage: error.stage,
           state: error.state,
           catalogMayHaveCommitted: error.catalogMayHaveCommitted,
+          sourceIdentityAuthorization: error.sourceIdentityAuthorization,
         },
         { status: 500 },
       );

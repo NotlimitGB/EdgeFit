@@ -11,6 +11,12 @@ import {
   getStoreIdentityFromUrl,
 } from "./lib/store-import/source-identity.mjs";
 import {
+  assertSourceIdentityAuthorization,
+  buildSourceIdentityAuthorizationPlan,
+  compactSourceIdentityAuthorization,
+  normalizeExpectedIdentityReviewHash,
+} from "./lib/store-import/source-identity-authorization.mjs";
+import {
   applyOfficialProductSpecs,
   loadOfficialProductSpecs,
 } from "./lib/official-specs.mjs";
@@ -281,13 +287,25 @@ export async function loadExistingCatalog(sql, state = { productColumnSupport: n
   );
 }
 
-function mergeWithExistingProduct(existingProduct, importedProduct) {
+export function mergeWithExistingProduct(existingProduct, importedProduct) {
   if (!existingProduct) {
     return importedProduct;
   }
 
   if (existingProduct.dataStatus !== "verified") {
-    return importedProduct;
+    return {
+      ...importedProduct,
+      boardLine:
+        importedProduct.importMeta?.boardLineEvidence === "missing" &&
+        (existingProduct.boardLine === "men" ||
+          existingProduct.boardLine === "women")
+          ? existingProduct.boardLine
+          : importedProduct.boardLine,
+      seasonLabel:
+        importedProduct.seasonLabel?.trim() ||
+        existingProduct.seasonLabel?.trim() ||
+        null,
+    };
   }
 
   const hasIdentityConflict =
@@ -628,6 +646,9 @@ export async function runStoreImport(options = {}) {
       process.env.CATALOG_SOURCE_IDENTITY_EXPECTED_PLAN_HASH ??
       "",
   );
+  const expectedIdentityReviewHash = normalizeExpectedIdentityReviewHash(
+    options.expectedIdentityReviewHash,
+  );
   const ownSqlClient = !options.sql;
 
   if (!options.sql && !databaseUrl) {
@@ -697,29 +718,17 @@ export async function runStoreImport(options = {}) {
       existingProducts: existingCatalog,
       officialSpecs: officialProductSpecs,
     });
-
-    if (identityPlan.logicalPlan.blockingIssues.length > 0) {
-      throw new Error(
-        `Source identity plan is blocked: ${identityPlan.logicalPlan.blockingIssues.join(" ")}`,
-      );
-    }
-
-    const pendingIdentityRepairs = identityPlan.logicalPlan.groups.filter(
-      (group) =>
-        group.repairRequired && group.classification !== "NO_CONFLICT",
-    );
-
-    if (pendingIdentityRepairs.length > 0 && !expectedPlanHash) {
-      throw new Error(
-        `Source identity changes require a hashed preview (${pendingIdentityRepairs.length} groups).`,
-      );
-    }
-
-    if (expectedPlanHash && identityPlan.planHash !== expectedPlanHash) {
-      throw new Error(
-        `Source identity plan hash changed: expected ${expectedPlanHash}, actual ${identityPlan.planHash}.`,
-      );
-    }
+    const identityAuthorization = buildSourceIdentityAuthorizationPlan({
+      identityPlan,
+      importedProducts,
+      existingProducts: existingCatalog,
+      officialSpecs: officialProductSpecs,
+    });
+    assertSourceIdentityAuthorization({
+      authorizationPlan: identityAuthorization,
+      expectedIdentityReviewHash,
+      expectedDiagnosticPlanHash: expectedPlanHash || null,
+    });
 
     const mergedImportedProducts = new Map(
       identityPlan.resolvedProducts.map((product) => [product.slug, product]),
@@ -820,6 +829,9 @@ export async function runStoreImport(options = {}) {
     const result = {
       checkedAt,
       sourceIdentityPlanHash: identityPlan.planHash,
+      sourceIdentityAuthorization: compactSourceIdentityAuthorization(
+        identityAuthorization,
+      ),
       sourceFilter,
       warnings,
       trialSportDiagnostics,
