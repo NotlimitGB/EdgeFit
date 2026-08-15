@@ -10,6 +10,7 @@ import { получитьКлиентБазы } from "@/lib/database/client";
 import { базаНастроена } from "@/lib/database/config";
 import { getProductColumnSupport } from "@/lib/database/product-column-support";
 import type { CanonicalCatalogItem } from "@/types/canonical-catalog";
+import { resolveCanonicalBoardRoute } from "@/lib/canonical-board-route";
 
 const SCHEMA_ERROR =
   "Canonical catalog requires complete model-family schema support.";
@@ -371,36 +372,19 @@ export const getAllCanonicalBoardSlugs = cache(async () => {
 
 export const resolveCanonicalBoardRouteBySlug = cache(
   async (slug: string): Promise<CanonicalBoardRouteResolution | undefined> => {
-    const exactItem = await getCanonicalCatalogItemBySlug(slug);
+    return resolveCanonicalBoardRoute({
+      requestedSlug: slug,
+      loadCanonicalItemBySlug: getCanonicalCatalogItemBySlug,
+      loadFamilyAliasTargetBySlug: async (offerSlug) => {
+        if (!базаНастроена()) {
+          return undefined;
+        }
 
-    if (exactItem) {
-      return {
-        kind: "render",
-        item: exactItem,
-      };
-    }
-
-    if (!базаНастроена()) {
-      return undefined;
-    }
-
-    const alias = await loadCanonicalBoardAliasBySlugFromDatabase(slug);
-    if (!alias?.familySlug) {
-      return undefined;
-    }
-
-    const familyItem = await loadCanonicalCatalogItemBySlugFromDatabase(
-      alias.familySlug,
-    );
-    if (!familyItem) {
-      return undefined;
-    }
-
-    return {
-      kind: "redirect",
-      item: familyItem,
-      canonicalSlug: familyItem.slug,
-    };
+        const alias =
+          await loadCanonicalBoardAliasBySlugFromDatabase(offerSlug);
+        return alias?.familySlug ?? undefined;
+      },
+    });
   },
 );
 
