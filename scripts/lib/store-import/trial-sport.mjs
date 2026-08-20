@@ -24,6 +24,7 @@ import {
   getBoardLineEvidence,
   getExplicitVariantMarker,
   getStoreIdentityFromUrl,
+  normalizeSourceIdentityText,
 } from "./source-identity.mjs";
 
 const TRIAL_BASE_URL = "https://trial-sport.ru";
@@ -54,6 +55,20 @@ export const TRIAL_SPORT_SOURCE_METADATA_CORRECTIONS = Object.freeze({
     expectedModel: "Warpig",
     correctedBoardLine: "men",
     reason: "Verified RIDE Warpig 2025/2026 men identity.",
+  }),
+});
+
+export const TRIAL_SPORT_SIZE_METADATA_CORRECTIONS = Object.freeze({
+  "3132335": Object.freeze({
+    expectedBrand: "Nitro",
+    expectedModel: "Team Wide",
+    authoritativeSource: "Official Nitro Team Wide 2025/2026",
+    waistWidthMmBySizeCm: Object.freeze({
+      157: 264,
+      159: 266,
+      162: 270,
+      165: 272,
+    }),
   }),
 });
 
@@ -105,6 +120,32 @@ export function resolveTrialSportBoardLineMetadata(
     correctionApplied: raw.evidence !== "known",
     reason: correction.reason,
   };
+}
+
+export function resolveTrialSportSizeMetadataCorrection(
+  sourceProductId,
+  { brand, modelName } = {},
+) {
+  const correction =
+    TRIAL_SPORT_SIZE_METADATA_CORRECTIONS[String(sourceProductId ?? "")] ??
+    null;
+
+  if (!correction) {
+    return { status: "resolved", correction: null };
+  }
+
+  if (
+    normalizeBoardKey(brand) !== normalizeBoardKey(correction.expectedBrand) ||
+    normalizeBoardKey(modelName) !== normalizeBoardKey(correction.expectedModel)
+  ) {
+    return {
+      status: "conflict",
+      category: "source_metadata_conflict",
+      correction: null,
+    };
+  }
+
+  return { status: "resolved", correction };
 }
 
 function isReliableTrialSize(sizeCm, waistWidthMm) {
@@ -206,7 +247,7 @@ function parseWorksheetRows(sheetXml, sharedStrings) {
   );
 }
 
-function buildTrialSpecMap(workbookBytes) {
+export function buildTrialSpecMap(workbookBytes) {
   const zip = unzipSync(new Uint8Array(workbookBytes));
   const sharedStringsXml = zip["xl/sharedStrings.xml"]
     ? strFromU8(zip["xl/sharedStrings.xml"])
@@ -271,19 +312,84 @@ function buildTrialSpecMap(workbookBytes) {
   return specMap;
 }
 
-function findTrialSpecGroup(specMap, modelName) {
+function getTrialSpecProtectedSignature(modelName) {
+  const normalized = normalizeSourceIdentityText(modelName);
+  const tokens = new Set(normalized.split(" ").filter(Boolean));
+  const normalizedWithoutWidth = normalized
+    .replace(/\b(?:mid wide|wide|w)(?: snowboard|board)?$/u, "")
+    .trim();
+  const terminalToken = normalizedWithoutWidth.split(" ").filter(Boolean).at(-1);
+  const widthVariant = /\bmid wide\b/u.test(normalized)
+    ? "mid-wide"
+    : tokens.has("wide") || tokens.has("w")
+      ? "wide"
+      : "base";
+  const audienceVariant = [
+    "women",
+    "womens",
+    "wmns",
+    "woman",
+    "female",
+    "lady",
+    "ladies",
+    "girl",
+    "girls",
+  ].some((token) => tokens.has(token))
+    ? "women"
+    : ["kid", "kids", "junior", "mini", "youth", "yunior", "yuniorsk"].some(
+          (token) => tokens.has(token),
+        )
+      ? "youth"
+      : "adult";
+  const protectedModifiers = [
+    tokens.has("pro") ? "pro" : null,
+    terminalToken === "plus" ? "plus" : null,
+    tokens.has("limited") || tokens.has("ltd") ? "limited" : null,
+    tokens.has("carbon") ? "carbon" : null,
+    tokens.has("raw") ? "raw" : null,
+    tokens.has("split") ? "split" : null,
+  ].filter(Boolean);
+
+  return JSON.stringify({ widthVariant, audienceVariant, protectedModifiers });
+}
+
+export function resolveTrialSpecGroupMatch(specMap, modelName) {
   const normalizedModel = normalizeBoardKey(modelName);
 
   if (specMap.has(normalizedModel)) {
-    return specMap.get(normalizedModel);
+    const group = specMap.get(normalizedModel);
+    return {
+      group,
+      matchKind: "exact",
+      matchedModelName: group?.modelName ?? null,
+      candidateCount: 1,
+    };
   }
 
+  const protectedSignature = getTrialSpecProtectedSignature(modelName);
   const entries = Array.from(specMap.entries());
-  const partialMatch = entries.find(([key]) =>
-    key.includes(normalizedModel) || normalizedModel.includes(key),
+  const partialMatches = entries.filter(
+    ([key, group]) =>
+      (key.includes(normalizedModel) || normalizedModel.includes(key)) &&
+      getTrialSpecProtectedSignature(group?.modelName) === protectedSignature,
   );
 
-  return partialMatch?.[1] ?? null;
+  if (partialMatches.length === 1) {
+    const group = partialMatches[0][1];
+    return {
+      group,
+      matchKind: "safe-partial",
+      matchedModelName: group?.modelName ?? null,
+      candidateCount: 1,
+    };
+  }
+
+  return {
+    group: null,
+    matchKind: partialMatches.length > 1 ? "ambiguous" : "none",
+    matchedModelName: null,
+    candidateCount: partialMatches.length,
+  };
 }
 
 function extractTrialProductUrls(htmlText) {
@@ -499,19 +605,42 @@ function buildTrialPageSizes(specGroup, icspEntries, modelName) {
   );
 }
 
-function mergeTrialSizes(specGroup, icspEntries, modelName) {
+function applyTrialSizeMetadataCorrection(sizes, correction) {
+  let applied = false;
+  const correctedSizes = sizes.map((size) => {
+    const correctedWaistWidthMm =
+      correction?.waistWidthMmBySizeCm?.[String(size.sizeCm)] ?? null;
+    if (!Number.isFinite(correctedWaistWidthMm)) {
+      return size;
+    }
+
+    applied = true;
+    return {
+      ...size,
+      waistWidthMm: correctedWaistWidthMm,
+      widthType: classifyWidthType(correctedWaistWidthMm),
+    };
+  });
+
+  return { sizes: correctedSizes, applied };
+}
+
+function mergeTrialSizes(specGroup, icspEntries, modelName, correction) {
   const pageSizes = buildTrialPageSizes(specGroup, icspEntries, modelName);
 
   if (pageSizes.length > 0) {
-    return pageSizes;
+    return applyTrialSizeMetadataCorrection(pageSizes, correction);
   }
 
-  return (specGroup?.sizes ?? [])
-    .map((size) => ({
-      ...size,
-      isAvailable: true,
-    }))
-    .sort((left, right) => left.sizeCm - right.sizeCm);
+  return applyTrialSizeMetadataCorrection(
+    (specGroup?.sizes ?? [])
+      .map((size) => ({
+        ...size,
+        isAvailable: true,
+      }))
+      .sort((left, right) => left.sizeCm - right.sizeCm),
+    correction,
+  );
 }
 
 function buildTrialProduct(
@@ -543,8 +672,21 @@ function buildTrialProduct(
     };
   }
 
-  const specGroup = findTrialSpecGroup(specMap, modelName);
-  if (!specGroup) {
+  const sizeCorrectionResult = resolveTrialSportSizeMetadataCorrection(
+    sourceProductId,
+    { brand, modelName },
+  );
+  if (sizeCorrectionResult.status === "conflict") {
+    return {
+      status: "unsafe_failure",
+      category: TRIAL_SPORT_FAILURE_CATEGORIES.sourceMetadataConflict,
+      reason: "source_metadata_conflict",
+    };
+  }
+
+  const specMatch = resolveTrialSpecGroupMatch(specMap, modelName);
+  const specGroup = specMatch.group;
+  if (!specGroup && !sizeCorrectionResult.correction) {
     return {
       status: "safe_unimportable",
       observation: {
@@ -558,15 +700,21 @@ function buildTrialProduct(
   }
 
   const availableEntries = icspEntries.filter(isTrialEntryAvailable);
-  const sizes = mergeTrialSizes(specGroup, icspEntries, modelName);
+  const sizeResult = mergeTrialSizes(
+    specGroup,
+    icspEntries,
+    modelName,
+    sizeCorrectionResult.correction,
+  );
+  const sizes = sizeResult.sizes;
 
   if (sizes.length === 0 || availableEntries.length === 0) {
     return { status: "unsafe_failure", reason: "product_parse_failure" };
   }
 
-  const flex = specGroup.flex || 5;
-  const ridingStyle = mapRidingStyle(specGroup.purpose);
-  const shapeType = mapShapeType(specGroup.shape);
+  const flex = specGroup?.flex || 5;
+  const ridingStyle = mapRidingStyle(specGroup?.purpose);
+  const shapeType = mapShapeType(specGroup?.shape);
   const descriptionText = extractTrialDescription(htmlText, brand);
   const imageUrls = extractTrialImageUrls(htmlText);
   const seasonLabel = extractTrialSeasonLabel(htmlText);
@@ -617,6 +765,9 @@ function buildTrialProduct(
       baseSlug: slugifyBoard(`${brand} ${modelName}`),
       boardLineEvidence: boardLineIdentity.evidence,
       sourceMetadataCorrectionApplied: boardLineIdentity.correctionApplied,
+      trialSpecMatchKind: specMatch.matchKind,
+      trialSpecMatchedModelName: specMatch.matchedModelName,
+      trialSizeMetadataCorrectionApplied: sizeResult.applied,
       variantMarker: getExplicitVariantMarker(modelName),
       storeName: "Триал-Спорт",
     },

@@ -4,11 +4,13 @@ import {
   importTrialSportProducts,
   revalidateTrialSportProducts,
   resolveTrialSportBoardLineMetadata,
+  resolveTrialSportSizeMetadataCorrection,
+  resolveTrialSpecGroupMatch,
   TRIAL_SPORT_FAILURE_CATEGORIES,
 } from "./trial-sport.mjs";
 import { CatalogHttpTimeoutError } from "./catalog-http.mjs";
 import { buildSourceIdentityPlan } from "./source-identity.mjs";
-import { parseSeasonLabel } from "./common.mjs";
+import { normalizeBoardKey, parseSeasonLabel } from "./common.mjs";
 
 const sectionUrl =
   "https://trial-sport.ru/gds.php?s=51526&c1=1070639&c2=1078224&gpp=100";
@@ -24,30 +26,51 @@ function buildListing(...ids) {
     .join("");
 }
 
-function buildProductPage({ availability = "available", id = "1001" } = {}) {
+function buildProductPage({
+  availability = "available",
+  brand = "TEST",
+  entries,
+  id = "1001",
+  modelName = "Model",
+} = {}) {
+  const pageEntries =
+    entries ??
+    [
+      {
+        size: "156",
+        nalim: availability === "available",
+        stores: [],
+        im_cols_avail: availability === "available" ? 1 : 0,
+        im_cols_reserved: 0,
+      },
+    ];
   const availabilityScript =
     availability === "malformed"
       ? "<script>const icspJS = notJson;</script>"
-      : `<script>const icspJS = ${JSON.stringify([
-          {
-            size: "156",
-            nalim: availability === "available",
-            stores: [],
-            im_cols_avail: availability === "available" ? 1 : 0,
-            im_cols_reserved: 0,
-          },
-        ])};</script>`;
+      : `<script>const icspJS = ${JSON.stringify(pageEntries)};</script>`;
 
   return `
-    <a href="/gds.php?brand=test"><span>TEST</span></a>
-    <h1>Сноуборд TEST Model 2025</h1>
+    <a href="/gds.php?brand=test"><span>${brand}</span></a>
+    <h1>Сноуборд ${brand} ${modelName} 2025</h1>
     ${availabilityScript}
     <a href="/svdownload.php?svid=7">Specs</a>
     <script>window.productId = ${id};</script>
   `;
 }
 
-function buildSpecWorkbook({ modelName = "Model" } = {}) {
+function buildSpecWorkbook({
+  modelName = "Model",
+  sizes = [{ sizeLabel: "156", waistWidthCm: "25.0" }],
+} = {}) {
+  const sizeRows = sizes
+    .map(
+      (size, index) => `
+        <row r="${index + 3}">
+          <c r="D${index + 3}"><v>${size.sizeLabel}</v></c>
+          <c r="H${index + 3}"><v>${size.waistWidthCm}</v></c>
+        </row>`,
+    )
+    .join("");
   const sheet = `
     <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
       <sheetData>
@@ -58,10 +81,7 @@ function buildSpecWorkbook({ modelName = "Model" } = {}) {
           <c r="C2"><v>All Mountain</v></c>
           <c r="K2"><v>5</v></c>
         </row>
-        <row r="3">
-          <c r="D3"><v>156</v></c>
-          <c r="H3"><v>25.0</v></c>
-        </row>
+        ${sizeRows}
       </sheetData>
     </worksheet>
   `;
@@ -71,6 +91,25 @@ function buildSpecWorkbook({ modelName = "Model" } = {}) {
       "xl/worksheets/sheet1.xml": strToU8(sheet),
     }),
   );
+}
+
+function makeSpecMap(...modelNames) {
+  return new Map(
+    modelNames.map((modelName) => [
+      normalizeBoardKey(modelName),
+      { modelName, sizes: [] },
+    ]),
+  );
+}
+
+function makeTrialEntry(size, isAvailable) {
+  return {
+    size: String(size),
+    nalim: isAvailable,
+    stores: [],
+    im_cols_avail: isAvailable ? 1 : 0,
+    im_cols_reserved: 0,
+  };
 }
 
 function createFetchText({
@@ -105,6 +144,194 @@ function createFetchText({
 const silentLogger = { log: vi.fn(), warn: vi.fn(), error: vi.fn() };
 
 describe("Trial Sport source diagnostics", () => {
+  it("matches Trial specification groups only across compatible protected variants", () => {
+    expect(
+      resolveTrialSpecGroupMatch(makeSpecMap("Example Wide"), "Example Wide"),
+    ).toMatchObject({ matchKind: "exact", matchedModelName: "Example Wide" });
+    expect(
+      resolveTrialSpecGroupMatch(makeSpecMap("Example"), "Example Wide"),
+    ).toMatchObject({ matchKind: "none", group: null });
+    expect(
+      resolveTrialSpecGroupMatch(makeSpecMap("Example Wide"), "Example"),
+    ).toMatchObject({ matchKind: "none", group: null });
+    expect(
+      resolveTrialSpecGroupMatch(makeSpecMap("Example Board"), "Example"),
+    ).toMatchObject({ matchKind: "safe-partial", matchedModelName: "Example Board" });
+    expect(
+      resolveTrialSpecGroupMatch(
+        makeSpecMap("Example Board", "Example Series"),
+        "Example",
+      ),
+    ).toMatchObject({ matchKind: "ambiguous", group: null, candidateCount: 2 });
+  });
+
+  it.each([
+    "Example Mid Wide",
+    "Example Women",
+    "Example WMNS",
+    "Example Kids",
+    "Example Pro",
+    "Example Plus",
+    "Example Limited",
+    "Example LTD",
+    "Example Carbon",
+    "Example Raw",
+    "Example Split",
+  ])("does not cross a protected Trial variant boundary for %s", (modelName) => {
+    expect(resolveTrialSpecGroupMatch(makeSpecMap("Example"), modelName)).toMatchObject({
+      matchKind: "none",
+      group: null,
+    });
+    expect(resolveTrialSpecGroupMatch(makeSpecMap(modelName), "Example")).toMatchObject({
+      matchKind: "none",
+      group: null,
+    });
+  });
+
+  it("does not treat a plus separator inside a youth package as a Plus variant", () => {
+    expect(
+      resolveTrialSpecGroupMatch(
+        makeSpecMap("Ripper Kids"),
+        "Ripper Kids + Charger Mini White",
+      ),
+    ).toMatchObject({
+      matchKind: "safe-partial",
+      matchedModelName: "Ripper Kids",
+    });
+  });
+
+  it("guards the Nitro Team Wide geometry correction by source identity", () => {
+    expect(
+      resolveTrialSportSizeMetadataCorrection("3132335", {
+        brand: "Nitro",
+        modelName: "Team Wide",
+      }),
+    ).toMatchObject({ status: "resolved", correction: { expectedBrand: "Nitro" } });
+    expect(
+      resolveTrialSportSizeMetadataCorrection("3132335", {
+        brand: "Other",
+        modelName: "Team Wide",
+      }),
+    ).toMatchObject({ status: "conflict", category: "source_metadata_conflict" });
+    expect(
+      resolveTrialSportSizeMetadataCorrection("3132335", {
+        brand: "Nitro",
+        modelName: "Team",
+      }),
+    ).toMatchObject({ status: "conflict", category: "source_metadata_conflict" });
+    expect(
+      resolveTrialSportSizeMetadataCorrection("3132334", {
+        brand: "Nitro",
+        modelName: "Team Wide",
+      }),
+    ).toEqual({ status: "resolved", correction: null });
+  });
+
+  it("uses guarded authoritative geometry only for discovered Nitro Team Wide sizes", async () => {
+    const result = await importTrialSportProducts({
+      fetchText: createFetchText({
+        listingIds: ["3132335"],
+        productPageTransform: () =>
+          buildProductPage({
+            brand: "Nitro",
+            entries: [makeTrialEntry(157, true), makeTrialEntry(165, false)],
+            id: "3132335",
+            modelName: "Team Wide",
+          }),
+      }),
+      fetchArrayBuffer: vi.fn(async () =>
+        buildSpecWorkbook({
+          modelName: "Team",
+          sizes: [
+            { sizeLabel: "157", waistWidthCm: "25.2" },
+            { sizeLabel: "159", waistWidthCm: "25.4" },
+            { sizeLabel: "162", waistWidthCm: "25.6" },
+          ],
+        }),
+      ),
+      checkedAt: "2026-08-20",
+      logger: silentLogger,
+    });
+
+    expect(result.diagnostics).toMatchObject({
+      resolvedCount: 1,
+      staleSafe: true,
+      unsafeFailureCount: 0,
+    });
+    expect(result.products[0]).toMatchObject({
+      modelName: "Team Wide",
+      sizes: [
+        {
+          sizeCm: 157,
+          sizeLabel: "157",
+          waistWidthMm: 264,
+          widthType: "wide",
+          isAvailable: true,
+        },
+        {
+          sizeCm: 165,
+          sizeLabel: "165",
+          waistWidthMm: 272,
+          widthType: "wide",
+          isAvailable: false,
+        },
+      ],
+      importMeta: {
+        sourceProductId: "3132335",
+        trialSpecMatchKind: "none",
+        trialSpecMatchedModelName: null,
+        trialSizeMetadataCorrectionApplied: true,
+        variantMarker: "wide",
+      },
+    });
+    expect(result.products[0].sizes.map((size) => size.sizeCm)).toEqual([157, 165]);
+  });
+
+  it("keeps regular Nitro Team workbook geometry unchanged", async () => {
+    const result = await importTrialSportProducts({
+      fetchText: createFetchText({
+        listingIds: ["3131513"],
+        productPageTransform: () =>
+          buildProductPage({
+            brand: "Nitro",
+            entries: [
+              makeTrialEntry(157, false),
+              makeTrialEntry(159, true),
+              makeTrialEntry(162, false),
+            ],
+            id: "3131513",
+            modelName: "Team",
+          }),
+      }),
+      fetchArrayBuffer: vi.fn(async () =>
+        buildSpecWorkbook({
+          modelName: "Team",
+          sizes: [
+            { sizeLabel: "157", waistWidthCm: "25.2" },
+            { sizeLabel: "159", waistWidthCm: "25.4" },
+            { sizeLabel: "162", waistWidthCm: "25.6" },
+          ],
+        }),
+      ),
+      checkedAt: "2026-08-20",
+      logger: silentLogger,
+    });
+
+    expect(result.products[0].sizes.map(({ sizeCm, waistWidthMm }) => ({
+      sizeCm,
+      waistWidthMm,
+    }))).toEqual([
+      { sizeCm: 157, waistWidthMm: 252 },
+      { sizeCm: 159, waistWidthMm: 254 },
+      { sizeCm: 162, waistWidthMm: 256 },
+    ]);
+    expect(result.products[0].importMeta).toMatchObject({
+      sourceProductId: "3131513",
+      trialSpecMatchKind: "exact",
+      trialSizeMetadataCorrectionApplied: false,
+    });
+  });
+
   it("normalizes merchant winter-season evidence without changing default year parsing", () => {
     expect(parseSeasonLabel("Nidecker Escape FW26", { asWinterSeason: true })).toBe(
       "2025/2026",
