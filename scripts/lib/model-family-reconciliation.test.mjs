@@ -315,6 +315,7 @@ function nitroContinuityFixture() {
     ],
   };
   return {
+    analysis,
     candidateFamilies,
     existingFamilies: [existingFamily],
     products: [oldBase, newBase, wide],
@@ -509,6 +510,13 @@ describe("model family refresh reconciliation", () => {
     const fixture = nitroContinuityFixture();
     const result = nitroPlan(fixture);
 
+    expect(fixture.analysis.highConfidenceWidthFamilies).toHaveLength(1);
+    expect(fixture.analysis.highConfidenceWidthFamilies[0]).toMatchObject({
+      classification: "HIGH_CONFIDENCE_WIDTH_FAMILY",
+      normalizedSeason: "2025/2026",
+      canonicalCandidateModelName: "team",
+    });
+    expect(fixture.analysis.reviewWidthFamilies).toHaveLength(0);
     expect(result.blockingConflicts).toHaveLength(0);
     expect(result.historicalRetained).toHaveLength(0);
     expect(result.automaticContinuityUpdates).toEqual([

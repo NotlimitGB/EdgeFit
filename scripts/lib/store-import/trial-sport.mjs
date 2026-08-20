@@ -43,6 +43,12 @@ export const TRIAL_SPORT_SOURCE_METADATA_CORRECTIONS = Object.freeze({
     correctedBoardLine: "men",
     reason: "Verified Nitro Team 2025/2026 men identity.",
   }),
+  "3132335": Object.freeze({
+    expectedBrand: "Nitro",
+    expectedModel: "Team Wide",
+    correctedBoardLine: "men",
+    reason: "Verified Nitro Team Wide 2025/2026 men identity.",
+  }),
   "3137774": Object.freeze({
     expectedBrand: "Ride",
     expectedModel: "Warpig",

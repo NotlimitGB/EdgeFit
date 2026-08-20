@@ -144,6 +144,64 @@ describe("Trial Sport source diagnostics", () => {
     ).toMatchObject({ status: "conflict", category: "source_metadata_conflict" });
   });
 
+  it("applies the exact Nitro Team corrections and fails closed for Team Wide identity drift", () => {
+    expect(
+      resolveTrialSportBoardLineMetadata("3131513", "", {
+        brand: "NITRO",
+        modelName: "TEAM",
+      }),
+    ).toMatchObject({
+      status: "resolved",
+      boardLine: "men",
+      evidence: "known",
+      correctionApplied: true,
+    });
+    expect(
+      resolveTrialSportBoardLineMetadata("3132335", "", {
+        brand: "NITRO",
+        modelName: "TEAM WIDE",
+      }),
+    ).toMatchObject({
+      status: "resolved",
+      boardLine: "men",
+      evidence: "known",
+      correctionApplied: true,
+    });
+
+    for (const identity of [
+      { brand: "Other", modelName: "Team Wide" },
+      { brand: "Nitro", modelName: "Team" },
+    ]) {
+      expect(
+        resolveTrialSportBoardLineMetadata("3132335", "", identity),
+      ).toMatchObject({
+        status: "conflict",
+        category: "source_metadata_conflict",
+        correctionApplied: false,
+      });
+    }
+
+    expect(
+      resolveTrialSportBoardLineMetadata("3132334", "", {
+        brand: "Nitro",
+        modelName: "Team Wide",
+      }),
+    ).toMatchObject({
+      status: "resolved",
+      correctionApplied: false,
+    });
+    expect(
+      resolveTrialSportBoardLineMetadata("3132335", "женская модель", {
+        brand: "Nitro",
+        modelName: "Team Wide",
+      }),
+    ).toMatchObject({
+      status: "conflict",
+      category: "source_metadata_conflict",
+      correctionApplied: false,
+    });
+  });
+
   it("attaches trusted line evidence to an exact reviewed Trial Product", async () => {
     const result = await importTrialSportProducts({
       fetchText: createFetchText({
@@ -163,6 +221,32 @@ describe("Trial Sport source diagnostics", () => {
     expect(result.products[0]).toMatchObject({
       boardLine: "men",
       importMeta: {
+        boardLineEvidence: "known",
+        sourceMetadataCorrectionApplied: true,
+      },
+    });
+  });
+
+  it("attaches trusted men evidence to the exact Nitro Team Wide source Product", async () => {
+    const result = await importTrialSportProducts({
+      fetchText: createFetchText({
+        listingIds: ["3132335"],
+        productPageTransform: (page) =>
+          page.replaceAll("TEST", "Nitro").replace("Model", "Team Wide"),
+      }),
+      fetchArrayBuffer: vi.fn(async () =>
+        buildSpecWorkbook({ modelName: "Team Wide" }),
+      ),
+      checkedAt: "2026-08-20",
+      logger: silentLogger,
+    });
+
+    expect(result.diagnostics.staleSafe).toBe(true);
+    expect(result.products).toHaveLength(1);
+    expect(result.products[0]).toMatchObject({
+      boardLine: "men",
+      importMeta: {
+        sourceProductId: "3132335",
         boardLineEvidence: "known",
         sourceMetadataCorrectionApplied: true,
       },

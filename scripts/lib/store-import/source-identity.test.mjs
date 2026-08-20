@@ -84,6 +84,27 @@ function makeProduct({
 }
 
 describe("source offer identity", () => {
+  it("binds Nitro Team and Team Wide to distinct authoritative men specs", async () => {
+    const specs = await loadOfficialProductSpecs();
+    const team = specs.get("nitro-team");
+    const wide = specs.get("nitro-team-wide");
+
+    expect(team).toMatchObject({
+      slug: "nitro-team",
+      boardLine: "men",
+      sourceName: "Official Nitro Team 2026",
+      sourceUrl: "https://www.nitrosnowboards.com/products/team-snowboard",
+    });
+    expect(wide).toMatchObject({
+      slug: "nitro-team-wide",
+      boardLine: "men",
+      sourceName: "Official Nitro Team Wide 2026",
+      sourceUrl:
+        "https://www.nitrosnowboards.com/products/team-wide-snowboard",
+    });
+    expect(wide.sourceUrl).not.toBe(team.sourceUrl);
+  });
+
   it("targets Jones men official specs at the stable suffix identities", async () => {
     const specs = await loadOfficialProductSpecs();
     const stratosSpec = specs.get("jones-stratos-unisex");

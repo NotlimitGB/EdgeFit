@@ -3,8 +3,34 @@ import {
   assertTraektoriaStaleSafe,
   assertTrialSportStaleSafe,
   buildStaleProductDecision,
+  loadExistingCatalog,
   mergeWithExistingProduct,
 } from "./import-from-stores.mjs";
+import { getRecommendation } from "../src/lib/recommendation/engine.ts";
+
+function createCatalogSql(productRow) {
+  const queries = [];
+  const sql = async (strings, ...values) => {
+    const query = strings.reduce(
+      (text, part, index) => text + part + (values[index] ?? ""),
+      "",
+    );
+    queries.push(query);
+
+    if (query.includes("information_schema.columns")) {
+      return [
+        { table_name: "products", column_name: "season_label" },
+        { table_name: "products", column_name: "gallery_images" },
+        { table_name: "product_sizes", column_name: "size_label" },
+        { table_name: "product_sizes", column_name: "is_available" },
+      ];
+    }
+
+    return [productRow];
+  };
+  sql.unsafe = (value) => value;
+  return { sql, queries };
+}
 
 function makeProduct({
   slug,
@@ -91,6 +117,91 @@ describe("trusted existing identity preservation", () => {
         boardLine: "women",
         seasonLabel: "2026/2027",
       }),
+    );
+  });
+});
+
+describe("existing catalog recommendation shape", () => {
+  it("loads the persisted camber profile instead of inventing a null-to-camber delta", async () => {
+    const row = {
+      id: "product-1",
+      slug: "nitro-team",
+      brand: "Nitro",
+      modelName: "Team",
+      seasonLabel: "2025/2026",
+      descriptionShort: "Team",
+      descriptionFull: "Team",
+      ridingStyle: "all-mountain",
+      skillLevel: "intermediate",
+      flex: 7,
+      priceFrom: 35090,
+      imageUrl: "https://example.com/team.jpg",
+      galleryImages: [],
+      affiliateUrl: "https://trial-sport.ru/goods/51526/3131513.html",
+      isActive: true,
+      boardLine: "men",
+      shapeType: "directional-twin",
+      camberProfile: "camber",
+      dataStatus: "verified",
+      sourceName: "Official Nitro Team 2026",
+      sourceUrl: "https://www.nitrosnowboards.com/products/team-snowboard",
+      sourceCheckedAt: "2026-04-14",
+      scenarios: [],
+      notIdealFor: [],
+      familyId: null,
+      familyMemberRole: null,
+      familyMatchMethod: null,
+      familyMatchConfidence: null,
+      familyManualOverride: false,
+      familyMatchReason: null,
+      familyMatchedAt: null,
+      updatedAt: "2026-08-20T00:00:00.000Z",
+      sizes: [
+        {
+          sizeCm: 159,
+          sizeLabel: "159 cm",
+          waistWidthMm: 254,
+          recommendedWeightMin: 0,
+          recommendedWeightMax: null,
+          widthType: "regular",
+          isAvailable: true,
+        },
+      ],
+    };
+    const { sql, queries } = createCatalogSql(row);
+
+    const catalog = await loadExistingCatalog(sql);
+
+    expect(queries[1]).toContain('p.camber_profile as "camberProfile"');
+    expect(catalog.get("nitro-team")).toMatchObject({
+      camberProfile: "camber",
+    });
+
+    const loaded = catalog.get("nitro-team");
+    const input = {
+      heightCm: 160,
+      weightKg: 70,
+      bootSizeEu: 39,
+      boardLinePreference: "men",
+      skillLevel: "intermediate",
+      ridingStyle: "freeride",
+      terrainPriority: "balanced",
+      aggressiveness: "aggressive",
+      stanceType: "standard",
+    };
+    const loadedResult = getRecommendation(input, [loaded]);
+    const equivalentFullShapeResult = getRecommendation(input, [
+      { ...loaded, camberProfile: "camber" },
+    ]);
+    const omittedCamberResult = getRecommendation(input, [
+      { ...loaded, camberProfile: null },
+    ]);
+
+    expect(loadedResult.recommendedBoards[0]?.score).toBe(
+      equivalentFullShapeResult.recommendedBoards[0]?.score,
+    );
+    expect(loadedResult.recommendedBoards[0]?.score).toBeGreaterThan(
+      omittedCamberResult.recommendedBoards[0]?.score ?? -Infinity,
     );
   });
 });

@@ -224,6 +224,7 @@ export async function loadExistingCatalog(sql, state = { productColumnSupport: n
       p.is_active as "isActive",
       p.board_line as "boardLine",
       p.shape_type as "shapeType",
+      p.camber_profile as "camberProfile",
       p.data_status as "dataStatus",
       p.source_name as "sourceName",
       p.source_url as "sourceUrl",
