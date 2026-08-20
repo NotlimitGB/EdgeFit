@@ -15,6 +15,10 @@ import {
 } from "@/lib/analytics/reporting-core";
 
 const METRIKA_ENDPOINT = "https://api-metrika.yandex.net/stat/v1/data";
+export const METRIKA_MAX_CONCURRENCY = 1;
+const METRIKA_MAX_ATTEMPTS = 3;
+const METRIKA_RETRY_BASE_DELAY_MS = 500;
+const METRIKA_RETRY_AFTER_CAP_MS = 10_000;
 const TRAFFIC_METRICS = [
   "ym:s:users",
   "ym:s:visits",
@@ -77,6 +81,8 @@ export interface MetrikaReportingResult {
 }
 
 type FetchImplementation = typeof fetch;
+type SleepImplementation = (ms: number) => Promise<void>;
+type NowImplementation = () => number;
 
 function nullableFiniteNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -158,8 +164,110 @@ function isRetryableStatus(status: number) {
   return status === 429 || status >= 500;
 }
 
-async function waitForRetry() {
-  await new Promise((resolve) => setTimeout(resolve, 250));
+async function defaultSleep(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getFallbackRetryDelayMs(attempt: number) {
+  return METRIKA_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+}
+
+function parseRetryAfterMs(value: string | null, nowMs: number) {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  if (/^\d+$/.test(normalized)) {
+    const seconds = Number(normalized);
+    return Number.isFinite(seconds)
+      ? Math.min(seconds * 1_000, METRIKA_RETRY_AFTER_CAP_MS)
+      : METRIKA_RETRY_AFTER_CAP_MS;
+  }
+
+  const retryAt = Date.parse(normalized);
+  if (!Number.isFinite(retryAt)) {
+    return null;
+  }
+
+  return Math.min(
+    Math.max(retryAt - nowMs, 0),
+    METRIKA_RETRY_AFTER_CAP_MS,
+  );
+}
+
+type MetrikaAttemptResult =
+  | { ok: true; payload: MetrikaResponse }
+  | {
+      ok: false;
+      diagnostic: { category: string; httpStatus?: number };
+      retryable: boolean;
+      retryAfter: string | null;
+    };
+
+async function performMetrikaAttempt({
+  url,
+  token,
+  fetchImpl,
+  timeoutMs,
+}: {
+  url: URL;
+  token: string;
+  fetchImpl: FetchImplementation;
+  timeoutMs: number;
+}): Promise<MetrikaAttemptResult> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetchImpl(url, {
+      method: "GET",
+      headers: { Authorization: `OAuth ${token}` },
+      signal: controller.signal,
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        diagnostic: {
+          category: classifyStatus(response.status),
+          httpStatus: response.status,
+        },
+        retryable: isRetryableStatus(response.status),
+        retryAfter:
+          response.status === 429 ? response.headers.get("Retry-After") : null,
+      };
+    }
+
+    try {
+      return {
+        ok: true,
+        payload: (await response.json()) as MetrikaResponse,
+      };
+    } catch {
+      return {
+        ok: false,
+        diagnostic: { category: "invalid_response" },
+        retryable: false,
+        retryAfter: null,
+      };
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      diagnostic: {
+        category:
+          error instanceof Error && error.name === "AbortError"
+            ? "timeout"
+            : "network",
+      },
+      retryable: true,
+      retryAfter: null,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function requestMetrikaData({
@@ -167,11 +275,15 @@ export async function requestMetrikaData({
   token,
   fetchImpl = fetch,
   timeoutMs = 5_000,
+  sleepImpl = defaultSleep,
+  nowImpl = Date.now,
 }: {
   url: URL;
   token: string;
   fetchImpl?: FetchImplementation;
   timeoutMs?: number;
+  sleepImpl?: SleepImplementation;
+  nowImpl?: NowImplementation;
 }): Promise<
   | { ok: true; payload: MetrikaResponse }
   | {
@@ -179,59 +291,27 @@ export async function requestMetrikaData({
       diagnostic: { category: string; httpStatus?: number };
     }
 > {
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  for (let attempt = 1; attempt <= METRIKA_MAX_ATTEMPTS; attempt += 1) {
+    const result = await performMetrikaAttempt({
+      url,
+      token,
+      fetchImpl,
+      timeoutMs,
+    });
 
-    try {
-      const response = await fetchImpl(url, {
-        method: "GET",
-        headers: { Authorization: `OAuth ${token}` },
-        signal: controller.signal,
-        cache: "no-store",
-      });
-
-      if (!response.ok) {
-        if (attempt === 1 && isRetryableStatus(response.status)) {
-          await waitForRetry();
-          continue;
-        }
-
-        return {
-          ok: false,
-          diagnostic: {
-            category: classifyStatus(response.status),
-            httpStatus: response.status,
-          },
-        };
-      }
-
-      try {
-        return {
-          ok: true,
-          payload: (await response.json()) as MetrikaResponse,
-        };
-      } catch {
-        return { ok: false, diagnostic: { category: "invalid_response" } };
-      }
-    } catch (error) {
-      if (attempt === 1) {
-        await waitForRetry();
-        continue;
-      }
-
-      return {
-        ok: false,
-        diagnostic: {
-          category:
-            error instanceof Error && error.name === "AbortError"
-              ? "timeout"
-              : "network",
-        },
-      };
-    } finally {
-      clearTimeout(timeout);
+    if (result.ok) {
+      return result;
     }
+
+    if (!result.retryable || attempt === METRIKA_MAX_ATTEMPTS) {
+      return { ok: false, diagnostic: result.diagnostic };
+    }
+
+    const retryAfterMs =
+      result.diagnostic.httpStatus === 429
+        ? parseRetryAfterMs(result.retryAfter, nowImpl())
+        : null;
+    await sleepImpl(retryAfterMs ?? getFallbackRetryDelayMs(attempt));
   }
 
   return { ok: false, diagnostic: { category: "network" } };
@@ -427,12 +507,16 @@ export async function getMetrikaReporting({
   windows,
   fetchImpl = fetch,
   timeoutMs = 5_000,
+  sleepImpl = defaultSleep,
+  nowImpl = Date.now,
 }: {
   counterIdValue?: string;
   tokenValue?: string;
   windows: ReportWindows;
   fetchImpl?: FetchImplementation;
   timeoutMs?: number;
+  sleepImpl?: SleepImplementation;
+  nowImpl?: NowImplementation;
 }): Promise<MetrikaReportingResult> {
   const counterId = Number(counterIdValue?.trim());
   const token = tokenValue?.trim();
@@ -450,13 +534,24 @@ export async function getMetrikaReporting({
     };
   }
 
-  const trafficRequests = reportWindowKeys.map(async (key) => {
+  const trafficResults: Array<{
+    key: ReportWindowKey;
+    result: Awaited<ReturnType<typeof requestMetrikaData>>;
+  }> = [];
+  for (const key of reportWindowKeys) {
     const window = windows[key];
     const url = buildBaseUrl(counterId, window.startDate, window.endDate);
     url.searchParams.set("metrics", TRAFFIC_METRICS.join(","));
-    const result = await requestMetrikaData({ url, token, fetchImpl, timeoutMs });
-    return { key, result };
-  });
+    const result = await requestMetrikaData({
+      url,
+      token,
+      fetchImpl,
+      timeoutMs,
+      sleepImpl,
+      nowImpl,
+    });
+    trafficResults.push({ key, result });
+  }
   const sourceUrl = buildBaseUrl(
     counterId,
     windows.last30Days.startDate,
@@ -484,13 +579,30 @@ export async function getMetrikaReporting({
   landingUrl.searchParams.set("sort", "-ym:s:visits");
   landingUrl.searchParams.set("limit", "10");
 
-  const [trafficResults, sourceResult, acquisition7Result, landingResult] =
-    await Promise.all([
-    Promise.all(trafficRequests),
-    requestMetrikaData({ url: sourceUrl, token, fetchImpl, timeoutMs }),
-    requestMetrikaData({ url: acquisition7Url, token, fetchImpl, timeoutMs }),
-    requestMetrikaData({ url: landingUrl, token, fetchImpl, timeoutMs }),
-  ]);
+  const sourceResult = await requestMetrikaData({
+    url: sourceUrl,
+    token,
+    fetchImpl,
+    timeoutMs,
+    sleepImpl,
+    nowImpl,
+  });
+  const acquisition7Result = await requestMetrikaData({
+    url: acquisition7Url,
+    token,
+    fetchImpl,
+    timeoutMs,
+    sleepImpl,
+    nowImpl,
+  });
+  const landingResult = await requestMetrikaData({
+    url: landingUrl,
+    token,
+    fetchImpl,
+    timeoutMs,
+    sleepImpl,
+    nowImpl,
+  });
   const failedResult = trafficResults.find(({ result }) => !result.ok)?.result;
 
   if (failedResult && !failedResult.ok) {

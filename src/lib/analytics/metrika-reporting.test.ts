@@ -4,11 +4,13 @@ vi.mock("server-only", () => ({}));
 
 import {
   getMetrikaReporting,
+  METRIKA_MAX_CONCURRENCY,
   requestMetrikaData,
 } from "@/lib/analytics/metrika-reporting";
 import {
   buildReportWindows,
   getAnalyticsReportPrivacyViolations,
+  reportWindowKeys,
 } from "@/lib/analytics/reporting-core";
 
 const windows = buildReportWindows(new Date("2026-08-09T12:00:00Z")).windows;
@@ -157,6 +159,7 @@ describe("Metrika reporting", () => {
       tokenValue: "fake-token",
       windows,
       fetchImpl: fetchMock,
+      sleepImpl: vi.fn(async () => undefined),
     });
     expect(result.sourceStatus.status).toBe("ok");
     expect(result.acquisition.sourceStatus.status).toBe("ok");
@@ -200,6 +203,62 @@ describe("Metrika reporting", () => {
       expect(joined).not.toContain("585637139");
       expect(joined).not.toContain("585637140");
     }
+  });
+
+  it("executes all report requests sequentially in deterministic order", async () => {
+    let currentConcurrentRequests = 0;
+    let maxConcurrentRequests = 0;
+    const requestOrder: string[] = [];
+    const fetchMock = vi.fn(async (input: URL | RequestInfo) => {
+      currentConcurrentRequests += 1;
+      maxConcurrentRequests = Math.max(
+        maxConcurrentRequests,
+        currentConcurrentRequests,
+      );
+
+      const url = new URL(String(input));
+      const dimension = url.searchParams.get("dimensions");
+      if (dimension === "ym:s:lastsignTrafficSource") {
+        requestOrder.push("sources30Days");
+      } else if (dimension === "ym:s:startURLPath") {
+        requestOrder.push("landingPages30Days");
+      } else if (url.searchParams.get("metrics")?.split(",").length === 14) {
+        requestOrder.push("acquisition7Days");
+      } else {
+        const key = reportWindowKeys.find((candidate) => {
+          const window = windows[candidate];
+          return (
+            url.searchParams.get("date1") === window.startDate &&
+            url.searchParams.get("date2") === window.endDate
+          );
+        });
+        requestOrder.push(`traffic:${key ?? "unknown"}`);
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      currentConcurrentRequests -= 1;
+      return responseForMetrikaRequest(input);
+    });
+
+    const result = await getMetrikaReporting({
+      counterIdValue: "12345",
+      tokenValue: "fake-token",
+      windows,
+      fetchImpl: fetchMock,
+      sleepImpl: vi.fn(async () => undefined),
+    });
+
+    expect(METRIKA_MAX_CONCURRENCY).toBe(1);
+    expect(maxConcurrentRequests).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(8);
+    expect(requestOrder).toEqual([
+      ...reportWindowKeys.map((key) => `traffic:${key}`),
+      "sources30Days",
+      "acquisition7Days",
+      "landingPages30Days",
+    ]);
+    expect(result.sourceStatus.status).toBe("ok");
+    expect(result.acquisition.sourceStatus.status).toBe("ok");
   });
 
   it("normalizes goal percentages, clamps rates, and retains sampling", async () => {
@@ -349,6 +408,7 @@ describe("Metrika reporting", () => {
       tokenValue: "fake-token",
       windows,
       fetchImpl: fetchMock,
+      sleepImpl: vi.fn(async () => undefined),
     });
     expect(result.sourceStatus.status).toBe("ok");
     expect(result.traffic.last30Days?.users).toBe(120);
@@ -357,7 +417,7 @@ describe("Metrika reporting", () => {
       diagnostic: { category: "upstream", httpStatus: 503 },
     });
     expect(result.acquisition.last30Days).toBeNull();
-    expect(fetchMock).toHaveBeenCalledTimes(9);
+    expect(fetchMock).toHaveBeenCalledTimes(10);
   });
 
   it("marks acquisition unavailable for malformed goal totals", async () => {
@@ -384,52 +444,248 @@ describe("Metrika reporting", () => {
     });
   });
 
-  it("does not retry authentication failures", async () => {
-    const fetchMock = vi.fn(async () => new Response("denied", { status: 401 }));
+  it("returns a successful response without retrying or sleeping", async () => {
+    const fetchMock = vi.fn(async () => okTrafficResponse());
+    const sleepMock = vi.fn(async () => undefined);
     const result = await requestMetrikaData({
       url: new URL("https://api-metrika.yandex.net/stat/v1/data"),
       token: "fake-token",
       fetchImpl: fetchMock,
+      sleepImpl: sleepMock,
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({
-      ok: false,
-      diagnostic: { category: "authentication", httpStatus: 401 },
-    });
+    expect(sleepMock).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
   });
 
-  it("retries a rate limit only once", async () => {
-    const fetchMock = vi.fn(async () => new Response("later", { status: 429 }));
+  it("respects Retry-After seconds for a 429 before succeeding", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response("later", {
+          status: 429,
+          headers: { "Retry-After": "2" },
+        }),
+      )
+      .mockResolvedValueOnce(okTrafficResponse());
+    const sleepMock = vi.fn(async () => undefined);
     const result = await requestMetrikaData({
       url: new URL("https://api-metrika.yandex.net/stat/v1/data"),
       token: "fake-token",
       fetchImpl: fetchMock,
+      sleepImpl: sleepMock,
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(sleepMock).toHaveBeenCalledOnce();
+    expect(sleepMock).toHaveBeenCalledWith(2_000);
+    expect(result.ok).toBe(true);
+  });
+
+  it.each([undefined, "not-a-delay"])(
+    "uses fallback backoff for a 429 with Retry-After %s",
+    async (retryAfter) => {
+      const headers = retryAfter ? { "Retry-After": retryAfter } : undefined;
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(new Response("later", { status: 429, headers }))
+        .mockResolvedValueOnce(okTrafficResponse());
+      const sleepMock = vi.fn(async () => undefined);
+
+      const result = await requestMetrikaData({
+        url: new URL("https://api-metrika.yandex.net/stat/v1/data"),
+        token: "fake-token",
+        fetchImpl: fetchMock,
+        sleepImpl: sleepMock,
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(sleepMock).toHaveBeenCalledWith(500);
+      expect(result.ok).toBe(true);
+    },
+  );
+
+  it.each([
+    { retryAfter: "999", now: Date.parse("2026-08-20T00:00:00Z") },
+    {
+      retryAfter: "Thu, 20 Aug 2026 00:01:00 GMT",
+      now: Date.parse("2026-08-20T00:00:00Z"),
+    },
+  ])("clamps excessive Retry-After value $retryAfter", async ({ retryAfter, now }) => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response("later", {
+          status: 429,
+          headers: { "Retry-After": retryAfter },
+        }),
+      )
+      .mockResolvedValueOnce(okTrafficResponse());
+    const sleepMock = vi.fn(async () => undefined);
+
+    await requestMetrikaData({
+      url: new URL("https://api-metrika.yandex.net/stat/v1/data"),
+      token: "fake-token",
+      fetchImpl: fetchMock,
+      sleepImpl: sleepMock,
+      nowImpl: () => now,
+    });
+
+    expect(sleepMock).toHaveBeenCalledWith(10_000);
+  });
+
+  it("supports an HTTP-date Retry-After value", async () => {
+    const now = Date.parse("2026-08-20T00:00:00Z");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response("later", {
+          status: 429,
+          headers: { "Retry-After": "Thu, 20 Aug 2026 00:00:02 GMT" },
+        }),
+      )
+      .mockResolvedValueOnce(okTrafficResponse());
+    const sleepMock = vi.fn(async () => undefined);
+
+    await requestMetrikaData({
+      url: new URL("https://api-metrika.yandex.net/stat/v1/data"),
+      token: "fake-token",
+      fetchImpl: fetchMock,
+      sleepImpl: sleepMock,
+      nowImpl: () => now,
+    });
+
+    expect(sleepMock).toHaveBeenCalledWith(2_000);
+  });
+
+  it("stops after exactly three rate-limited attempts", async () => {
+    const fetchMock = vi.fn(async () => new Response("later", { status: 429 }));
+    const sleepMock = vi.fn(async () => undefined);
+    const result = await requestMetrikaData({
+      url: new URL("https://api-metrika.yandex.net/stat/v1/data"),
+      token: "fake-token",
+      fetchImpl: fetchMock,
+      sleepImpl: sleepMock,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(sleepMock.mock.calls).toEqual([[500], [1_000]]);
     expect(result).toEqual({
       ok: false,
       diagnostic: { category: "rate_limited", httpStatus: 429 },
     });
   });
 
-  it("retries a 5xx only once", async () => {
-    const fetchMock = vi.fn(async () => new Response("down", { status: 503 }));
-    await requestMetrikaData({
-      url: new URL("https://api-metrika.yandex.net/stat/v1/data"),
-      token: "fake-token",
-      fetchImpl: fetchMock,
-    });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-
-  it("returns invalid_response without retrying invalid JSON", async () => {
-    const fetchMock = vi.fn(async () => new Response("not-json", { status: 200 }));
+  it("retries a 5xx with fallback backoff before succeeding", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("down", { status: 503 }))
+      .mockResolvedValueOnce(okTrafficResponse());
+    const sleepMock = vi.fn(async () => undefined);
     const result = await requestMetrikaData({
       url: new URL("https://api-metrika.yandex.net/stat/v1/data"),
       token: "fake-token",
       fetchImpl: fetchMock,
+      sleepImpl: sleepMock,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(sleepMock).toHaveBeenCalledWith(500);
+    expect(result.ok).toBe(true);
+  });
+
+  it("retries a timeout with a fresh AbortController", async () => {
+    const signals: AbortSignal[] = [];
+    const fetchMock = vi.fn(
+      async (_input: URL | RequestInfo, init?: RequestInit): Promise<Response> => {
+        const signal = init?.signal;
+        if (!signal) {
+          throw new Error("missing abort signal");
+        }
+        signals.push(signal);
+        if (signals.length === 1) {
+          return new Promise((_resolve, reject) => {
+            signal.addEventListener(
+              "abort",
+              () => {
+                const error = new Error("timed out");
+                error.name = "AbortError";
+                reject(error);
+              },
+              { once: true },
+            );
+          });
+        }
+        return okTrafficResponse();
+      },
+    );
+    const sleepMock = vi.fn(async () => undefined);
+
+    const result = await requestMetrikaData({
+      url: new URL("https://api-metrika.yandex.net/stat/v1/data"),
+      token: "fake-token",
+      fetchImpl: fetchMock,
+      timeoutMs: 1,
+      sleepImpl: sleepMock,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(sleepMock).toHaveBeenCalledWith(500);
+    expect(signals).toHaveLength(2);
+    expect(signals[0]).not.toBe(signals[1]);
+    expect(signals[0]?.aborted).toBe(true);
+    expect(signals[1]?.aborted).toBe(false);
+  });
+
+  it("retries a network error before succeeding", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("connection reset"))
+      .mockResolvedValueOnce(okTrafficResponse());
+    const sleepMock = vi.fn(async () => undefined);
+
+    const result = await requestMetrikaData({
+      url: new URL("https://api-metrika.yandex.net/stat/v1/data"),
+      token: "fake-token",
+      fetchImpl: fetchMock,
+      sleepImpl: sleepMock,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(sleepMock).toHaveBeenCalledWith(500);
+  });
+
+  it.each([
+    { status: 400, category: "upstream" },
+    { status: 401, category: "authentication" },
+    { status: 403, category: "authentication" },
+  ])("does not retry HTTP $status", async ({ status, category }) => {
+    const fetchMock = vi.fn(async () => new Response("denied", { status }));
+    const sleepMock = vi.fn(async () => undefined);
+    const result = await requestMetrikaData({
+      url: new URL("https://api-metrika.yandex.net/stat/v1/data"),
+      token: "fake-token",
+      fetchImpl: fetchMock,
+      sleepImpl: sleepMock,
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(sleepMock).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      ok: false,
+      diagnostic: { category, httpStatus: status },
+    });
+  });
+
+  it("returns invalid_response without retrying invalid JSON", async () => {
+    const fetchMock = vi.fn(async () => new Response("not-json", { status: 200 }));
+    const sleepMock = vi.fn(async () => undefined);
+    const result = await requestMetrikaData({
+      url: new URL("https://api-metrika.yandex.net/stat/v1/data"),
+      token: "fake-token",
+      fetchImpl: fetchMock,
+      sleepImpl: sleepMock,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(sleepMock).not.toHaveBeenCalled();
     expect(result).toEqual({ ok: false, diagnostic: { category: "invalid_response" } });
   });
 
@@ -443,6 +699,7 @@ describe("Metrika reporting", () => {
       token,
       fetchImpl: fetchMock,
       timeoutMs: 10,
+      sleepImpl: vi.fn(async () => undefined),
     });
     expect(JSON.stringify(result)).not.toContain(token);
     expect(result).toEqual({ ok: false, diagnostic: { category: "network" } });
