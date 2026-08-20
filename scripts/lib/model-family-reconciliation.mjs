@@ -6,6 +6,11 @@ import {
   canonicalStringify,
   hashCanonicalValue,
 } from "./model-family-backfill.mjs";
+import {
+  normalizeBrand,
+  normalizeModelName,
+  normalizeSeason,
+} from "../audit-model-families.mjs";
 
 export const RECONCILIATION_VERSION = "model-family-reconciliation-v1";
 export const RECONCILIATION_LOCK_KEY = "edgefit:model-family-reconciliation:v1";
@@ -91,11 +96,28 @@ function structuralProblem(family) {
 
 function identityMatches(family, candidate) {
   return (
-    family.identityKey === candidate.identityKey &&
+    logicalIdentityMatches(family, candidate) &&
     family.slug === candidate.slug &&
-    family.brand === candidate.brand &&
-    family.modelName === candidate.modelName &&
-    family.seasonLabel === candidate.seasonLabel
+    text(family.slug) !== ""
+  );
+}
+
+function logicalIdentityMatches(family, candidate) {
+  const familyBrand = normalizeBrand(family.brand);
+  const candidateBrand = normalizeBrand(candidate.brand);
+  const familyModel = normalizeModelName(family.modelName);
+  const candidateModel = normalizeModelName(candidate.modelName);
+  const familySeason = normalizeSeason(family.seasonLabel);
+  const candidateSeason = normalizeSeason(candidate.seasonLabel);
+  return (
+    text(family.identityKey) !== "" &&
+    family.identityKey === candidate.identityKey &&
+    familyBrand !== "" &&
+    familyBrand === candidateBrand &&
+    familyModel !== "" &&
+    familyModel === candidateModel &&
+    familySeason !== null &&
+    familySeason === candidateSeason
   );
 }
 
@@ -112,6 +134,156 @@ function metadataUpdate(family, candidate) {
   return Object.keys(changes).length
     ? { familyId: family.id, identityKey: family.identityKey, changes }
     : null;
+}
+
+function memberByRole(members, role) {
+  return members.find((member) => member.role === role) ?? null;
+}
+
+function continuityFailure(family, detail) {
+  return conflict("AUTOMATIC_CONTINUITY_UNSAFE", family, detail);
+}
+
+function buildAutomaticContinuityUpdate({
+  family,
+  candidate,
+  productById,
+  existingFamilies,
+}) {
+  if (!logicalIdentityMatches(family, candidate)) {
+    return {
+      conflict: conflict(
+        "IDENTITY_DRIFT",
+        family,
+        "inactive automatic family and current HIGH proposal do not share one normalized logical identity",
+      ),
+    };
+  }
+
+  const currentBase = memberByRole(family.members, "base");
+  const currentWide = memberByRole(family.members, "wide");
+  const candidateBase = memberByRole(candidate.memberProposals ?? [], "base");
+  const candidateWide = memberByRole(candidate.memberProposals ?? [], "wide");
+  if (
+    candidate.memberProposals?.length !== 2 ||
+    !candidateBase ||
+    !candidateWide
+  ) {
+    return {
+      conflict: continuityFailure(
+        family,
+        "current HIGH proposal must contain exactly one base and one wide member",
+      ),
+    };
+  }
+
+  const oldBase = productById.get(text(currentBase.productId));
+  const wide = productById.get(text(currentWide.productId));
+  const newBase = productById.get(text(candidateBase.productId));
+  const candidateWideProduct = productById.get(text(candidateWide.productId));
+  if (!oldBase || !wide || !newBase || !candidateWideProduct) {
+    return {
+      conflict: continuityFailure(
+        family,
+        "automatic continuity references a Product missing from the catalog load",
+      ),
+    };
+  }
+  if (oldBase.isActive !== false) {
+    return {
+      conflict: continuityFailure(family, "the replaced automatic base is not inactive"),
+    };
+  }
+  if (
+    text(candidateWide.productId) !== text(currentWide.productId) ||
+    text(candidateWide.productId) !== text(candidateWideProduct.id) ||
+    wide.isActive !== true ||
+    text(wide.familyId) !== text(family.id) ||
+    wide.familyMemberRole !== "wide" ||
+    wide.familyMatchMethod !== AUDIT_RULE ||
+    wide.familyMatchConfidence !== MATCH_CONFIDENCE ||
+    wide.familyManualOverride === true
+  ) {
+    return {
+      conflict: continuityFailure(
+        family,
+        "the active automatic wide member is not preserved exactly",
+      ),
+    };
+  }
+  if (
+    text(oldBase.id) === text(newBase.id) ||
+    text(oldBase.familyId) !== text(family.id) ||
+    oldBase.familyMemberRole !== "base" ||
+    oldBase.familyMatchMethod !== AUDIT_RULE ||
+    oldBase.familyMatchConfidence !== MATCH_CONFIDENCE ||
+    oldBase.familyManualOverride === true
+  ) {
+    return {
+      conflict: continuityFailure(
+        family,
+        "the inactive old base is not the sole replaceable automatic member",
+      ),
+    };
+  }
+  if (
+    newBase.isActive !== true ||
+    text(newBase.familyId) !== "" ||
+    newBase.familyManualOverride === true ||
+    newBase.familyMatchMethod === "manual"
+  ) {
+    return {
+      conflict: continuityFailure(
+        family,
+        "the replacement base must be active, unassigned, and non-manual",
+      ),
+    };
+  }
+
+  const newFamilySlug = text(candidate.slug);
+  if (!newFamilySlug) {
+    return {
+      conflict: continuityFailure(family, "the replacement family slug is empty"),
+    };
+  }
+  const slugOwner = existingFamilies.find(
+    (other) => other.id !== family.id && other.slug === newFamilySlug,
+  );
+  if (slugOwner) {
+    return {
+      conflict: continuityFailure(
+        family,
+        `replacement family slug ${newFamilySlug} belongs to another ModelFamily`,
+      ),
+    };
+  }
+
+  const metadata = metadataUpdate(family, candidate);
+  const canonicalSourceKind = family.canonicalFamily?.canonicalSourceKind ?? null;
+  return {
+    update: {
+      familyId: family.id,
+      identityKey: family.identityKey,
+      oldFamilySlug: family.slug,
+      newFamilySlug,
+      canonicalSourceKind,
+      oldBaseProductId: text(currentBase.productId),
+      oldBaseProductSlug: currentBase.productSlug,
+      newBaseProductId: text(candidateBase.productId),
+      newBaseProductSlug: candidateBase.productSlug,
+      wideProductId: text(currentWide.productId),
+      wideProductSlug: currentWide.productSlug,
+      matchMethod: AUDIT_RULE,
+      confidence: MATCH_CONFIDENCE,
+      manualOverride: false,
+      reason: "Automatic family continuity: inactive base replaced by the current same-identity HIGH base while preserving the Wide member.",
+      canonicalMetadataChanges: metadata?.changes ?? {},
+      canonicalMetadataTarget:
+        canonicalSourceKind === CANONICAL_SOURCE_KIND
+          ? { ...candidate.canonicalFamily }
+          : null,
+    },
+  };
 }
 
 function informationalFamilies(values, classification) {
@@ -162,14 +334,17 @@ export function buildModelFamilyReconciliationPlan({
   const newFamilies = [];
   const newMemberships = [];
   const canonicalMetadataUpdates = [];
+  const automaticContinuityUpdates = [];
   const handledCandidates = new Set();
 
   for (const family of sorted(existingFamilies)) {
     const members = family.members ?? [];
+    const candidate = candidateByIdentity.get(family.identityKey);
     const memberCandidates = members
       .map((member) => candidateByProduct.get(text(member.productId)))
       .filter(Boolean);
     for (const candidate of memberCandidates) handledCandidates.add(candidate.identityKey);
+    if (candidate) handledCandidates.add(candidate.identityKey);
     const manual = members.some(isManualMember);
     if (manual) {
       manualManaged.push({ familyId: family.id, identityKey: family.identityKey, reason: "manual membership is authoritative" });
@@ -191,6 +366,30 @@ export function buildModelFamilyReconciliationPlan({
     }
 
     if (members.some((member) => productById.get(text(member.productId))?.isActive === false)) {
+      if (candidate) {
+        const continuity = buildAutomaticContinuityUpdate({
+          family: { ...family, members },
+          candidate,
+          productById,
+          existingFamilies,
+        });
+        if (continuity.update) {
+          automaticContinuityUpdates.push(continuity.update);
+        } else {
+          blockingConflicts.push(continuity.conflict);
+        }
+        continue;
+      }
+      if (memberCandidates.length > 0) {
+        blockingConflicts.push(
+          conflict(
+            "IDENTITY_DRIFT",
+            family,
+            "an inactive automatic family member is claimed by a different current HIGH identity",
+          ),
+        );
+        continue;
+      }
       historicalRetained.push({
         familyId: family.id,
         identityKey: family.identityKey,
@@ -202,7 +401,6 @@ export function buildModelFamilyReconciliationPlan({
       continue;
     }
 
-    const candidate = candidateByIdentity.get(family.identityKey);
     if (!candidate) {
       blockingConflicts.push(conflict("ACTIVE_FAMILY_NOT_HIGH", family, "active automatic family is absent from current HIGH analysis"));
       continue;
@@ -271,6 +469,7 @@ export function buildModelFamilyReconciliationPlan({
     newFamilies: sorted(newFamilies),
     newMemberships: sorted(newMemberships, (value) => `${value.identityKey}|${value.role}|${value.productId}`),
     canonicalMetadataUpdates: sorted(canonicalMetadataUpdates),
+    automaticContinuityUpdates: sorted(automaticContinuityUpdates),
     reviewUntouched: informationalFamilies(reviewFamilies, "REVIEW_WIDTH_FAMILY"),
     keepSeparateUntouched: informationalFamilies(keepSeparateFamilies, "KEEP_SEPARATE"),
     blockingConflicts: sorted(blockingConflicts, (value) => `${value.identityKey}|${value.code}|${value.detail}`),
@@ -281,7 +480,8 @@ export function hasReconciliationMutations(plan) {
   return (
     plan.newFamilies.length > 0 ||
     plan.newMemberships.length > 0 ||
-    plan.canonicalMetadataUpdates.length > 0
+    plan.canonicalMetadataUpdates.length > 0 ||
+    (plan.automaticContinuityUpdates?.length ?? 0) > 0
   );
 }
 
@@ -314,6 +514,9 @@ export function buildModelFamilyMutationProjection(plan) {
       identityKey: update.identityKey,
       changes: update.changes,
     })),
+    automaticContinuityUpdates: (plan.automaticContinuityUpdates ?? []).map(
+      (update) => ({ ...update }),
+    ),
   };
 }
 
@@ -336,6 +539,7 @@ export function assertModelFamilyMutationCounts(plan, mutation) {
     insertedFamilies: plan.newFamilies.length,
     assignedProducts: plan.newMemberships.length,
     updatedFamilies: plan.canonicalMetadataUpdates.length,
+    reconciledFamilies: plan.automaticContinuityUpdates?.length ?? 0,
   };
   if (canonicalStringify(mutation) !== canonicalStringify(expected)) {
     throw new Error(

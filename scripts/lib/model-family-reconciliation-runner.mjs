@@ -283,6 +283,131 @@ async function buildCurrent(sql) {
   };
 }
 
+export async function applyAutomaticContinuityUpdate(
+  sql,
+  update,
+  transactionTimestamp,
+) {
+  const wide = await sql`
+    select id
+    from products
+    where id = ${update.wideProductId}
+      and slug = ${update.wideProductSlug}
+      and family_id = ${update.familyId}
+      and family_member_role = 'wide'
+      and family_match_method = ${update.matchMethod}
+      and family_match_confidence = ${update.confidence}
+      and family_manual_override = false
+      and is_active = true
+    for update
+  `;
+  if (wide.length !== 1) {
+    throw new Error(
+      `Could not safely preserve automatic Wide Product ${update.wideProductId}.`,
+    );
+  }
+
+  const cleared = await sql`
+    update products
+    set family_id = null,
+      family_member_role = null,
+      family_match_method = null,
+      family_match_confidence = null,
+      family_match_reason = null,
+      family_matched_at = null
+    where id = ${update.oldBaseProductId}
+      and slug = ${update.oldBaseProductSlug}
+      and family_id = ${update.familyId}
+      and family_member_role = 'base'
+      and family_match_method = ${update.matchMethod}
+      and family_match_confidence = ${update.confidence}
+      and family_manual_override = false
+      and is_active = false
+    returning id
+  `;
+  if (cleared.length !== 1) {
+    throw new Error(
+      `Could not safely clear inactive automatic base ${update.oldBaseProductId}.`,
+    );
+  }
+
+  const assigned = await sql`
+    update products
+    set family_id = ${update.familyId},
+      family_member_role = 'base',
+      family_match_method = ${update.matchMethod},
+      family_match_confidence = ${update.confidence},
+      family_match_reason = ${update.reason},
+      family_matched_at = ${transactionTimestamp}
+    where id = ${update.newBaseProductId}
+      and slug = ${update.newBaseProductSlug}
+      and family_id is null
+      and family_member_role is null
+      and family_match_method is null
+      and family_match_confidence is null
+      and family_match_reason is null
+      and family_matched_at is null
+      and family_manual_override = false
+      and is_active = true
+    returning id
+  `;
+  if (assigned.length !== 1) {
+    throw new Error(
+      `Could not safely assign replacement automatic base ${update.newBaseProductId}.`,
+    );
+  }
+
+  let guardedFamily;
+  if (update.canonicalMetadataTarget) {
+    const canonical = update.canonicalMetadataTarget;
+    guardedFamily = await sql`
+      update model_families
+      set slug = ${update.newFamilySlug},
+        description_short = ${canonical.descriptionShort},
+        description_full = ${canonical.descriptionFull},
+        riding_style = ${canonical.ridingStyle},
+        skill_level = ${canonical.skillLevel},
+        flex = ${canonical.flex},
+        board_line = ${canonical.boardLine},
+        shape_type = ${canonical.shapeType},
+        camber_profile = ${canonical.camberProfile},
+        canonical_source_name = ${canonical.canonicalSourceName},
+        canonical_source_url = ${canonical.canonicalSourceUrl},
+        canonical_source_checked_at = ${canonical.canonicalSourceCheckedAt},
+        canonical_data_status = ${canonical.canonicalDataStatus},
+        updated_at = ${transactionTimestamp}
+      where id = ${update.familyId}
+        and identity_key = ${update.identityKey}
+        and slug = ${update.oldFamilySlug}
+        and canonical_source_kind = ${update.canonicalSourceKind}
+      returning id
+    `;
+  } else if (update.oldFamilySlug !== update.newFamilySlug) {
+    guardedFamily = await sql`
+      update model_families
+      set slug = ${update.newFamilySlug}, updated_at = ${transactionTimestamp}
+      where id = ${update.familyId}
+        and identity_key = ${update.identityKey}
+        and slug = ${update.oldFamilySlug}
+        and canonical_source_kind = ${update.canonicalSourceKind}
+      returning id
+    `;
+  } else {
+    guardedFamily = await sql`
+      select id
+      from model_families
+      where id = ${update.familyId}
+        and identity_key = ${update.identityKey}
+        and slug = ${update.oldFamilySlug}
+        and canonical_source_kind = ${update.canonicalSourceKind}
+      for update
+    `;
+  }
+  if (guardedFamily.length !== 1) {
+    throw new Error(`Could not safely update family ${update.familyId}.`);
+  }
+}
+
 async function applyMutations(sql, current, transactionTimestamp) {
   const familyIdByIdentity = new Map(
     current.families.map((family) => [family.identityKey, family.id]),
@@ -290,6 +415,7 @@ async function applyMutations(sql, current, transactionTimestamp) {
   let insertedFamilies = 0;
   let assignedProducts = 0;
   let updatedFamilies = 0;
+  let reconciledFamilies = 0;
   for (const family of current.plan.newFamilies) {
     const canonical = family.canonicalFamily;
     const [inserted] = await sql`
@@ -349,7 +475,16 @@ async function applyMutations(sql, current, transactionTimestamp) {
     }
     updatedFamilies += 1;
   }
-  return { insertedFamilies, assignedProducts, updatedFamilies };
+  for (const update of current.plan.automaticContinuityUpdates ?? []) {
+    await applyAutomaticContinuityUpdate(sql, update, transactionTimestamp);
+    reconciledFamilies += 1;
+  }
+  return {
+    insertedFamilies,
+    assignedProducts,
+    updatedFamilies,
+    reconciledFamilies,
+  };
 }
 
 function beyondMedalsEvidence(current) {
@@ -407,12 +542,16 @@ function logReport(report, reportPath, logger) {
     logger.log(
       `new families: ${report.actions.newFamilies.length}; metadata updates: ${report.actions.canonicalMetadataUpdates.length}`,
     );
+    logger.log(
+      `automatic continuity updates: ${report.actions.automaticContinuityUpdates.length}`,
+    );
     logger.log(`blocking conflicts: ${report.actions.blockingConflicts.length}`);
   } else {
     logger.log("locks: backfill -> reconciliation");
     logger.log(`families inserted: ${report.mutation.insertedFamilies}`);
     logger.log(`Products assigned: ${report.mutation.assignedProducts}`);
     logger.log(`families metadata-updated: ${report.mutation.updatedFamilies}`);
+    logger.log(`families continuity-reconciled: ${report.mutation.reconciledFamilies}`);
     logger.log("post-state idempotency: PASS");
   }
   logger.log(
@@ -458,7 +597,12 @@ export async function previewModelFamilyReconciliation(options = {}) {
       "PREVIEW",
       current,
       null,
-      { insertedFamilies: 0, assignedProducts: 0, updatedFamilies: 0 },
+      {
+        insertedFamilies: 0,
+        assignedProducts: 0,
+        updatedFamilies: 0,
+        reconciledFamilies: 0,
+      },
       current.settings,
       { fingerprint, expectedFingerprint: null, match: null },
     );
