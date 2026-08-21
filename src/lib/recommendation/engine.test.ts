@@ -1222,6 +1222,76 @@ describe("getRecommendation", () => {
       [...alternativeScores].sort((left, right) => right - left),
     );
   });
+
+  it("applies the Jones Frontier 2.0 metadata correction without changing its size or an unrelated score", () => {
+    const currentJones = createProduct(
+      {
+        slug: "jones-frontier-2-0",
+        brand: "Jones",
+        modelName: "Frontier 2.0",
+        boardLine: "unisex",
+        shapeType: "directional",
+        camberProfile: null,
+        flex: 5,
+      },
+      { sizeCm: 156, sizeLabel: "156", waistWidthMm: 252 },
+    );
+    const correctedJones = {
+      ...currentJones,
+      boardLine: "men" as const,
+      camberProfile: "hybrid-camber" as const,
+    };
+    const unrelated = createProduct({
+      slug: "jones-correction-control",
+      modelName: "Unrelated Control",
+    });
+    const inputs: QuizInput[] = [
+      { ...baseInput, boardLinePreference: "men" },
+      { ...baseInput, boardLinePreference: "any" },
+      {
+        ...baseInput,
+        boardLinePreference: "men",
+        terrainPriority: "groomers-carving",
+        aggressiveness: "aggressive",
+      },
+      {
+        ...baseInput,
+        boardLinePreference: "any",
+        terrainPriority: "groomers-carving",
+        aggressiveness: "aggressive",
+      },
+      { ...baseInput, terrainPriority: "soft-snow" },
+      {
+        ...baseInput,
+        boardLinePreference: "any",
+        terrainPriority: "switch-freestyle",
+      },
+    ];
+
+    for (const input of inputs) {
+      const before = getRecommendation(input, [currentJones, unrelated]);
+      const after = getRecommendation(input, [correctedJones, unrelated]);
+      const beforeMatches = [...before.recommendedBoards, ...before.avoidBoards];
+      const afterMatches = [...after.recommendedBoards, ...after.avoidBoards];
+      const beforeJones = beforeMatches.find(
+        ({ product }) => product.slug === currentJones.slug,
+      );
+      const afterJones = afterMatches.find(
+        ({ product }) => product.slug === correctedJones.slug,
+      );
+      const beforeControl = beforeMatches.find(
+        ({ product }) => product.slug === unrelated.slug,
+      );
+      const afterControl = afterMatches.find(
+        ({ product }) => product.slug === unrelated.slug,
+      );
+
+      expect(afterJones?.score).toBeGreaterThan(beforeJones?.score ?? -Infinity);
+      expect(afterJones?.size).toEqual(beforeJones?.size);
+      expect(afterControl?.score).toBe(beforeControl?.score);
+      expect(afterControl?.size).toEqual(beforeControl?.size);
+    }
+  });
 });
 
 describe("canonical recommendation family collapse", () => {

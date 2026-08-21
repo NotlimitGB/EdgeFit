@@ -46,6 +46,7 @@ export const LEGACY_CANONICAL_BOARD_SLUG_ALIASES =
     ["bataleon-evil-twin-trial-sport-3131268", "bataleon-evil-twin"],
     ["nitro-team-2025-2026", "nitro-team"],
     ["ride-warpig-trial-sport-3137774", "ride-warpig"],
+    ["jones-frontier", "jones-frontier-2-0"],
   ] as const);
 
 interface ResolveCanonicalBoardRouteOptions<TItem extends { slug: string }> {

@@ -90,6 +90,68 @@ function expectDecision(plan, decision, reason) {
 }
 
 describe("source identity unattended authorization policy", () => {
+  it("keeps the canonical Frontier 2.0 owner stable after duplicate cleanup", () => {
+    const erroneousSeed = {
+      ...product({
+        id: "45dd5ecc-1e4d-4aa9-b56c-493c7eed0310",
+        slug: "jones-frontier",
+        brand: "Jones",
+        modelName: "Frontier",
+        isActive: false,
+      }),
+      affiliateUrl:
+        "https://eu.jonessnowboards.com/products/mens-frontier-20-snowboard-2026",
+      sourceUrl:
+        "https://eu.jonessnowboards.com/products/mens-frontier-20-snowboard-2026",
+      importMeta: undefined,
+    };
+    const canonical = product({
+      id: "f057c0b7-f904-4648-8a28-03561ec44386",
+      slug: "jones-frontier-2-0",
+      baseSlug: "jones-frontier-2-0",
+      brand: "Jones",
+      modelName: "Frontier 2.0",
+      sourceProductId: "1890649",
+      boardLine: "men",
+    });
+    const imported = { ...canonical, id: undefined };
+    const identityPlan = buildSourceIdentityPlan({
+      importedProducts: [imported],
+      existingProducts: [erroneousSeed, canonical],
+    });
+    const plan = buildSourceIdentityAuthorizationPlan({
+      identityPlan,
+      importedProducts: [imported],
+      existingProducts: [erroneousSeed, canonical],
+    });
+    const decision = expectDecision(
+      plan,
+      "AUTO",
+      "STABLE_PROTECTED_IDENTITIES",
+    );
+
+    expect(identityPlan.resolvedProducts).toHaveLength(1);
+    expect(identityPlan.resolvedProducts[0].slug).toBe("jones-frontier-2-0");
+    expect(decision.authorizationProjection.proposed).toEqual([
+      expect.objectContaining({
+        slug: "jones-frontier-2-0",
+        existingProductId: canonical.id,
+      }),
+    ]);
+    expect(decision.authorizationProjection.historicalOwnership).toEqual([
+      expect.objectContaining({
+        productId: canonical.id,
+        slug: canonical.slug,
+        sourceKey: "traektoria|1890649",
+      }),
+    ]);
+    expect(
+      decision.authorizationProjection.proposed.some(
+        (assignment) => assignment.slug === erroneousSeed.slug,
+      ),
+    ).toBe(false);
+  });
+
   it.each([
     ["new clean single-source model", product(), "NEW_CLEAN_SINGLE_SOURCE"],
     [

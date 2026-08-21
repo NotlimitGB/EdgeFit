@@ -3,6 +3,7 @@ import {
   importTraektoriaProducts,
   revalidateTraektoriaProducts,
   resolveTraektoriaBoardLineMetadata,
+  resolveTraektoriaSourceMetadata,
 } from "./traektoria.mjs";
 
 const EXTRA_IDS = ["1890639", "1890653"];
@@ -65,6 +66,68 @@ describe("Traektoria trusted board-line corrections", () => {
       correctionApplied: false,
     });
   });
+
+  it.each(["", "unknown", "unisex", "men"])(
+    "applies the exact Frontier 2.0 metadata correction for merchant line %j",
+    (rawGender) => {
+      expect(
+        resolveTraektoriaSourceMetadata({
+          sourceProductId: "1890649",
+          brand: "Jones",
+          modelName: "Frontier 2.0",
+          rawGender,
+        }),
+      ).toMatchObject({
+        status: "resolved",
+        boardLine: "men",
+        evidence: "known",
+        camberProfile: "hybrid-camber",
+        flex: 5,
+        shapeType: "directional",
+      });
+    },
+  );
+
+  it.each([
+    ["wrong brand", "Other", "Frontier 2.0", "unisex"],
+    ["wrong model", "Jones", "Frontier", "unisex"],
+    ["conflicting board line", "Jones", "Frontier 2.0", "women"],
+    ["protected youth line", "Jones", "Frontier 2.0", "youth"],
+  ])(
+    "fails the Frontier 2.0 correction closed for %s",
+    (_case, brand, modelName, rawGender) => {
+      expect(
+        resolveTraektoriaSourceMetadata({
+          sourceProductId: "1890649",
+          brand,
+          modelName,
+          rawGender,
+        }),
+      ).toMatchObject({
+        status: "conflict",
+        category: "source_metadata_conflict",
+        correctionApplied: false,
+      });
+    },
+  );
+
+  it("does not apply Frontier 2.0 metadata to another source ID", () => {
+    expect(
+      resolveTraektoriaSourceMetadata({
+        sourceProductId: "1890648",
+        brand: "Jones",
+        modelName: "Frontier 2.0",
+        rawGender: "unisex",
+      }),
+    ).toMatchObject({
+      status: "resolved",
+      boardLine: "unisex",
+      correctionApplied: false,
+      camberProfile: null,
+      flex: null,
+      shapeType: null,
+    });
+  });
 });
 
 const COLUMN_TABLE = `
@@ -84,6 +147,7 @@ const ROW_TABLE = `
 `;
 
 function makeProductPayload({
+  brand = "Test",
   modelName = "Test Board",
   table = COLUMN_TABLE,
   thingType = "сноуборд",
@@ -95,9 +159,9 @@ function makeProductPayload({
       MAIN: {
         content: {
           model: {
-            brand: { name: "Test" },
+            brand: { name: brand },
             props: {
-              name: `Test ${modelName}`,
+              name: `${brand} ${modelName}`,
               model_name: modelName,
               thing_type: thingType,
               gender,
@@ -175,6 +239,42 @@ function makeExistingProduct(sourceProductId, slug = `board-${sourceProductId}`)
 }
 
 describe("Traektoria corrected Product identity", () => {
+  it("emits the complete guarded Jones Frontier 2.0 metadata target", async () => {
+    const result = await importExtras(
+      {
+        [EXTRA_IDS[0]]: makeProductPayload(),
+        [EXTRA_IDS[1]]: makeProductPayload(),
+        "1890649": makeProductPayload({
+          brand: "Jones",
+          modelName: "Frontier 2.0",
+          gender: "unisex",
+        }),
+      },
+      { listingIds: ["1890649"] },
+    );
+    const corrected = result.products.find(
+      (product) => product.importMeta.sourceProductId === "1890649",
+    );
+
+    expect(corrected).toMatchObject({
+      slug: "jones-frontier-2-0",
+      brand: "Jones",
+      modelName: "Frontier 2.0",
+      boardLine: "men",
+      camberProfile: "hybrid-camber",
+      flex: 5,
+      shapeType: "directional",
+      importMeta: {
+        sourceProductId: "1890649",
+        boardLineEvidence: "known",
+      },
+    });
+    expect(result.diagnostics).toMatchObject({
+      unsafeFailureCount: 0,
+      staleSafe: true,
+    });
+  });
+
   it("emits corrected board-line metadata consistently for Jones Stratos men", async () => {
     const result = await importExtras(
       {

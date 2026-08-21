@@ -21,6 +21,7 @@ import {
   getBoardLineEvidence,
   getExplicitVariantMarker,
   getStoreIdentityFromUrl,
+  normalizeSourceIdentityText,
 } from "./source-identity.mjs";
 
 const TRAEKTORIA_BASE_URL = "https://www.traektoria.ru";
@@ -44,12 +45,26 @@ export const TRAEKTORIA_SOURCE_METADATA_CORRECTIONS = Object.freeze({
     reason:
       "Verified Jones Tweaker men identity; merchant labels this source as unisex.",
   }),
+  "1890649": Object.freeze({
+    expectedBrand: "jones",
+    expectedModel: "frontier 2 0",
+    acceptedBoardLines: Object.freeze(["unisex", "men"]),
+    allowMissingBoardLine: true,
+    correctedBoardLine: "men",
+    camberProfile: "hybrid-camber",
+    flex: 5,
+    shapeType: "directional",
+    reason:
+      "Verified Jones Frontier 2.0 men identity; merchant labels this source as unisex.",
+  }),
 });
 
-export function resolveTraektoriaBoardLineMetadata(
+export function resolveTraektoriaSourceMetadata({
   sourceProductId,
+  brand,
+  modelName,
   rawGender,
-) {
+}) {
   const raw = getBoardLineEvidence(rawGender);
   const correction =
     TRAEKTORIA_SOURCE_METADATA_CORRECTIONS[String(sourceProductId ?? "")] ??
@@ -61,15 +76,36 @@ export function resolveTraektoriaBoardLineMetadata(
       boardLine: raw.boardLine,
       evidence: raw.evidence,
       correctionApplied: false,
+      camberProfile: null,
+      flex: null,
+      shapeType: null,
       reason: null,
     };
   }
 
-  if (
-    raw.evidence !== "known" ||
-    (raw.boardLine !== correction.expectedBoardLine &&
-      raw.boardLine !== correction.correctedBoardLine)
-  ) {
+  const identityMatches =
+    (!correction.expectedBrand ||
+      normalizeSourceIdentityText(brand) === correction.expectedBrand) &&
+    (!correction.expectedModel ||
+      normalizeSourceIdentityText(modelName) === correction.expectedModel);
+  const acceptedBoardLines = correction.acceptedBoardLines ?? [
+    correction.expectedBoardLine,
+    correction.correctedBoardLine,
+  ];
+  const genericBoardLineMatches =
+    (raw.evidence === "missing" && correction.allowMissingBoardLine) ||
+    (raw.evidence === "known" && acceptedBoardLines.includes(raw.boardLine));
+  const normalizedRawGender = normalizeSourceIdentityText(rawGender);
+  const guardedIdentityBoardLineMatches =
+    (raw.evidence === "missing" && correction.allowMissingBoardLine) ||
+    raw.boardLine === correction.correctedBoardLine ||
+    (raw.boardLine === "unisex" &&
+      /^(?:unisex|унисекс)$/u.test(normalizedRawGender));
+  const boardLineMatches = correction.expectedBrand
+    ? guardedIdentityBoardLineMatches
+    : genericBoardLineMatches;
+
+  if (!identityMatches || !boardLineMatches) {
     return {
       status: "conflict",
       category: "source_metadata_conflict",
@@ -82,9 +118,18 @@ export function resolveTraektoriaBoardLineMetadata(
     status: "resolved",
     boardLine: correction.correctedBoardLine,
     evidence: "known",
-    correctionApplied: raw.boardLine === correction.expectedBoardLine,
+    correctionApplied:
+      raw.evidence === "missing" ||
+      raw.boardLine !== correction.correctedBoardLine,
+    camberProfile: correction.camberProfile ?? null,
+    flex: correction.flex ?? null,
+    shapeType: correction.shapeType ?? null,
     reason: correction.reason,
   };
+}
+
+export function resolveTraektoriaBoardLineMetadata(sourceProductId, rawGender) {
+  return resolveTraektoriaSourceMetadata({ sourceProductId, rawGender });
 }
 
 function extractProductId(productUrl) {
@@ -319,7 +364,7 @@ function buildTraektoriaProduct(
   productUrl,
   productPayload,
   checkedAt,
-  boardLineIdentity,
+  sourceMetadata,
 ) {
   const content = productPayload?.data?.MAIN?.content;
   const model = content?.model;
@@ -353,10 +398,13 @@ function buildTraektoriaProduct(
     parseSeasonLabel(props.model_name, { asWinterSeason: true }) ??
     null;
   const slug = slugifyBoard(`${brand} ${modelName}`);
-  const shapeType = mapShapeType(filterMap.get("SHAPE"));
-  const flex = getFlexFromTraektoriaProduct(model, content.descriptions, filterMap);
+  const shapeType =
+    sourceMetadata.shapeType ?? mapShapeType(filterMap.get("SHAPE"));
+  const flex =
+    sourceMetadata.flex ??
+    getFlexFromTraektoriaProduct(model, content.descriptions, filterMap);
   const ridingStyle = mapRidingStyle(filterMap.get("RIDING_STYLE"));
-  const boardLine = boardLineIdentity.boardLine;
+  const boardLine = sourceMetadata.boardLine;
   const skillLevel = mapSkillLevel({
     levelText: filterMap.get("LEVEL"),
     flex,
@@ -390,6 +438,9 @@ function buildTraektoriaProduct(
     isActive: hasAvailableSizes,
     boardLine,
     shapeType,
+    ...(sourceMetadata.camberProfile
+      ? { camberProfile: sourceMetadata.camberProfile }
+      : {}),
     dataStatus: "draft",
     sourceName: "Траектория",
     sourceUrl: productUrl,
@@ -401,7 +452,7 @@ function buildTraektoriaProduct(
       storeCode: "traektoria",
       sourceProductId: extractProductId(productUrl),
       baseSlug: slug,
-      boardLineEvidence: boardLineIdentity.evidence,
+      boardLineEvidence: sourceMetadata.evidence,
       variantMarker: getExplicitVariantMarker(modelName),
       storeName: "Траектория",
     },
@@ -471,18 +522,21 @@ function buildTraektoriaProductOutcome(productUrl, productPayload, checkedAt) {
     };
   }
 
-  if (!getTraektoriaIdentity(model, props)) {
+  const identity = getTraektoriaIdentity(model, props);
+  if (!identity) {
     return {
       status: "unsafe_failure",
       category: TRAEKTORIA_FAILURE_CATEGORIES.identity,
     };
   }
 
-  const boardLineIdentity = resolveTraektoriaBoardLineMetadata(
+  const sourceMetadata = resolveTraektoriaSourceMetadata({
     sourceProductId,
-    props.gender,
-  );
-  if (boardLineIdentity.status === "conflict") {
+    brand: identity.brand,
+    modelName: identity.modelName,
+    rawGender: props.gender,
+  });
+  if (sourceMetadata.status === "conflict") {
     return {
       status: "unsafe_failure",
       category: TRAEKTORIA_FAILURE_CATEGORIES.sourceMetadataConflict,
@@ -523,7 +577,7 @@ function buildTraektoriaProductOutcome(productUrl, productPayload, checkedAt) {
       productUrl,
       productPayload,
       checkedAt,
-      boardLineIdentity,
+      sourceMetadata,
     );
     return product
       ? { status: "resolved", product }

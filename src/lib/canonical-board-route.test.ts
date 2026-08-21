@@ -12,6 +12,7 @@ interface TestItem {
 
 const expectedAliases = {
   "bataleon-evil-twin-trial-sport-3131268": "bataleon-evil-twin",
+  "jones-frontier": "jones-frontier-2-0",
   "nitro-team-2025-2026": "nitro-team",
   "ride-warpig-trial-sport-3137774": "ride-warpig",
 };
@@ -41,14 +42,9 @@ function makeResolver(options: {
 }
 
 describe("legacy canonical board slug aliases", () => {
-  it("contains exactly the three approved mappings and no Jones aliases", () => {
+  it("contains exactly the four approved mappings including Jones Frontier", () => {
     expect(LEGACY_CANONICAL_BOARD_SLUG_ALIASES).toEqual(expectedAliases);
-    expect(Object.keys(LEGACY_CANONICAL_BOARD_SLUG_ALIASES)).toHaveLength(3);
-    expect(
-      Object.keys(LEGACY_CANONICAL_BOARD_SLUG_ALIASES).some((slug) =>
-        slug.startsWith("jones-"),
-      ),
-    ).toBe(false);
+    expect(Object.keys(LEGACY_CANONICAL_BOARD_SLUG_ALIASES)).toHaveLength(4);
   });
 
   it("rejects empty, duplicate, self-referential, cyclic, and chained aliases", () => {
@@ -80,7 +76,7 @@ describe("legacy canonical board slug aliases", () => {
 
 describe("resolveCanonicalBoardRoute", () => {
   it("renders an exact active item before consulting its legacy alias", async () => {
-    const suffix = "nitro-team-2025-2026";
+    const suffix = "jones-frontier";
     const resolver = makeResolver({
       items: [{ slug: suffix, label: "Current active suffix" }],
     });
@@ -88,6 +84,21 @@ describe("resolveCanonicalBoardRoute", () => {
     await expect(resolver.resolve(suffix)).resolves.toEqual({
       kind: "render",
       item: { slug: suffix, label: "Current active suffix" },
+    });
+    expect(resolver.loadCanonicalItemBySlug).toHaveBeenCalledTimes(1);
+    expect(resolver.loadFamilyAliasTargetBySlug).not.toHaveBeenCalled();
+  });
+
+  it("renders Jones Frontier 2.0 directly without consulting an alias", async () => {
+    const canonical = {
+      slug: "jones-frontier-2-0",
+      label: "Jones Frontier 2.0",
+    };
+    const resolver = makeResolver({ items: [canonical] });
+
+    await expect(resolver.resolve(canonical.slug)).resolves.toEqual({
+      kind: "render",
+      item: canonical,
     });
     expect(resolver.loadCanonicalItemBySlug).toHaveBeenCalledTimes(1);
     expect(resolver.loadFamilyAliasTargetBySlug).not.toHaveBeenCalled();

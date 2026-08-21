@@ -84,6 +84,24 @@ function makeProduct({
 }
 
 describe("source offer identity", () => {
+  it("binds Frontier 2.0 official evidence only to its canonical identity", async () => {
+    const specs = await loadOfficialProductSpecs();
+    const frontier = specs.get("jones-frontier-2-0");
+
+    expect(specs.has("jones-frontier")).toBe(false);
+    expect(frontier).toMatchObject({
+      slug: "jones-frontier-2-0",
+      flex: 5,
+      camberProfile: "hybrid-camber",
+      shapeType: "directional",
+      boardLine: "men",
+      sourceName: "Official Jones Frontier 2.0 2026",
+      sourceUrl:
+        "https://eu.jonessnowboards.com/products/mens-frontier-20-snowboard-2026",
+      sourceCheckedAt: "2026-04-14",
+    });
+  });
+
   it("binds Nitro Team and Team Wide to distinct authoritative men specs", async () => {
     const specs = await loadOfficialProductSpecs();
     const team = specs.get("nitro-team");
