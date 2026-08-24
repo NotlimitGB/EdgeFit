@@ -12,7 +12,9 @@ import {
   type SamplingMetadata,
   type TrafficMetrics,
   type TrafficSourceMetric,
+  type ReferralBreakdownMetric,
 } from "@/lib/analytics/reporting-core";
+import { getConfiguredSiteHosts } from "@/lib/site-url";
 
 const METRIKA_ENDPOINT = "https://api-metrika.yandex.net/stat/v1/data";
 export const METRIKA_MAX_CONCURRENCY = 1;
@@ -28,6 +30,7 @@ const TRAFFIC_METRICS = [
 ] as const;
 const SOURCE_DIMENSION = "ym:s:lastsignTrafficSource";
 const LANDING_DIMENSION = "ym:s:startURLPath";
+const REFERRAL_DIMENSION = "ym:s:lastsignReferalSource";
 const ACQUISITION_GOALS = [
   { key: "quizStarted", id: 545241547 },
   { key: "resultViewed", id: 545241580 },
@@ -77,6 +80,9 @@ export interface MetrikaReportingResult {
     sourcesSampling: SamplingMetadata;
     landingPages30Days: AcquisitionLandingMetric[];
     landingPagesSampling: SamplingMetadata;
+    referralBreakdownStatus: AnalyticsSourceStatus;
+    referralBreakdown: ReferralBreakdownMetric[];
+    referralSampling: SamplingMetadata;
   };
 }
 
@@ -136,6 +142,9 @@ function emptyAcquisition(sourceStatus: AnalyticsSourceStatus) {
     sourcesSampling: emptySampling(),
     landingPages30Days: [],
     landingPagesSampling: emptySampling(),
+    referralBreakdownStatus: sourceStatus,
+    referralBreakdown: [],
+    referralSampling: emptySampling(),
   } satisfies MetrikaReportingResult["acquisition"];
 }
 
@@ -501,6 +510,88 @@ function parseAcquisitionLandings(
   });
 }
 
+export function normalizeReferralDomain(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) {
+    return null;
+  }
+  const candidate = value.trim();
+  try {
+    const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//iu.test(candidate) ? candidate : `https://${candidate}`);
+    if (url.username || url.password) {
+      return null;
+    }
+    const hostname = url.hostname.toLowerCase().replace(/^www\./u, "").replace(/\.$/u, "");
+    return hostname && !hostname.includes(" ") ? hostname : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseReferralBreakdown(
+  payload: MetrikaResponse,
+  selfReferralHosts: ReadonlySet<string>,
+): ReferralBreakdownMetric[] | null {
+  if (!Array.isArray(payload.data)) {
+    return null;
+  }
+  const aggregates = new Map<string, ReferralBreakdownMetric>();
+
+  for (const row of payload.data) {
+    if (!row || typeof row !== "object") {
+      continue;
+    }
+    const dimensions = (row as { dimensions?: unknown }).dimensions;
+    const metrics = (row as { metrics?: unknown }).metrics;
+    if (!Array.isArray(dimensions) || !Array.isArray(metrics)) {
+      continue;
+    }
+    const rawDomain =
+      getDimensionValue(dimensions[0], "id") ??
+      getDimensionValue(dimensions[0], "name");
+    const domain = normalizeReferralDomain(rawDomain);
+    const visits = nullableFiniteNumber(metrics[0]);
+    const users = nullableFiniteNumber(metrics[1]);
+    const goals = parseAcquisitionGoals(metrics);
+    if (visits === null || users === null || !goals) {
+      continue;
+    }
+    const key = domain ?? "__unknown__";
+    const existing = aggregates.get(key);
+    if (!existing) {
+      aggregates.set(key, {
+        domain,
+        classification: domain
+          ? selfReferralHosts.has(domain)
+            ? "self_referral"
+            : "external_referral"
+          : "unknown_referral",
+        visits,
+        users,
+        goals,
+      });
+      continue;
+    }
+    existing.visits += visits;
+    existing.users += users;
+    for (const goalKey of ACQUISITION_GOALS.map(({ key: goalKey }) => goalKey)) {
+      const goal = existing.goals[goalKey];
+      const addition = goals[goalKey];
+      goal.users += addition.users;
+      goal.visits += addition.visits;
+      goal.visitConversionRate = normalizePercent(
+        existing.visits > 0 ? (goal.visits / existing.visits) * 100 : 0,
+      );
+      goal.userConversionRate = normalizePercent(
+        existing.users > 0 ? (goal.users / existing.users) * 100 : 0,
+      );
+    }
+  }
+
+  return [...aggregates.values()].sort(
+    (left, right) => right.visits - left.visits || (left.domain ?? "").localeCompare(right.domain ?? ""),
+  );
+}
+
 export async function getMetrikaReporting({
   counterIdValue = process.env.NEXT_PUBLIC_YANDEX_METRIKA_ID,
   tokenValue = process.env.YANDEX_METRIKA_OAUTH_TOKEN,
@@ -509,6 +600,7 @@ export async function getMetrikaReporting({
   timeoutMs = 5_000,
   sleepImpl = defaultSleep,
   nowImpl = Date.now,
+  selfReferralHosts = getConfiguredSiteHosts(),
 }: {
   counterIdValue?: string;
   tokenValue?: string;
@@ -517,6 +609,7 @@ export async function getMetrikaReporting({
   timeoutMs?: number;
   sleepImpl?: SleepImplementation;
   nowImpl?: NowImplementation;
+  selfReferralHosts?: readonly string[];
 }): Promise<MetrikaReportingResult> {
   const counterId = Number(counterIdValue?.trim());
   const token = tokenValue?.trim();
@@ -579,6 +672,17 @@ export async function getMetrikaReporting({
   landingUrl.searchParams.set("sort", "-ym:s:visits");
   landingUrl.searchParams.set("limit", "10");
 
+  const referralUrl = buildBaseUrl(
+    counterId,
+    windows.last30Days.startDate,
+    windows.last30Days.endDate,
+  );
+  referralUrl.searchParams.set("metrics", ACQUISITION_METRICS.join(","));
+  referralUrl.searchParams.set("dimensions", REFERRAL_DIMENSION);
+  referralUrl.searchParams.set("filters", `${SOURCE_DIMENSION}=='referral'`);
+  referralUrl.searchParams.set("sort", "-ym:s:visits");
+  referralUrl.searchParams.set("limit", "20");
+
   const sourceResult = await requestMetrikaData({
     url: sourceUrl,
     token,
@@ -597,6 +701,14 @@ export async function getMetrikaReporting({
   });
   const landingResult = await requestMetrikaData({
     url: landingUrl,
+    token,
+    fetchImpl,
+    timeoutMs,
+    sleepImpl,
+    nowImpl,
+  });
+  const referralResult = await requestMetrikaData({
+    url: referralUrl,
     token,
     fetchImpl,
     timeoutMs,
@@ -701,6 +813,16 @@ export async function getMetrikaReporting({
       }),
     };
   }
+  const normalizedSelfReferralHosts = new Set(
+    selfReferralHosts.flatMap((host) => {
+      const normalized = normalizeReferralDomain(host);
+      return normalized ? [normalized] : [];
+    }),
+  );
+  const referralBreakdown = referralResult.ok
+    ? parseReferralBreakdown(referralResult.payload, normalizedSelfReferralHosts)
+    : [];
+  const referralResponseInvalid = referralResult.ok && referralBreakdown === null;
 
   return {
     sourceStatus: { status: "ok" },
@@ -713,6 +835,16 @@ export async function getMetrikaReporting({
       sourcesSampling: getSamplingMetadata(sourceResult.payload),
       landingPages30Days: landingPages,
       landingPagesSampling: getSamplingMetadata(landingResult.payload),
+      referralBreakdownStatus: referralResult.ok
+        ? referralResponseInvalid
+          ? { status: "unavailable", diagnostic: { category: "invalid_response" } }
+          : { status: "ok" }
+        : { status: "unavailable", diagnostic: referralResult.diagnostic },
+      referralBreakdown: referralBreakdown ?? [],
+      referralSampling:
+        referralResult.ok && !referralResponseInvalid
+          ? getSamplingMetadata(referralResult.payload)
+          : emptySampling(),
     },
   };
 }

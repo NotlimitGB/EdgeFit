@@ -161,6 +161,17 @@ function makeReport(): AnalyticsReport {
         },
       ],
       landingPagesSampling: { ...sampling },
+      referralBreakdownStatus: { status: "ok" },
+      referralBreakdown: [
+        {
+          domain: "partner.example",
+          classification: "external_referral",
+          users: 2,
+          visits: 12,
+          goals: goalMetrics(60),
+        },
+      ],
+      referralSampling: { ...sampling },
       quizCompletionPolicy: {
         authority: "first_party_ordered_funnel",
         yandexGoalId: 545241567,
@@ -173,6 +184,12 @@ function makeReport(): AnalyticsReport {
       events,
     },
     funnel,
+    quizAbandonment: {
+      availableFrom: null,
+      windows: Object.fromEntries(
+        windowKeys.map((key) => [key, { versions: [] }]),
+      ),
+    },
     commerce: {
       windows: commerceWindows,
       clickSources30Days: [
@@ -253,7 +270,7 @@ function makeReport(): AnalyticsReport {
         message: "Historical click rows may not include exact offer provenance.",
       },
     ],
-  } as AnalyticsReport;
+  } as unknown as AnalyticsReport;
 }
 
 function cloneReport(report = makeReport()) {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildQuizAbandonmentReport,
   addCalendarDays,
   buildFunnelMetrics,
   buildPartnerReadiness,
@@ -14,6 +15,67 @@ import {
 } from "@/lib/analytics/reporting-core";
 
 describe("analytics reporting core", () => {
+  it("builds session-level quiz abandonment without double-counting retries", () => {
+    const at = "2026-08-24T10:00:00.000Z";
+    const event = (
+      sessionId: string,
+      eventName: "quiz_started" | "quiz_step_completed" | "quiz_completed",
+      stepIndex: number | null = null,
+    ) => ({
+      windowKey: "last7Days" as const,
+      sessionId,
+      eventName,
+      createdAt: at,
+      quizVersion: "v1",
+      stepIndex,
+      stepKey: stepIndex ? ["body", "profile", "style"][stepIndex - 1] ?? null : null,
+      totalSteps: stepIndex ? 3 : null,
+    });
+    const report = buildQuizAbandonmentReport([
+      event("A", "quiz_started"),
+      event("A", "quiz_step_completed", 1),
+      event("A", "quiz_step_completed", 2),
+      event("A", "quiz_step_completed", 3),
+      event("A", "quiz_completed"),
+      event("B", "quiz_started"),
+      event("B", "quiz_step_completed", 1),
+      event("B", "quiz_step_completed", 2),
+      event("B", "quiz_step_completed", 2),
+      event("C", "quiz_started"),
+      event("C", "quiz_step_completed", 1),
+    ]);
+
+    expect(report.availableFrom).toBe(at);
+    expect(report.windows.last7Days.versions).toEqual([
+      {
+        quizVersion: "v1",
+        quizStartSessions: 3,
+        quizCompletedSessions: 1,
+        steps: [
+          expect.objectContaining({
+            stepIndex: 1,
+            completedStepSessions: 3,
+            abandonedAfterStepSessions: 1,
+            stepToNextConversionRate: 0.6667,
+          }),
+          expect.objectContaining({
+            stepIndex: 2,
+            completedStepSessions: 2,
+            abandonedAfterStepSessions: 1,
+            stepToNextConversionRate: 0.5,
+          }),
+          expect.objectContaining({
+            stepIndex: 3,
+            completedStepSessions: 1,
+            abandonedAfterStepSessions: 0,
+            stepToNextConversionRate: 1,
+          }),
+        ],
+      },
+    ]);
+    expect(report.windows.previous7Days.versions).toEqual([]);
+  });
+
   it("uses yesterday in Europe/Moscow as the report date", () => {
     const result = buildReportWindows(new Date("2026-08-09T21:30:00.000Z"));
     expect(result.asOfDate).toBe("2026-08-09");

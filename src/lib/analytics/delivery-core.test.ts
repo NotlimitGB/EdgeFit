@@ -91,6 +91,8 @@ function makeDigest(overrides: Partial<AnalyticsDigest> = {}): AnalyticsDigest {
       last30Days: { goals },
       sources30Days: [],
       landingPages30Days: [],
+      referralBreakdownStatus: { status: "ok" },
+      referralBreakdown: [],
       quizCompletionPolicy: {
         authority: "first_party_ordered_funnel",
         yandexGoalId: 545241567,
@@ -99,6 +101,12 @@ function makeDigest(overrides: Partial<AnalyticsDigest> = {}): AnalyticsDigest {
       },
     },
     funnel: funnel as AnalyticsDigest["funnel"],
+    quizAbandonment: {
+      availableFrom: null,
+      windows: Object.fromEntries(
+        periodKeys.map((key) => [key, { versions: [] }]),
+      ) as unknown as AnalyticsDigest["quizAbandonment"]["windows"],
+    },
     commerce: {
       windows: commerceWindows as AnalyticsDigest["commerce"]["windows"],
       merchants30Days: [],
@@ -148,6 +156,7 @@ function makeDigest(overrides: Partial<AnalyticsDigest> = {}): AnalyticsDigest {
         last30Days: sampling,
         sources30Days: sampling,
         landingPages30Days: sampling,
+        referralBreakdown: sampling,
       },
     },
     delivery: { contentHash },

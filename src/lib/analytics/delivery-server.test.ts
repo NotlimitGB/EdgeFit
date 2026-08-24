@@ -58,6 +58,8 @@ function makeServerDigest(overrides: Partial<AnalyticsDigest> = {}): AnalyticsDi
       last30Days: null,
       sources30Days: [],
       landingPages30Days: [],
+      referralBreakdownStatus: { status: "ok" },
+      referralBreakdown: [],
       quizCompletionPolicy: {
         authority: "first_party_ordered_funnel",
         yandexGoalId: 545241567,
@@ -76,6 +78,16 @@ function makeServerDigest(overrides: Partial<AnalyticsDigest> = {}): AnalyticsDi
         resultToStoreRate: 0.6667,
       },
     } as AnalyticsDigest["funnel"],
+    quizAbandonment: {
+      availableFrom: null,
+      windows: {
+        yesterday: { versions: [] },
+        last7Days: { versions: [] },
+        previous7Days: { versions: [] },
+        last30Days: { versions: [] },
+        previous30Days: { versions: [] },
+      },
+    },
     commerce: {
       windows: { last30Days: { clickEvents: 3, uniqueClickSessions: 2 } } as AnalyticsDigest["commerce"]["windows"],
       merchants30Days: [],

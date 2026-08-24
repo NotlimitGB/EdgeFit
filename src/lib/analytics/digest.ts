@@ -93,6 +93,14 @@ export interface AnalyticsDigest {
       visits: number;
       goals: Record<AcquisitionGoalKey, AnalyticsDigestGoalMetric>;
     }>;
+    referralBreakdownStatus: AnalyticsDigestSourceStatus;
+    referralBreakdown: Array<{
+      domain: string | null;
+      classification: "external_referral" | "self_referral" | "unknown_referral";
+      users: number;
+      visits: number;
+      goals: Record<AcquisitionGoalKey, AnalyticsDigestGoalMetric>;
+    }>;
     quizCompletionPolicy: {
       authority: "first_party_ordered_funnel";
       yandexGoalId: number;
@@ -112,6 +120,7 @@ export interface AnalyticsDigest {
       resultToStoreRate: number | null;
     }
   >;
+  quizAbandonment: AnalyticsReport["quizAbandonment"];
   commerce: {
     windows: Record<WindowKey, { clickEvents: number; uniqueClickSessions: number }>;
     merchants30Days: Array<{
@@ -160,6 +169,7 @@ export interface AnalyticsDigest {
       last30Days: AnalyticsDigestSamplingMetadata | null;
       sources30Days: AnalyticsDigestSamplingMetadata | null;
       landingPages30Days: AnalyticsDigestSamplingMetadata | null;
+      referralBreakdown: AnalyticsDigestSamplingMetadata | null;
     };
   };
   delivery: {
@@ -323,6 +333,16 @@ function projectAcquisition(report: AnalyticsReport): AnalyticsDigest["acquisiti
       visits: row.visits,
       goals: projectGoals(row.goals),
     })),
+    referralBreakdownStatus: projectSourceStatus(
+      report.acquisition.referralBreakdownStatus,
+    ),
+    referralBreakdown: report.acquisition.referralBreakdown.map((row) => ({
+      domain: row.domain,
+      classification: row.classification,
+      users: row.users,
+      visits: row.visits,
+      goals: projectGoals(row.goals),
+    })),
     quizCompletionPolicy: {
       authority: report.acquisition.quizCompletionPolicy.authority,
       yandexGoalId: report.acquisition.quizCompletionPolicy.yandexGoalId,
@@ -476,6 +496,10 @@ function projectSamplingEvidence(report: AnalyticsReport): AnalyticsDigest["samp
       landingPages30Days:
         report.acquisition.sourceStatus.status === "ok"
           ? projectSampling(report.acquisition.landingPagesSampling)
+          : null,
+      referralBreakdown:
+        report.acquisition.referralBreakdownStatus.status === "ok"
+          ? projectSampling(report.acquisition.referralSampling)
           : null,
     },
   };
@@ -758,6 +782,30 @@ const digestSchema: Schema = {
               },
             },
           },
+          referralBreakdownStatus: { schema: sourceStatusSchema },
+          referralBreakdown: {
+            schema: {
+              type: "array",
+              items: {
+                type: "object",
+                fields: {
+                  domain: { schema: { type: "nullable", schema: stringSchema() } },
+                  classification: {
+                    schema: stringSchema({
+                      values: [
+                        "external_referral",
+                        "self_referral",
+                        "unknown_referral",
+                      ],
+                    }),
+                  },
+                  users: { schema: numberSchema },
+                  visits: { schema: numberSchema },
+                  goals: { schema: goalsSchema },
+                },
+              },
+            },
+          },
           quizCompletionPolicy: {
             schema: {
               type: "object",
@@ -782,6 +830,62 @@ const digestSchema: Schema = {
         fields: Object.fromEntries(
           WINDOW_KEYS.map((key) => [key, { schema: funnelWindowSchema }]),
         ),
+      },
+    },
+    quizAbandonment: {
+      schema: {
+        type: "object",
+        fields: {
+          availableFrom: { schema: { type: "nullable", schema: stringSchema() } },
+          windows: {
+            schema: {
+              type: "object",
+              fields: Object.fromEntries(
+                WINDOW_KEYS.map((key) => [
+                  key,
+                  {
+                    schema: {
+                      type: "object",
+                      fields: {
+                        versions: {
+                          schema: {
+                            type: "array",
+                            items: {
+                              type: "object",
+                              fields: {
+                                quizVersion: { schema: stringSchema() },
+                                quizStartSessions: { schema: numberSchema },
+                                quizCompletedSessions: { schema: numberSchema },
+                                steps: {
+                                  schema: {
+                                    type: "array",
+                                    items: {
+                                      type: "object",
+                                      fields: {
+                                        stepIndex: { schema: numberSchema },
+                                        stepKey: { schema: stringSchema() },
+                                        totalSteps: { schema: numberSchema },
+                                        completedStepSessions: { schema: numberSchema },
+                                        abandonedAfterStepSessions: { schema: numberSchema },
+                                        stepToNextConversionRate: {
+                                          schema: nullableNumberSchema,
+                                        },
+                                      },
+                                    },
+                                  },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                ]),
+              ),
+            },
+          },
+        },
       },
     },
     commerce: {
@@ -958,6 +1062,9 @@ const digestSchema: Schema = {
                 last30Days: { schema: { type: "nullable", schema: samplingSchema } },
                 sources30Days: { schema: { type: "nullable", schema: samplingSchema } },
                 landingPages30Days: {
+                  schema: { type: "nullable", schema: samplingSchema },
+                },
+                referralBreakdown: {
                   schema: { type: "nullable", schema: samplingSchema },
                 },
               },
@@ -1171,6 +1278,7 @@ function buildAnalyticsDigest(report: AnalyticsReport, kind: DigestKind): Analyt
   const traffic = projectTraffic(report);
   const acquisition = projectAcquisition(report);
   const funnel = projectFunnel(report);
+  const quizAbandonment = report.quizAbandonment;
   const commerce = projectCommerce(report);
   const trends = projectTrends(report);
   const partnerReadiness = projectPartnerReadiness(report);
@@ -1199,6 +1307,7 @@ function buildAnalyticsDigest(report: AnalyticsReport, kind: DigestKind): Analyt
     traffic,
     acquisition,
     funnel,
+    quizAbandonment,
     commerce,
     trends,
     partnerReadiness,
@@ -1231,6 +1340,7 @@ function buildAnalyticsDigest(report: AnalyticsReport, kind: DigestKind): Analyt
     traffic,
     acquisition,
     funnel,
+    quizAbandonment,
     commerce,
     trends,
     partnerReadiness,

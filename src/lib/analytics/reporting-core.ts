@@ -113,6 +113,54 @@ export interface AcquisitionLandingMetric {
   goals: Record<AcquisitionGoalKey, GoalConversionMetric>;
 }
 
+export type ReferralClassification =
+  | "external_referral"
+  | "self_referral"
+  | "unknown_referral";
+
+export interface ReferralBreakdownMetric {
+  domain: string | null;
+  classification: ReferralClassification;
+  visits: number;
+  users: number;
+  goals: Record<AcquisitionGoalKey, GoalConversionMetric>;
+}
+
+export interface QuizProgressionEvent {
+  windowKey: ReportWindowKey;
+  sessionId: string;
+  eventName: "quiz_started" | "quiz_step_completed" | "quiz_completed";
+  createdAt: string;
+  quizVersion: string | null;
+  stepIndex: number | null;
+  stepKey: string | null;
+  totalSteps: number | null;
+}
+
+export interface QuizStepAbandonmentMetric {
+  stepIndex: number;
+  stepKey: string;
+  totalSteps: number;
+  completedStepSessions: number;
+  abandonedAfterStepSessions: number;
+  stepToNextConversionRate: number | null;
+}
+
+export interface QuizVersionAbandonmentMetric {
+  quizVersion: string;
+  quizStartSessions: number;
+  quizCompletedSessions: number;
+  steps: QuizStepAbandonmentMetric[];
+}
+
+export interface QuizAbandonmentReport {
+  availableFrom: string | null;
+  windows: Record<
+    ReportWindowKey,
+    { versions: QuizVersionAbandonmentMetric[] }
+  >;
+}
+
 export const quizCompletionAcquisitionPolicy = {
   authority: "first_party_ordered_funnel",
   yandexGoalId: 545241567,
@@ -337,6 +385,125 @@ export function calculateRate(numerator: number, denominator: number) {
   }
 
   return round(Math.min(Math.max(numerator / denominator, 0), 1), 4);
+}
+
+export function buildQuizAbandonmentReport(
+  events: readonly QuizProgressionEvent[],
+): QuizAbandonmentReport {
+  const windows = reportWindowKeys.reduce<QuizAbandonmentReport["windows"]>(
+    (result, windowKey) => {
+      result[windowKey] = { versions: [] };
+      return result;
+    },
+    {} as QuizAbandonmentReport["windows"],
+  );
+  let availableFrom: string | null = null;
+
+  for (const windowKey of reportWindowKeys) {
+    const windowEvents = events.filter((event) => event.windowKey === windowKey);
+    const versions = [...new Set(windowEvents.flatMap((event) =>
+      event.quizVersion?.trim() ? [event.quizVersion.trim()] : [],
+    ))].sort();
+
+    for (const quizVersion of versions) {
+      const versionEvents = windowEvents.filter(
+        (event) => event.quizVersion?.trim() === quizVersion,
+      );
+      const stepEvents = versionEvents.filter(
+        (event) =>
+          event.eventName === "quiz_step_completed" &&
+          Number.isInteger(event.stepIndex) &&
+          (event.stepIndex ?? 0) >= 1 &&
+          Number.isInteger(event.totalSteps) &&
+          (event.totalSteps ?? 0) >= (event.stepIndex ?? 0) &&
+          Boolean(event.stepKey?.trim()),
+      );
+      if (stepEvents.length === 0) {
+        continue;
+      }
+
+      const totalStepValues = new Set(stepEvents.map((event) => event.totalSteps));
+      if (totalStepValues.size !== 1) {
+        continue;
+      }
+      const totalSteps = stepEvents[0]?.totalSteps ?? 0;
+      const descriptors = new Map<number, string>();
+      let descriptorConflict = false;
+      for (const event of stepEvents) {
+        const stepIndex = event.stepIndex ?? 0;
+        const stepKey = event.stepKey?.trim() ?? "";
+        const previous = descriptors.get(stepIndex);
+        if (previous && previous !== stepKey) {
+          descriptorConflict = true;
+          break;
+        }
+        descriptors.set(stepIndex, stepKey);
+        if (!availableFrom || event.createdAt < availableFrom) {
+          availableFrom = event.createdAt;
+        }
+      }
+      if (descriptorConflict) {
+        continue;
+      }
+
+      const completedQuizSessions = new Set(
+        versionEvents
+          .filter((event) => event.eventName === "quiz_completed")
+          .map((event) => event.sessionId),
+      );
+      const maxStepBySession = new Map<string, number>();
+      const sessionsByStep = new Map<number, Set<string>>();
+      for (const event of stepEvents) {
+        const stepIndex = event.stepIndex ?? 0;
+        const sessions = sessionsByStep.get(stepIndex) ?? new Set<string>();
+        sessions.add(event.sessionId);
+        sessionsByStep.set(stepIndex, sessions);
+        maxStepBySession.set(
+          event.sessionId,
+          Math.max(maxStepBySession.get(event.sessionId) ?? 0, stepIndex),
+        );
+      }
+
+      const steps = [...descriptors.entries()]
+        .sort(([left], [right]) => left - right)
+        .map(([stepIndex, stepKey]) => {
+          const completedSessions = sessionsByStep.get(stepIndex) ?? new Set<string>();
+          const nextSessions =
+            stepIndex === totalSteps
+              ? completedQuizSessions
+              : (sessionsByStep.get(stepIndex + 1) ?? new Set<string>());
+          const abandonedAfterStepSessions = [...completedSessions].filter(
+            (sessionId) =>
+              maxStepBySession.get(sessionId) === stepIndex &&
+              !completedQuizSessions.has(sessionId),
+          ).length;
+          return {
+            stepIndex,
+            stepKey,
+            totalSteps,
+            completedStepSessions: completedSessions.size,
+            abandonedAfterStepSessions,
+            stepToNextConversionRate: calculateRate(
+              nextSessions.size,
+              completedSessions.size,
+            ),
+          };
+        });
+
+      windows[windowKey].versions.push({
+        quizVersion,
+        quizStartSessions: new Set(
+          versionEvents
+            .filter((event) => event.eventName === "quiz_started")
+            .map((event) => event.sessionId),
+        ).size,
+        quizCompletedSessions: completedQuizSessions.size,
+        steps,
+      });
+    }
+  }
+
+  return { availableFrom, windows };
 }
 
 export function buildFunnelMetrics(input: FunnelAggregateInput): FunnelMetrics {

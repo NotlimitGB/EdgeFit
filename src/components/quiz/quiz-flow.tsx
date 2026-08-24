@@ -15,6 +15,12 @@ import {
   SAVED_RESULT_TOKEN_HEADER,
 } from "@/lib/saved-result-contract";
 import type { RecommendationResult } from "@/types/domain";
+import {
+  buildQuizStepCompletionPayload,
+  getQuizStepAfterNavigation,
+  QUIZ_STEPS,
+  QUIZ_VERSION,
+} from "@/lib/analytics/quiz-progression";
 import styles from "./quiz-flow.module.css";
 
 const STORAGE_KEY = "edgefit.quiz-draft";
@@ -24,8 +30,6 @@ const stepFields = [
   ["boardLinePreference", "skillLevel"],
   ["ridingStyle", "terrainPriority", "aggressiveness", "stanceType"],
 ] as const;
-const stepNames = ["body", "profile", "style"] as const;
-
 const stepDetails = [
   {
     shortLabel: "Параметры",
@@ -247,12 +251,12 @@ export function QuizFlow() {
 
   useEffect(() => {
     getOrCreateSessionId();
-    void trackEvent("quiz_started");
+    void trackEvent("quiz_started", { quiz_version: QUIZ_VERSION });
   }, []);
 
   useEffect(() => {
     void trackEvent("quiz_step_viewed", {
-      step_name: stepNames[step],
+      step_name: QUIZ_STEPS[step],
       step_number: step + 1,
     });
   }, [step]);
@@ -340,11 +344,9 @@ export function QuizFlow() {
         response.headers.get(SAVED_RESULT_TOKEN_HEADER),
       );
 
-      void trackEvent("quiz_step_completed", {
-        step_name: stepNames[step],
-        step_number: step + 1,
-      });
+      void trackEvent("quiz_step_completed", buildQuizStepCompletionPayload(step));
       void trackEvent("quiz_completed", {
+        quiz_version: QUIZ_VERSION,
         riding_style: payload.ridingStyle,
         terrain_priority: payload.terrainPriority,
         skill_level: payload.skillLevel,
@@ -377,12 +379,11 @@ export function QuizFlow() {
       return;
     }
 
-    void trackEvent("quiz_step_completed", {
-      step_name: stepNames[step],
-      step_number: step + 1,
-    });
-
-    setStep((current) => Math.min(current + 1, stepFields.length - 1));
+    const transition = getQuizStepAfterNavigation(step, "forward");
+    if (transition.completionPayload) {
+      void trackEvent("quiz_step_completed", transition.completionPayload);
+    }
+    setStep(transition.nextStep);
   }
 
   function previousStep() {
@@ -390,7 +391,7 @@ export function QuizFlow() {
       return;
     }
 
-    setStep((current) => Math.max(current - 1, 0));
+    setStep(getQuizStepAfterNavigation(step, "back").nextStep);
   }
 
   return (

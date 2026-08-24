@@ -30,3 +30,23 @@ export function getSiteMetadataBase() {
 export function getAbsoluteSiteUrl(path = "/") {
   return new URL(path, getSiteUrl()).toString();
 }
+
+export function getConfiguredSiteHosts() {
+  const values = [
+    DEFAULT_SITE_URL,
+    process.env.NEXT_PUBLIC_SITE_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL,
+    process.env.VERCEL_URL,
+  ];
+
+  return [...new Set(values.flatMap((value) => {
+    if (!value?.trim()) {
+      return [];
+    }
+    try {
+      return [new URL(normalizeSiteUrl(value)).hostname.toLowerCase().replace(/^www\./u, "")];
+    } catch {
+      return [];
+    }
+  }))].sort();
+}

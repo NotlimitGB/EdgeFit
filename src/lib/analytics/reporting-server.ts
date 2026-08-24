@@ -5,6 +5,7 @@ import { getMetrikaReporting } from "@/lib/analytics/metrika-reporting";
 import {
   ANALYTICS_REPORT_TIMEZONE,
   ANALYTICS_REPORT_VERSION,
+  buildQuizAbandonmentReport,
   buildFunnelMetrics,
   buildPartnerReadiness,
   buildReportWindows,
@@ -21,6 +22,8 @@ import {
   type EventMetrics,
   type FunnelMetrics,
   type MerchantEvidence,
+  type QuizAbandonmentReport,
+  type QuizProgressionEvent,
   type ReportWindowKey,
   type TopBoardMetric,
   type TopOfferMetric,
@@ -67,6 +70,12 @@ interface TopCommerceRow {
   merchant: string | null;
 }
 
+type QuizProgressionRow = QuizProgressionEvent;
+
+interface QuizStepAvailabilityRow {
+  availableFrom: string | null;
+}
+
 interface FirstPartyResult {
   sourceStatus: AnalyticsSourceStatus;
   historyDays: number | null;
@@ -81,6 +90,7 @@ interface FirstPartyResult {
   merchants30Days: MerchantEvidence[];
   topBoards30Days: TopBoardMetric[];
   topOffers30Days: TopOfferMetric[];
+  quizAbandonment: QuizAbandonmentReport;
 }
 
 function emptyEventMetrics(): EventMetrics {
@@ -126,6 +136,7 @@ function emptyFirstParty(status: AnalyticsSourceStatus): FirstPartyResult {
     merchants30Days: [],
     topBoards30Days: [],
     topOffers30Days: [],
+    quizAbandonment: buildQuizAbandonmentReport([]),
   };
 }
 
@@ -252,6 +263,78 @@ async function loadFirstPartyReport(
         left join sessions s on s."windowKey" = w."windowKey"
         group by w."windowKey"
         order by w."windowKey"
+      `;
+
+      const quizProgressionRows = await tx<QuizProgressionRow[]>`
+        with windows("windowKey", start_date, end_date) as (
+          values
+            ('yesterday', ${windows.yesterday.startDate}::date, ${windows.yesterday.endDate}::date),
+            ('last7Days', ${windows.last7Days.startDate}::date, ${windows.last7Days.endDate}::date),
+            ('previous7Days', ${windows.previous7Days.startDate}::date, ${windows.previous7Days.endDate}::date),
+            ('last30Days', ${windows.last30Days.startDate}::date, ${windows.last30Days.endDate}::date),
+            ('previous30Days', ${windows.previous30Days.startDate}::date, ${windows.previous30Days.endDate}::date)
+        ), normalized as (
+          select
+            w."windowKey",
+            e.session_id,
+            e.event_name,
+            e.created_at,
+            case
+              when jsonb_typeof(e.payload) = 'object' then e.payload
+              when jsonb_typeof(e.payload) = 'string'
+                and pg_input_is_valid(e.payload #>> '{}', 'jsonb')
+                then case
+                  when jsonb_typeof((e.payload #>> '{}')::jsonb) = 'object'
+                    then (e.payload #>> '{}')::jsonb
+                  else '{}'::jsonb
+                end
+              else '{}'::jsonb
+            end as properties
+          from windows w
+          join analytics_events e
+            on e.created_at >= (w.start_date::timestamp at time zone 'Europe/Moscow')
+           and e.created_at < ((w.end_date + 1)::timestamp at time zone 'Europe/Moscow')
+          where e.event_name in ('quiz_started', 'quiz_step_completed', 'quiz_completed')
+        )
+        select
+          "windowKey",
+          session_id as "sessionId",
+          event_name as "eventName",
+          created_at::text as "createdAt",
+          nullif(btrim(properties->>'quiz_version'), '') as "quizVersion",
+          case when properties->>'step_index' ~ '^[1-9][0-9]*$'
+            then (properties->>'step_index')::int else null end as "stepIndex",
+          nullif(btrim(properties->>'step_key'), '') as "stepKey",
+          case when properties->>'total_steps' ~ '^[1-9][0-9]*$'
+            then (properties->>'total_steps')::int else null end as "totalSteps"
+        from normalized
+        order by "windowKey", created_at, session_id, event_name
+      `;
+
+      const quizStepAvailabilityRows = await tx<QuizStepAvailabilityRow[]>`
+        with normalized as (
+          select
+            e.created_at,
+            case
+              when jsonb_typeof(e.payload) = 'object' then e.payload
+              when jsonb_typeof(e.payload) = 'string'
+                and pg_input_is_valid(e.payload #>> '{}', 'jsonb')
+                then case
+                  when jsonb_typeof((e.payload #>> '{}')::jsonb) = 'object'
+                    then (e.payload #>> '{}')::jsonb
+                  else '{}'::jsonb
+                end
+              else '{}'::jsonb
+            end as properties
+          from analytics_events e
+          where e.event_name = 'quiz_step_completed'
+        )
+        select min(created_at)::text as "availableFrom"
+        from normalized
+        where nullif(btrim(properties->>'quiz_version'), '') is not null
+          and properties->>'step_index' ~ '^[1-9][0-9]*$'
+          and nullif(btrim(properties->>'step_key'), '') is not null
+          and properties->>'total_steps' ~ '^[1-9][0-9]*$'
       `;
 
       const commerceRows = await tx<CommerceRow[]>`
@@ -435,6 +518,16 @@ async function loadFirstPartyReport(
       for (const row of funnelRows) {
         result.funnel[row.windowKey] = buildFunnelMetrics(row);
       }
+      result.quizAbandonment = buildQuizAbandonmentReport(
+        quizProgressionRows.map((row) => ({
+          ...row,
+          createdAt: new Date(row.createdAt).toISOString(),
+        })),
+      );
+      const stepAvailableFrom = quizStepAvailabilityRows[0]?.availableFrom;
+      result.quizAbandonment.availableFrom = stepAvailableFrom
+        ? new Date(stepAvailableFrom).toISOString()
+        : null;
       for (const row of commerceRows.filter((row) => row.kind === "total")) {
         if (row.windowKey) {
           result.commerce[row.windowKey] = {
@@ -526,11 +619,13 @@ function buildDataQuality({
   firstParty,
   metrikaStatus,
   acquisitionStatus,
+  referralBreakdownStatus,
   traffic30d,
 }: {
   firstParty: FirstPartyResult;
   metrikaStatus: AnalyticsSourceStatus;
   acquisitionStatus: AnalyticsSourceStatus;
+  referralBreakdownStatus: AnalyticsSourceStatus;
   traffic30d: TrafficMetrics | null;
 }) {
   const warnings: DataQualityWarning[] = [];
@@ -596,6 +691,12 @@ function buildDataQuality({
     add(
       "metrika_acquisition_unavailable",
       "Yandex Metrica acquisition conversions are not available for this report.",
+    );
+  }
+  if (referralBreakdownStatus.status === "unavailable") {
+    add(
+      "metrika_referral_breakdown_unavailable",
+      "Metrika referral-domain detail is not available for this report.",
     );
   }
   if (traffic30d && traffic30d.users > 0 && traffic30d.visits === 0) {
@@ -703,6 +804,7 @@ export async function getAnalyticsReport({ now = new Date() } = {}) {
       events: firstParty.events,
     },
     funnel: firstParty.funnel,
+    quizAbandonment: firstParty.quizAbandonment,
     commerce: {
       windows: firstParty.commerce,
       clickSources30Days: firstParty.clickSources30Days,
@@ -718,6 +820,7 @@ export async function getAnalyticsReport({ now = new Date() } = {}) {
       firstParty,
       metrikaStatus: metrika.sourceStatus,
       acquisitionStatus: metrika.acquisition.sourceStatus,
+      referralBreakdownStatus: metrika.acquisition.referralBreakdownStatus,
       traffic30d,
     }),
   };

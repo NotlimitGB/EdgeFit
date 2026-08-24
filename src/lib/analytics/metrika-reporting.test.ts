@@ -118,6 +118,37 @@ function okLandingResponse(
   );
 }
 
+function okReferralResponse() {
+  return new Response(
+    JSON.stringify({
+      data: [
+        {
+          dimensions: [{ id: "https://partner.example/path?token=redacted" }],
+          metrics: acquisitionMetrics({ visits: 12, users: 2 }),
+        },
+        {
+          dimensions: [{ id: "www.partner.example" }],
+          metrics: acquisitionMetrics({ visits: 4, users: 1 }),
+        },
+        {
+          dimensions: [{ name: "www.edge-fit.vercel.app" }],
+          metrics: acquisitionMetrics({ visits: 5, users: 3 }),
+        },
+        {
+          dimensions: [{ id: "not a domain" }],
+          metrics: acquisitionMetrics({ visits: 1, users: 1 }),
+        },
+      ],
+      sampled: false,
+      sample_share: 1,
+      sample_size: 22,
+      sample_space: 22,
+      data_lag: 0,
+    }),
+    { status: 200, headers: { "Content-Type": "application/json" } },
+  );
+}
+
 function responseForMetrikaRequest(input: URL | RequestInfo) {
   const url = new URL(String(input));
   const dimension = url.searchParams.get("dimensions");
@@ -126,6 +157,9 @@ function responseForMetrikaRequest(input: URL | RequestInfo) {
   }
   if (dimension === "ym:s:startURLPath") {
     return okLandingResponse();
+  }
+  if (dimension === "ym:s:lastsignReferalSource") {
+    return okReferralResponse();
   }
   return url.searchParams.get("metrics")?.split(",").length === 14
     ? okAcquisitionResponse()
@@ -150,10 +184,11 @@ describe("Metrika reporting", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("uses eight bounded requests and only the three approved goal IDs", async () => {
-    const fetchMock = vi.fn(async (input: URL | RequestInfo) =>
-      responseForMetrikaRequest(input),
-    );
+  it("uses nine bounded requests and only the three approved goal IDs", async () => {
+    const fetchMock = vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
+      void init;
+      return responseForMetrikaRequest(input);
+    });
     const result = await getMetrikaReporting({
       counterIdValue: "12345",
       tokenValue: "fake-token",
@@ -163,7 +198,7 @@ describe("Metrika reporting", () => {
     });
     expect(result.sourceStatus.status).toBe("ok");
     expect(result.acquisition.sourceStatus.status).toBe("ok");
-    expect(fetchMock).toHaveBeenCalledTimes(8);
+    expect(fetchMock).toHaveBeenCalledTimes(9);
 
     const calls = fetchMock.mock.calls.map(([input, init]) => ({
       url: new URL(String(input)),
@@ -175,8 +210,14 @@ describe("Metrika reporting", () => {
     const landingCall = calls.find(
       ({ url }) => url.searchParams.get("dimensions") === "ym:s:startURLPath",
     );
+    const referralCall = calls.find(
+      ({ url }) => url.searchParams.get("dimensions") === "ym:s:lastsignReferalSource",
+    );
     expect(sourceCall?.url.searchParams.get("limit")).toBe("20");
     expect(landingCall?.url.searchParams.get("limit")).toBe("10");
+    expect(referralCall?.url.searchParams.get("filters")).toBe(
+      "ym:s:lastsignTrafficSource=='referral'",
+    );
     expect(sourceCall?.url.searchParams.get("sort")).toBe("-ym:s:visits");
     expect(calls[0]?.url.origin + calls[0]?.url.pathname).toBe(
       "https://api-metrika.yandex.net/stat/v1/data",
@@ -190,7 +231,7 @@ describe("Metrika reporting", () => {
     );
     expect(Math.max(...metricLists.map((metrics) => metrics.length))).toBe(14);
     const acquisitionMetricsUsed = metricLists.filter((metrics) => metrics.length === 14);
-    expect(acquisitionMetricsUsed).toHaveLength(3);
+    expect(acquisitionMetricsUsed).toHaveLength(4);
     for (const metrics of acquisitionMetricsUsed) {
       const joined = metrics.join(",");
       expect(joined).toContain("goal545241547");
@@ -222,6 +263,8 @@ describe("Metrika reporting", () => {
         requestOrder.push("sources30Days");
       } else if (dimension === "ym:s:startURLPath") {
         requestOrder.push("landingPages30Days");
+      } else if (dimension === "ym:s:lastsignReferalSource") {
+        requestOrder.push("referralBreakdown");
       } else if (url.searchParams.get("metrics")?.split(",").length === 14) {
         requestOrder.push("acquisition7Days");
       } else {
@@ -250,12 +293,13 @@ describe("Metrika reporting", () => {
 
     expect(METRIKA_MAX_CONCURRENCY).toBe(1);
     expect(maxConcurrentRequests).toBe(1);
-    expect(fetchMock).toHaveBeenCalledTimes(8);
+    expect(fetchMock).toHaveBeenCalledTimes(9);
     expect(requestOrder).toEqual([
       ...reportWindowKeys.map((key) => `traffic:${key}`),
       "sources30Days",
       "acquisition7Days",
       "landingPages30Days",
+      "referralBreakdown",
     ]);
     expect(result.sourceStatus.status).toBe("ok");
     expect(result.acquisition.sourceStatus.status).toBe("ok");
@@ -344,6 +388,68 @@ describe("Metrika reporting", () => {
     );
   });
 
+  it("reports privacy-safe referral domains with explicit self-referral classification", async () => {
+    const result = await getMetrikaReporting({
+      counterIdValue: "12345",
+      tokenValue: "fake-token",
+      windows,
+      fetchImpl: vi.fn(async (input: URL | RequestInfo) =>
+        responseForMetrikaRequest(input),
+      ),
+      selfReferralHosts: ["edge-fit.vercel.app"],
+    });
+
+    expect(result.acquisition.referralBreakdownStatus).toEqual({ status: "ok" });
+    expect(result.acquisition.referralBreakdown).toEqual([
+      expect.objectContaining({
+        domain: "partner.example",
+        classification: "external_referral",
+        users: 3,
+        visits: 16,
+      }),
+      expect.objectContaining({
+        domain: "edge-fit.vercel.app",
+        classification: "self_referral",
+        users: 3,
+        visits: 5,
+      }),
+      expect.objectContaining({
+        domain: null,
+        classification: "unknown_referral",
+        users: 1,
+        visits: 1,
+      }),
+    ]);
+    expect(JSON.stringify(result.acquisition.referralBreakdown)).not.toContain("token");
+    expect(result.acquisition.referralSampling.status).toBe("unsampled");
+  });
+
+  it("keeps acquisition data when only referral detail is unavailable", async () => {
+    const fetchMock = vi.fn(async (input: URL | RequestInfo) => {
+      const url = new URL(String(input));
+      if (url.searchParams.get("dimensions") === "ym:s:lastsignReferalSource") {
+        return new Response("down", { status: 503 });
+      }
+      return responseForMetrikaRequest(input);
+    });
+    const result = await getMetrikaReporting({
+      counterIdValue: "12345",
+      tokenValue: "fake-token",
+      windows,
+      fetchImpl: fetchMock,
+      sleepImpl: vi.fn(async () => undefined),
+    });
+
+    expect(result.sourceStatus.status).toBe("ok");
+    expect(result.acquisition.sourceStatus.status).toBe("ok");
+    expect(result.acquisition.sources30Days.length).toBeGreaterThan(0);
+    expect(result.acquisition.referralBreakdown).toEqual([]);
+    expect(result.acquisition.referralBreakdownStatus).toEqual({
+      status: "unavailable",
+      diagnostic: { category: "upstream", httpStatus: 503 },
+    });
+  });
+
   it("normalizes source-label mojibake consistently without changing source IDs", async () => {
     const malformedLabel = "РџРµСЂРµС…РѕРґС‹ РёР· РїРѕРёСЃРєРѕРІС‹С… СЃРёСЃС‚РµРј";
     const fetchMock = vi.fn(async (input: URL | RequestInfo) => {
@@ -417,7 +523,7 @@ describe("Metrika reporting", () => {
       diagnostic: { category: "upstream", httpStatus: 503 },
     });
     expect(result.acquisition.last30Days).toBeNull();
-    expect(fetchMock).toHaveBeenCalledTimes(10);
+    expect(fetchMock).toHaveBeenCalledTimes(11);
   });
 
   it("marks acquisition unavailable for malformed goal totals", async () => {
