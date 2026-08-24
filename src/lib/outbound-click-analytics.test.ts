@@ -46,6 +46,54 @@ describe("outbound click analytics", () => {
       size_label: null,
       source_size_label: null,
       width_type: null,
+      product_id: null,
+      product_slug: "offer",
+      brand: null,
+      model_name: null,
+      recommendation_rank: null,
+      recommendation_score: null,
+      store_code: null,
+      source_product_id: null,
+      result_variant: null,
+      algorithm_version: null,
+    });
+  });
+
+  it("preserves exact recommendation and merchant provenance", () => {
+    expect(
+      buildOutboundClickAnalyticsPayload({
+        boardSlug: "jones-frontier-2-0",
+        offerSlug: "jones-frontier-2-0",
+        destinationUrl:
+          "https://www.traektoria.ru/product/1890649_snoubord-jones-frontier-2-0/",
+        from: "result-top",
+        placement: "primary_recommendation",
+        sizeCm: 156,
+        sizeLabel: "156W",
+        productId: "product-1",
+        productSlug: "jones-frontier-2-0",
+        brand: "Jones",
+        modelName: "Frontier 2.0",
+        recommendationRank: 1,
+        recommendationScore: 92,
+        storeCode: "traektoria",
+        sourceProductId: "1890649",
+        resultVariant: "session",
+        algorithmVersion: "v1.6.4",
+      }),
+    ).toMatchObject({
+      product_id: "product-1",
+      product_slug: "jones-frontier-2-0",
+      brand: "Jones",
+      model_name: "Frontier 2.0",
+      size_label: "156W",
+      recommendation_rank: 1,
+      recommendation_score: 92,
+      placement: "primary_recommendation",
+      store_code: "traektoria",
+      source_product_id: "1890649",
+      result_variant: "session",
+      algorithm_version: "v1.6.4",
     });
   });
 
@@ -68,6 +116,7 @@ describe("outbound click analytics", () => {
     ).toMatchObject({
       board_slug: "legacy-board",
       offer_slug: "bataleon-beyond-medals-wide",
+      product_slug: "bataleon-beyond-medals-wide",
     });
   });
 

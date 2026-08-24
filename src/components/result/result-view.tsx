@@ -27,17 +27,22 @@ import { buildRecommendationDecisionGuide } from "@/lib/recommendation/decision-
 import { buildRecommendationPriorityImpact } from "@/lib/recommendation/priority-impact";
 import { buildRecommendationTrustSummary } from "@/lib/recommendation/trust-summary";
 import { getOrCreateSessionId } from "@/lib/session-id";
+import { buildOutboundClickAnalyticsPayload } from "@/lib/outbound-click-analytics";
 import {
-  buildStoreRedirectHref,
   buildStoreRedirectHrefForSize,
+  getStoreDestinationProvenance,
   getStoreDestinationPresentation,
+  resolveProductStoreUrl,
 } from "@/lib/store-redirect";
 import {
   getSavedResultPath,
   RECOMMENDATION_RESULT_STORAGE_KEY,
   SAVED_RESULT_TOKEN_STORAGE_KEY,
 } from "@/lib/saved-result-contract";
-import type { RecommendationResult } from "@/types/domain";
+import type {
+  RecommendationMatch,
+  RecommendationResult,
+} from "@/types/domain";
 import styles from "./result-view.module.css";
 
 let cachedRawRecommendation: string | null | undefined;
@@ -56,6 +61,80 @@ const riskClasses: Record<RecommendationResult["bootDragRisk"], string> = {
   medium: styles.riskMedium,
   high: styles.riskHigh,
 };
+
+type ResultStorePlacement =
+  | "primary_recommendation"
+  | "alternative_recommendation"
+  | "decision_guide"
+  | "recommendation_comparison"
+  | "caution_recommendation";
+
+interface BuildResultStoreClickActionArgs {
+  match: RecommendationMatch;
+  source: string;
+  placement: ResultStorePlacement;
+  recommendationRank: number | null;
+  algorithmVersion: string;
+  isSavedMode: boolean;
+  resultPayload?: Readonly<Record<string, unknown>>;
+}
+
+export function buildResultStoreClickAction({
+  match,
+  source,
+  placement,
+  recommendationRank,
+  algorithmVersion,
+  isSavedMode,
+  resultPayload,
+}: BuildResultStoreClickActionArgs) {
+  const sizeLabel = getBoardSizeLabel(match.size);
+  const destinationUrl = resolveProductStoreUrl(match.product);
+  const destination = getStoreDestinationProvenance(destinationUrl);
+  const recommendationContext = isSavedMode
+    ? {}
+    : {
+        recommendationRank,
+        recommendationScore: match.score,
+        resultVariant: "session",
+        algorithmVersion,
+      };
+
+  return {
+    href: buildStoreRedirectHrefForSize(match.product.slug, match.size, {
+      from: source,
+      placement,
+      sourceSizeLabel: match.size.sizeLabel,
+      ...recommendationContext,
+    }),
+    analyticsPayload: isSavedMode
+      ? undefined
+      : {
+          ...(resultPayload ?? {}),
+          ...buildOutboundClickAnalyticsPayload({
+          boardSlug: match.product.slug,
+          offerSlug: match.product.slug,
+          destinationUrl: destination.destinationUrl,
+          from: source,
+          placement,
+          sizeCm: match.size.sizeCm,
+          sizeLabel,
+          sourceSizeLabel: match.size.sizeLabel,
+          widthType: match.size.widthType,
+          productId: match.product.id,
+          productSlug: match.product.slug,
+          brand: match.product.brand,
+          modelName: match.product.modelName,
+          recommendationRank,
+          recommendationScore: match.score,
+          storeCode: destination.storeCode,
+          sourceProductId: destination.sourceProductId,
+          resultVariant: "session",
+          algorithmVersion,
+          }),
+        },
+  };
+}
 
 interface EmailLeadResponse {
   message: string;
@@ -305,25 +384,23 @@ export function ResultView({
     }
   }
 
-  function buildProductClickPayload(
-    placement: "recommended" | "avoid",
-    boardSlug: string,
-    sizeCm?: number,
-    sizeLabel?: string,
-    widthType?: string,
+  function buildProductClickAction(
+    match: RecommendationMatch,
+    location: string,
+    placement: ResultStorePlacement,
+    recommendationRank: number | null,
   ) {
-    if (isSavedMode) {
-      return undefined;
-    }
+    const source = getStoreSource(location);
 
-    return {
+    return buildResultStoreClickAction({
+      match,
+      source,
       placement,
-      board_slug: boardSlug,
-      size_cm: sizeCm,
-      size_label: sizeLabel,
-      width_type: widthType,
-      ...buildResultPayload(activeRecommendation),
-    };
+      recommendationRank,
+      algorithmVersion: activeRecommendation.algorithmVersion,
+      isSavedMode,
+      resultPayload: buildResultPayload(activeRecommendation),
+    });
   }
 
   function handleRecalculationStart() {
@@ -538,32 +615,31 @@ export function ResultView({
 
           {topBoards.length > 0 ? (
             <div className={styles.recommendationGrid}>
-              {topBoards.map((match, index) => (
-                <ProductRecommendationCard
-                  key={`${match.product.id}-${getBoardSizeLabel(match.size)}`}
-                  match={match}
-                  position={index + 1}
-                  variant={index === 0 ? "featured" : "recommended"}
-                  shopHref={buildStoreRedirectHrefForSize(
-                    match.product.slug,
-                    match.size,
-                    {
-                      from: getStoreSource("top"),
-                      placement: "recommended",
-                    },
-                  )}
-                  shopAnalyticsPayload={buildProductClickPayload(
-                    "recommended",
-                    match.product.slug,
-                    match.size.sizeCm,
-                    getBoardSizeLabel(match.size),
-                    match.size.widthType,
-                  )}
-                  commercialPresentation={getCommercialPresentation(
-                    match.product.affiliateUrl,
-                  )}
-                />
-              ))}
+              {topBoards.map((match, index) => {
+                const rank = index + 1;
+                const storeAction = buildProductClickAction(
+                  match,
+                  "top",
+                  rank === 1
+                    ? "primary_recommendation"
+                    : "alternative_recommendation",
+                  rank,
+                );
+
+                return (
+                  <ProductRecommendationCard
+                    key={`${match.product.id}-${getBoardSizeLabel(match.size)}`}
+                    match={match}
+                    position={rank}
+                    variant={index === 0 ? "featured" : "recommended"}
+                    shopHref={storeAction.href}
+                    shopAnalyticsPayload={storeAction.analyticsPayload}
+                    commercialPresentation={getCommercialPresentation(
+                      match.product.affiliateUrl,
+                    )}
+                  />
+                );
+              })}
             </div>
           ) : (
             <div className={styles.emptyRecommendations}>
@@ -601,7 +677,21 @@ export function ResultView({
               id="decision-title"
             />
             <div className={styles.decisionGuideGrid}>
-              {decisionGuideItems.map((item, index) => (
+              {decisionGuideItems.map((item, index) => {
+                const recommendationIndex = activeRecommendation.recommendedBoards.findIndex(
+                  (match) => match.product.slug === item.boardSlug,
+                );
+                const match = activeRecommendation.recommendedBoards[recommendationIndex];
+                const storeAction = match
+                  ? buildProductClickAction(
+                      match,
+                      "decision-guide",
+                      "decision_guide",
+                      recommendationIndex + 1,
+                    )
+                  : null;
+
+                return (
                 <article key={item.id} className={styles.decisionGuideItem}>
                   <span className={styles.decisionNumber} aria-hidden="true">
                     {String(index + 1).padStart(2, "0")}
@@ -619,29 +709,23 @@ export function ResultView({
                       >
                         О модели
                       </Link>
-                      <TrackedStoreLink
-                        href={buildStoreRedirectHref(item.boardSlug, {
-                          from: getStoreSource("decision-guide"),
-                          placement: item.id,
-                          sizeLabel: item.sizeLabel,
-                        })}
-                        analyticsPayload={buildProductClickPayload(
-                          "recommended",
-                          item.boardSlug,
-                          undefined,
-                          item.sizeLabel,
-                        )}
-                        className={publicStyles.primaryAction}
-                      >
-                        {
-                          getCommercialPresentation(item.affiliateUrl)
-                            .actionLabel
-                        }
-                      </TrackedStoreLink>
+                      {storeAction ? (
+                        <TrackedStoreLink
+                          href={storeAction.href}
+                          analyticsPayload={storeAction.analyticsPayload}
+                          className={publicStyles.primaryAction}
+                        >
+                          {
+                            getCommercialPresentation(item.affiliateUrl)
+                              .actionLabel
+                          }
+                        </TrackedStoreLink>
+                      ) : null}
                     </div>
                   </div>
                 </article>
-              ))}
+                );
+              })}
             </div>
 
             {comparisonBoards.length > 0 ? (
@@ -651,7 +735,15 @@ export function ResultView({
                   <p>Роль, размер и fit — без повторения полных карточек.</p>
                 </div>
                 <div className={styles.comparisonRows}>
-                  {comparisonBoards.map((match, index) => (
+                  {comparisonBoards.map((match, index) => {
+                    const storeAction = buildProductClickAction(
+                      match,
+                      "comparison",
+                      "recommendation_comparison",
+                      index + 1,
+                    );
+
+                    return (
                     <article
                       key={`${match.product.id}-${match.size.sizeCm}-comparison`}
                       className={styles.comparisonRow}
@@ -677,21 +769,8 @@ export function ResultView({
                           О модели
                         </Link>
                         <TrackedStoreLink
-                          href={buildStoreRedirectHrefForSize(
-                            match.product.slug,
-                            match.size,
-                            {
-                              from: getStoreSource("comparison"),
-                              placement: "recommended",
-                            },
-                          )}
-                          analyticsPayload={buildProductClickPayload(
-                            "recommended",
-                            match.product.slug,
-                            match.size.sizeCm,
-                            getBoardSizeLabel(match.size),
-                            match.size.widthType,
-                          )}
+                          href={storeAction.href}
+                          analyticsPayload={storeAction.analyticsPayload}
                           className={styles.textActionStrong}
                         >
                           {getCommercialPresentation(match.product.affiliateUrl)
@@ -699,7 +778,8 @@ export function ResultView({
                         </TrackedStoreLink>
                       </div>
                     </article>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ) : null}
@@ -860,32 +940,29 @@ export function ResultView({
               id="extra-title"
             />
             <div className={styles.recommendationGrid}>
-              {extraRecommendedBoards.map((match, index) => (
-                <ProductRecommendationCard
-                  key={`${match.product.id}-${getBoardSizeLabel(match.size)}`}
-                  match={match}
-                  position={index + 4}
-                  variant="extra"
-                  shopHref={buildStoreRedirectHrefForSize(
-                    match.product.slug,
-                    match.size,
-                    {
-                      from: getStoreSource("extra"),
-                      placement: "recommended",
-                    },
-                  )}
-                  shopAnalyticsPayload={buildProductClickPayload(
-                    "recommended",
-                    match.product.slug,
-                    match.size.sizeCm,
-                    getBoardSizeLabel(match.size),
-                    match.size.widthType,
-                  )}
-                  commercialPresentation={getCommercialPresentation(
-                    match.product.affiliateUrl,
-                  )}
-                />
-              ))}
+              {extraRecommendedBoards.map((match, index) => {
+                const rank = index + 4;
+                const storeAction = buildProductClickAction(
+                  match,
+                  "extra",
+                  "alternative_recommendation",
+                  rank,
+                );
+
+                return (
+                  <ProductRecommendationCard
+                    key={`${match.product.id}-${getBoardSizeLabel(match.size)}`}
+                    match={match}
+                    position={rank}
+                    variant="extra"
+                    shopHref={storeAction.href}
+                    shopAnalyticsPayload={storeAction.analyticsPayload}
+                    commercialPresentation={getCommercialPresentation(
+                      match.product.affiliateUrl,
+                    )}
+                  />
+                );
+              })}
             </div>
           </section>
         ) : null}
@@ -899,32 +976,28 @@ export function ResultView({
               id="careful-title"
             />
             <div className={styles.recommendationGrid}>
-              {recommendation.avoidBoards.map((match, index) => (
-                <ProductRecommendationCard
-                  key={`${match.product.id}-${getBoardSizeLabel(match.size)}`}
-                  match={match}
-                  position={index + 1}
-                  variant="careful"
-                  shopHref={buildStoreRedirectHrefForSize(
-                    match.product.slug,
-                    match.size,
-                    {
-                      from: getStoreSource("avoid"),
-                      placement: "avoid",
-                    },
-                  )}
-                  shopAnalyticsPayload={buildProductClickPayload(
-                    "avoid",
-                    match.product.slug,
-                    match.size.sizeCm,
-                    getBoardSizeLabel(match.size),
-                    match.size.widthType,
-                  )}
-                  commercialPresentation={getCommercialPresentation(
-                    match.product.affiliateUrl,
-                  )}
-                />
-              ))}
+              {recommendation.avoidBoards.map((match, index) => {
+                const storeAction = buildProductClickAction(
+                  match,
+                  "avoid",
+                  "caution_recommendation",
+                  null,
+                );
+
+                return (
+                  <ProductRecommendationCard
+                    key={`${match.product.id}-${getBoardSizeLabel(match.size)}`}
+                    match={match}
+                    position={index + 1}
+                    variant="careful"
+                    shopHref={storeAction.href}
+                    shopAnalyticsPayload={storeAction.analyticsPayload}
+                    commercialPresentation={getCommercialPresentation(
+                      match.product.affiliateUrl,
+                    )}
+                  />
+                );
+              })}
             </div>
           </section>
         ) : null}

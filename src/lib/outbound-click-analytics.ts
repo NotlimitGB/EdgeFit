@@ -8,6 +8,16 @@ export interface BuildOutboundClickAnalyticsPayloadArgs {
   sizeLabel?: string | null;
   sourceSizeLabel?: string | null;
   widthType?: string | null;
+  productId?: string | null;
+  productSlug?: string | null;
+  brand?: string | null;
+  modelName?: string | null;
+  recommendationRank?: number | null;
+  recommendationScore?: number | null;
+  storeCode?: string | null;
+  sourceProductId?: string | null;
+  resultVariant?: string | null;
+  algorithmVersion?: string | null;
 }
 
 export interface OutboundClickAnalyticsPayload
@@ -21,6 +31,16 @@ export interface OutboundClickAnalyticsPayload
   size_label: string | null;
   source_size_label: string | null;
   width_type: string | null;
+  product_id: string | null;
+  product_slug: string;
+  brand: string | null;
+  model_name: string | null;
+  recommendation_rank: number | null;
+  recommendation_score: number | null;
+  store_code: string | null;
+  source_product_id: string | null;
+  result_variant: string | null;
+  algorithm_version: string | null;
 }
 
 export function buildOutboundClickAnalyticsPayload({
@@ -33,6 +53,16 @@ export function buildOutboundClickAnalyticsPayload({
   sizeLabel,
   sourceSizeLabel,
   widthType,
+  productId,
+  productSlug,
+  brand,
+  modelName,
+  recommendationRank,
+  recommendationScore,
+  storeCode,
+  sourceProductId,
+  resultVariant,
+  algorithmVersion,
 }: BuildOutboundClickAnalyticsPayloadArgs): OutboundClickAnalyticsPayload {
   return {
     board_slug: boardSlug,
@@ -44,6 +74,16 @@ export function buildOutboundClickAnalyticsPayload({
     size_label: sizeLabel ?? null,
     source_size_label: sourceSizeLabel ?? null,
     width_type: widthType ?? null,
+    product_id: productId ?? null,
+    product_slug: productSlug ?? offerSlug,
+    brand: brand ?? null,
+    model_name: modelName ?? null,
+    recommendation_rank: recommendationRank ?? null,
+    recommendation_score: recommendationScore ?? null,
+    store_code: storeCode ?? null,
+    source_product_id: sourceProductId ?? null,
+    result_variant: resultVariant ?? null,
+    algorithm_version: algorithmVersion ?? null,
   };
 }
 
@@ -88,6 +128,7 @@ export function enrichStoreClickClientPayload(
   const enrichedPayload: Record<string, unknown> = {
     ...analyticsPayload,
     offer_slug: redirect.offerSlug,
+    product_slug: redirect.offerSlug,
   };
   const sourceSizeLabel = redirect.url.searchParams
     .get("sourceSizeLabel")

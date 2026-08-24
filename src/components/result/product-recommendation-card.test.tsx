@@ -30,6 +30,7 @@ vi.mock("@/components/analytics/tracked-store-link", () => ({
 }));
 
 import { ProductRecommendationCard } from "@/components/result/product-recommendation-card";
+import { buildResultStoreClickAction } from "@/components/result/result-view";
 import { getStoreDestinationPresentation } from "@/lib/store-redirect";
 
 const match: RecommendationMatch = {
@@ -105,6 +106,35 @@ function renderCard(
 }
 
 describe("ProductRecommendationCard commercial presentation", () => {
+  it("renders the exact result provenance on the merchant CTA", () => {
+    const storeAction = buildResultStoreClickAction({
+      match,
+      source: "result-top",
+      placement: "primary_recommendation",
+      recommendationRank: 1,
+      algorithmVersion: "v1.6.4",
+      isSavedMode: false,
+    });
+    const markup = renderToStaticMarkup(
+      <ProductRecommendationCard
+        match={match}
+        position={1}
+        variant="featured"
+        shopHref={storeAction.href}
+        shopAnalyticsPayload={storeAction.analyticsPayload}
+        commercialPresentation={getStoreDestinationPresentation(
+          match.product.affiliateUrl,
+        )}
+      />,
+    );
+
+    expect(markup).toContain("primary_recommendation");
+    expect(markup).toContain("product-1");
+    expect(markup).toContain("jones-mountain-twin");
+    expect(markup).toContain("source_product_id");
+    expect(markup).toContain("recommendationRank=1");
+  });
+
   it("shows a supported direct merchant with cautious price semantics", () => {
     const markup = renderCard("https://traektoria.ru/product/1_board/");
 

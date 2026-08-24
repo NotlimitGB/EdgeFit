@@ -7,7 +7,10 @@ import { buildOutboundClickAnalyticsPayload } from "@/lib/outbound-click-analyti
 import { getProductBySlug } from "@/lib/products";
 import { isSavedResultStoreSource } from "@/lib/saved-result-contract";
 import { SESSION_COOKIE_NAME } from "@/lib/session-id";
-import { resolveProductStoreUrl } from "@/lib/store-redirect";
+import {
+  getStoreDestinationProvenance,
+  resolveProductStoreUrl,
+} from "@/lib/store-redirect";
 
 const outboundClickQuerySchema = z.object({
   from: z.string().trim().max(120).optional(),
@@ -16,6 +19,10 @@ const outboundClickQuerySchema = z.object({
   sizeLabel: z.string().trim().max(40).optional(),
   sourceSizeLabel: z.string().trim().max(40).optional(),
   widthType: z.string().trim().max(40).optional(),
+  recommendationRank: z.coerce.number().int().positive().max(100).optional(),
+  recommendationScore: z.coerce.number().finite().optional(),
+  resultVariant: z.string().trim().max(40).optional(),
+  algorithmVersion: z.string().trim().max(40).optional(),
 });
 
 function getFallbackRedirectUrl(request: Request) {
@@ -81,22 +88,41 @@ export async function GET(
       );
     }
 
-    await saveAnalyticsEvent({
-      sessionId,
-      eventName: "product_clicked",
-      pagePath: await getPagePathFromRequest(payload.data.from),
-      payload: buildOutboundClickAnalyticsPayload({
-        boardSlug: canonicalIdentity.boardSlug,
-        offerSlug: canonicalIdentity.offerSlug,
-        destinationUrl,
-        from: payload.data.from,
-        placement: payload.data.placement,
-        sizeCm: payload.data.sizeCm,
-        sizeLabel: payload.data.sizeLabel,
-        sourceSizeLabel: payload.data.sourceSizeLabel,
-        widthType: payload.data.widthType,
-      }),
-    });
+    const destination = getStoreDestinationProvenance(destinationUrl);
+
+    try {
+      await saveAnalyticsEvent({
+        sessionId,
+        eventName: "product_clicked",
+        pagePath: await getPagePathFromRequest(payload.data.from),
+        payload: buildOutboundClickAnalyticsPayload({
+          boardSlug: canonicalIdentity.boardSlug,
+          offerSlug: canonicalIdentity.offerSlug,
+          destinationUrl: destination.destinationUrl,
+          from: payload.data.from,
+          placement: payload.data.placement,
+          sizeCm: payload.data.sizeCm,
+          sizeLabel: payload.data.sizeLabel,
+          sourceSizeLabel: payload.data.sourceSizeLabel,
+          widthType: payload.data.widthType,
+          productId: product.id,
+          productSlug: product.slug,
+          brand: product.brand,
+          modelName: product.modelName,
+          recommendationRank: payload.data.recommendationRank,
+          recommendationScore: payload.data.recommendationScore,
+          storeCode: destination.storeCode,
+          sourceProductId: destination.sourceProductId,
+          resultVariant: payload.data.resultVariant,
+          algorithmVersion: payload.data.algorithmVersion,
+        }),
+      });
+    } catch (error) {
+      console.error("Outbound click analytics persistence failed.", {
+        category: "outbound_click_analytics_failed",
+        errorName: error instanceof Error ? error.name : "UnknownError",
+      });
+    }
   }
 
   return NextResponse.redirect(destinationUrl);

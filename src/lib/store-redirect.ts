@@ -10,12 +10,23 @@ interface BuildStoreRedirectHrefArgs {
   sizeLabel?: string | null;
   sourceSizeLabel?: string | null;
   widthType?: WidthType;
+  recommendationRank?: number | null;
+  recommendationScore?: number | null;
+  resultVariant?: string | null;
+  algorithmVersion?: string | null;
 }
 
 type SupportedStoreDestination = {
+  storeCode: "trial-sport" | "traektoria";
   merchantLabel: "Trial Sport" | "Траектория";
   actionLabel: string;
 };
+
+export interface StoreDestinationProvenance {
+  destinationUrl: string;
+  storeCode: SupportedStoreDestination["storeCode"] | null;
+  sourceProductId: string | null;
+}
 
 export type StoreDestinationMode = "direct" | "fallback-search" | "saved";
 
@@ -31,18 +42,22 @@ const SUPPORTED_STORE_DESTINATIONS: Readonly<
   Record<string, SupportedStoreDestination>
 > = {
   "trial-sport.ru": {
+    storeCode: "trial-sport",
     merchantLabel: "Trial Sport",
     actionLabel: "Открыть в Trial Sport",
   },
   "www.trial-sport.ru": {
+    storeCode: "trial-sport",
     merchantLabel: "Trial Sport",
     actionLabel: "Открыть в Trial Sport",
   },
   "traektoria.ru": {
+    storeCode: "traektoria",
     merchantLabel: "Траектория",
     actionLabel: "Открыть в Траектории",
   },
   "www.traektoria.ru": {
+    storeCode: "traektoria",
     merchantLabel: "Траектория",
     actionLabel: "Открыть в Траектории",
   },
@@ -130,6 +145,41 @@ export function resolveProductStoreUrl(
   return buildTrialSportSearchUrl(`${product.brand} ${product.modelName}`);
 }
 
+export function getStoreDestinationProvenance(
+  destinationUrl: string,
+): StoreDestinationProvenance {
+  const hostname = getHostname(destinationUrl);
+  const destination = hostname
+    ? SUPPORTED_STORE_DESTINATIONS[hostname] ?? null
+    : null;
+
+  if (!destination) {
+    return {
+      destinationUrl,
+      storeCode: null,
+      sourceProductId: null,
+    };
+  }
+
+  let sourceProductId: string | null = null;
+
+  try {
+    const url = new URL(destinationUrl);
+    sourceProductId =
+      destination.storeCode === "traektoria"
+        ? url.pathname.match(/\/product\/(\d+)_/u)?.[1] ?? null
+        : url.pathname.match(/\/goods\/(?:\d+\/)?(\d+)\.html$/u)?.[1] ?? null;
+  } catch {
+    // Malformed URLs are already classified as unsupported above.
+  }
+
+  return {
+    destinationUrl,
+    storeCode: destination.storeCode,
+    sourceProductId,
+  };
+}
+
 export function buildStoreRedirectHref(
   productSlugOrArgs: string | BuildStoreRedirectHrefArgs,
   maybeArgs: Omit<BuildStoreRedirectHrefArgs, "productSlug"> = {},
@@ -142,6 +192,10 @@ export function buildStoreRedirectHref(
     sizeLabel,
     sourceSizeLabel,
     widthType,
+    recommendationRank,
+    recommendationScore,
+    resultVariant,
+    algorithmVersion,
   } =
     typeof productSlugOrArgs === "string"
       ? { productSlug: productSlugOrArgs, ...maybeArgs }
@@ -170,6 +224,22 @@ export function buildStoreRedirectHref(
 
   if (widthType) {
     searchParams.set("widthType", widthType);
+  }
+
+  if (recommendationRank != null) {
+    searchParams.set("recommendationRank", String(recommendationRank));
+  }
+
+  if (recommendationScore != null) {
+    searchParams.set("recommendationScore", String(recommendationScore));
+  }
+
+  if (resultVariant) {
+    searchParams.set("resultVariant", resultVariant);
+  }
+
+  if (algorithmVersion) {
+    searchParams.set("algorithmVersion", algorithmVersion);
   }
 
   const query = searchParams.toString();

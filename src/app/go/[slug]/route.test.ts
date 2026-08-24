@@ -53,6 +53,7 @@ import { GET } from "@/app/go/[slug]/route";
 describe("saved-result store redirect privacy", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.canonicalLookup.mockResolvedValue(undefined);
   });
 
   it("keeps the exact merchant redirect without server click persistence", async () => {
@@ -67,5 +68,74 @@ describe("saved-result store redirect privacy", () => {
     expect(response.headers.get("location")).toBe(product.affiliateUrl);
     expect(mocks.canonicalLookup).not.toHaveBeenCalled();
     expect(mocks.saveAnalyticsEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe("store click provenance", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.canonicalLookup.mockResolvedValue({
+      boardSlug: "test-family",
+      offerSlug: "test-board",
+    });
+  });
+
+  it("persists one server-authoritative first-party event and redirects", async () => {
+    const response = await GET(
+      new Request(
+        "https://edge-fit.test/go/test-board?from=result-top&placement=primary_recommendation&sizeCm=156&sizeLabel=156W&widthType=wide&recommendationRank=1&recommendationScore=92&resultVariant=session&algorithmVersion=v1.6.4",
+      ),
+      { params: Promise.resolve({ slug: "test-board" }) },
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(product.affiliateUrl);
+    expect(mocks.saveAnalyticsEvent).toHaveBeenCalledOnce();
+    expect(mocks.saveAnalyticsEvent).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      eventName: "product_clicked",
+      pagePath: "/outbound/result-top",
+      payload: expect.objectContaining({
+        board_slug: "test-family",
+        offer_slug: "test-board",
+        product_id: "product-1",
+        product_slug: "test-board",
+        brand: "Test",
+        model_name: "Board",
+        size_label: "156W",
+        recommendation_rank: 1,
+        recommendation_score: 92,
+        placement: "primary_recommendation",
+        store_code: "trial-sport",
+        source_product_id: "1",
+        destination_url: product.affiliateUrl,
+        result_variant: "session",
+        algorithm_version: "v1.6.4",
+      }),
+    });
+  });
+
+  it("does not block merchant navigation when analytics persistence fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.saveAnalyticsEvent.mockRejectedValueOnce(new Error("database unavailable"));
+
+    const response = await GET(
+      new Request(
+        "https://edge-fit.test/go/test-board?from=result-top&placement=primary_recommendation",
+      ),
+      { params: Promise.resolve({ slug: "test-board" }) },
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(product.affiliateUrl);
+    expect(mocks.saveAnalyticsEvent).toHaveBeenCalledOnce();
+    expect(errorSpy).toHaveBeenCalledWith(
+      "Outbound click analytics persistence failed.",
+      {
+        category: "outbound_click_analytics_failed",
+        errorName: "Error",
+      },
+    );
+    errorSpy.mockRestore();
   });
 });

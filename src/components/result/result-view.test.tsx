@@ -10,7 +10,10 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-import { ResultView } from "@/components/result/result-view";
+import {
+  buildResultStoreClickAction,
+  ResultView,
+} from "@/components/result/result-view";
 
 const recommendation: RecommendationResult = {
   algorithmVersion: "v1.6.3",
@@ -97,5 +100,95 @@ describe("ResultView saved mode", () => {
     expect(markup).not.toContain("save-result-title");
     expect(markup).toContain("Проверить в магазине");
     expect(markup).not.toContain("Траектория");
+  });
+});
+
+describe("result store click provenance", () => {
+  const match = recommendation.recommendedBoards[0];
+
+  it("captures the displayed size, primary rank and exact merchant offer", () => {
+    const action = buildResultStoreClickAction({
+      match,
+      source: "result-top",
+      placement: "primary_recommendation",
+      recommendationRank: 1,
+      algorithmVersion: recommendation.algorithmVersion,
+      isSavedMode: false,
+      resultPayload: {
+        result_width_type: recommendation.recommendedWidthType,
+        riding_style: recommendation.input.ridingStyle,
+      },
+    });
+
+    expect(action.analyticsPayload).toMatchObject({
+      product_id: "product-1",
+      product_slug: "jones-mountain-twin",
+      brand: "Jones",
+      model_name: "Mountain Twin",
+      size_label: "156",
+      recommendation_rank: 1,
+      recommendation_score: 92,
+      placement: "primary_recommendation",
+      store_code: "traektoria",
+      source_product_id: "1",
+      destination_url: "https://traektoria.ru/product/1_board/",
+      result_variant: "session",
+      algorithm_version: "v1.6.3",
+      result_width_type: "regular",
+      riding_style: "all-mountain",
+    });
+    expect(action.href).toContain("recommendationRank=1");
+    expect(action.href).toContain("sizeLabel=156");
+  });
+
+  it.each([
+    ["alternative_recommendation", 2],
+    ["decision_guide", 2],
+    ["recommendation_comparison", 2],
+  ] as const)("preserves rendered rank for %s", (placement, rank) => {
+    const action = buildResultStoreClickAction({
+      match,
+      source: `result-${placement}`,
+      placement,
+      recommendationRank: rank,
+      algorithmVersion: recommendation.algorithmVersion,
+      isSavedMode: false,
+    });
+
+    expect(action.analyticsPayload).toMatchObject({
+      placement,
+      recommendation_rank: rank,
+    });
+  });
+
+  it("uses a null rank for a caution recommendation", () => {
+    const action = buildResultStoreClickAction({
+      match,
+      source: "result-avoid",
+      placement: "caution_recommendation",
+      recommendationRank: null,
+      algorithmVersion: recommendation.algorithmVersion,
+      isSavedMode: false,
+    });
+
+    expect(action.analyticsPayload).toMatchObject({
+      placement: "caution_recommendation",
+      recommendation_rank: null,
+    });
+    expect(action.href).not.toContain("recommendationRank");
+  });
+
+  it("keeps saved-result analytics disabled", () => {
+    const action = buildResultStoreClickAction({
+      match,
+      source: "saved-result-top",
+      placement: "primary_recommendation",
+      recommendationRank: 1,
+      algorithmVersion: recommendation.algorithmVersion,
+      isSavedMode: true,
+    });
+
+    expect(action.analyticsPayload).toBeUndefined();
+    expect(action.href).not.toContain("recommendationRank");
   });
 });

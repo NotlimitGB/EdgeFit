@@ -3,6 +3,7 @@ import {
   buildStoreRedirectHref,
   buildTrialSportSearchUrl,
   getStoreDestinationPresentation,
+  getStoreDestinationProvenance,
   isPreferredStoreUrl,
   resolveProductStoreUrl,
 } from "@/lib/store-redirect";
@@ -91,6 +92,38 @@ describe("store redirect helpers", () => {
     );
   });
 
+  it.each([
+    [
+      "https://trial-sport.ru/goods/51526/3137774.html",
+      "trial-sport",
+      "3137774",
+    ],
+    [
+      "https://www.traektoria.ru/product/1890649_snoubord-jones-frontier-2-0/",
+      "traektoria",
+      "1890649",
+    ],
+  ])(
+    "extracts trusted merchant provenance from %s",
+    (destinationUrl, storeCode, sourceProductId) => {
+      expect(getStoreDestinationProvenance(destinationUrl)).toEqual({
+        destinationUrl,
+        storeCode,
+        sourceProductId,
+      });
+    },
+  );
+
+  it("keeps fallback-search provenance without inventing a source product ID", () => {
+    const destinationUrl = buildTrialSportSearchUrl("Jones Mountain Twin");
+
+    expect(getStoreDestinationProvenance(destinationUrl)).toEqual({
+      destinationUrl,
+      storeCode: "trial-sport",
+      sourceProductId: null,
+    });
+  });
+
   it("falls back to a store search when the card still has an official brand URL", () => {
     expect(
       resolveProductStoreUrl({
@@ -129,5 +162,19 @@ describe("store redirect helpers", () => {
 
   it("keeps the legacy basic redirect href unchanged", () => {
     expect(buildStoreRedirectHref("slug")).toBe("/go/slug");
+  });
+
+  it("serializes recommendation context for the first-party redirect", () => {
+    expect(
+      buildStoreRedirectHref({
+        productSlug: "jones-frontier-2-0",
+        recommendationRank: 1,
+        recommendationScore: 92,
+        resultVariant: "session",
+        algorithmVersion: "v1.6.4",
+      }),
+    ).toBe(
+      "/go/jones-frontier-2-0?recommendationRank=1&recommendationScore=92&resultVariant=session&algorithmVersion=v1.6.4",
+    );
   });
 });
