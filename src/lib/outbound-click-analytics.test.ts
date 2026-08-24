@@ -56,6 +56,8 @@ describe("outbound click analytics", () => {
       source_product_id: null,
       result_variant: null,
       algorithm_version: null,
+      exact_size_offer_status: null,
+      exact_size_matched: null,
     });
   });
 

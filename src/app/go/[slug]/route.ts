@@ -4,6 +4,7 @@ import { z } from "zod";
 import { saveAnalyticsEvent } from "@/lib/analytics/server";
 import { getCanonicalOfferIdentityBySlug } from "@/lib/canonical-catalog";
 import { buildOutboundClickAnalyticsPayload } from "@/lib/outbound-click-analytics";
+import { getExactSizeOfferIntelligence } from "@/lib/exact-size-offer";
 import { getProductBySlug } from "@/lib/products";
 import { isSavedResultStoreSource } from "@/lib/saved-result-contract";
 import { SESSION_COOKIE_NAME } from "@/lib/session-id";
@@ -18,7 +19,7 @@ const outboundClickQuerySchema = z.object({
   sizeCm: z.coerce.number().optional(),
   sizeLabel: z.string().trim().max(40).optional(),
   sourceSizeLabel: z.string().trim().max(40).optional(),
-  widthType: z.string().trim().max(40).optional(),
+  widthType: z.enum(["regular", "mid-wide", "wide"]).optional(),
   recommendationRank: z.coerce.number().int().positive().max(100).optional(),
   recommendationScore: z.coerce.number().finite().optional(),
   resultVariant: z.string().trim().max(40).optional(),
@@ -89,6 +90,18 @@ export async function GET(
     }
 
     const destination = getStoreDestinationProvenance(destinationUrl);
+    const recommendedSize =
+      payload.data.sizeCm != null && payload.data.widthType
+        ? {
+            sizeCm: payload.data.sizeCm,
+            sizeLabel: payload.data.sizeLabel,
+            widthType: payload.data.widthType,
+          }
+        : null;
+    const offerIntelligence = getExactSizeOfferIntelligence({
+      product,
+      recommendedSize,
+    });
 
     try {
       await saveAnalyticsEvent({
@@ -115,6 +128,8 @@ export async function GET(
           sourceProductId: destination.sourceProductId,
           resultVariant: payload.data.resultVariant,
           algorithmVersion: payload.data.algorithmVersion,
+          exactSizeOfferStatus: offerIntelligence.status,
+          exactSizeMatched: offerIntelligence.exactSizeMatched,
         }),
       });
     } catch (error) {

@@ -15,6 +15,7 @@ import {
 } from "@/components/result/product-recommendation-card";
 import { trackEvent } from "@/lib/analytics/client";
 import { getBoardSizeLabel } from "@/lib/board-size";
+import { getExactSizeOfferIntelligence } from "@/lib/exact-size-offer";
 import {
   boardShapeLabels,
   bootDragRiskLabels,
@@ -30,9 +31,7 @@ import { getOrCreateSessionId } from "@/lib/session-id";
 import { buildOutboundClickAnalyticsPayload } from "@/lib/outbound-click-analytics";
 import {
   buildStoreRedirectHrefForSize,
-  getStoreDestinationProvenance,
   getStoreDestinationPresentation,
-  resolveProductStoreUrl,
 } from "@/lib/store-redirect";
 import {
   getSavedResultPath,
@@ -89,8 +88,11 @@ export function buildResultStoreClickAction({
   resultPayload,
 }: BuildResultStoreClickActionArgs) {
   const sizeLabel = getBoardSizeLabel(match.size);
-  const destinationUrl = resolveProductStoreUrl(match.product);
-  const destination = getStoreDestinationProvenance(destinationUrl);
+  const offerIntelligence = getExactSizeOfferIntelligence({
+    product: match.product,
+    recommendedSize: match.size,
+    resultMode: isSavedMode ? "saved" : "session",
+  });
   const recommendationContext = isSavedMode
     ? {}
     : {
@@ -112,27 +114,30 @@ export function buildResultStoreClickAction({
       : {
           ...(resultPayload ?? {}),
           ...buildOutboundClickAnalyticsPayload({
-          boardSlug: match.product.slug,
-          offerSlug: match.product.slug,
-          destinationUrl: destination.destinationUrl,
-          from: source,
-          placement,
-          sizeCm: match.size.sizeCm,
-          sizeLabel,
-          sourceSizeLabel: match.size.sizeLabel,
-          widthType: match.size.widthType,
-          productId: match.product.id,
-          productSlug: match.product.slug,
-          brand: match.product.brand,
-          modelName: match.product.modelName,
-          recommendationRank,
-          recommendationScore: match.score,
-          storeCode: destination.storeCode,
-          sourceProductId: destination.sourceProductId,
-          resultVariant: "session",
-          algorithmVersion,
+            boardSlug: match.product.slug,
+            offerSlug: match.product.slug,
+            destinationUrl: offerIntelligence.destinationUrl,
+            from: source,
+            placement,
+            sizeCm: match.size.sizeCm,
+            sizeLabel,
+            sourceSizeLabel: match.size.sizeLabel,
+            widthType: match.size.widthType,
+            productId: match.product.id,
+            productSlug: match.product.slug,
+            brand: match.product.brand,
+            modelName: match.product.modelName,
+            recommendationRank,
+            recommendationScore: match.score,
+            storeCode: offerIntelligence.storeCode,
+            sourceProductId: offerIntelligence.sourceProductId,
+            resultVariant: "session",
+            algorithmVersion,
+            exactSizeOfferStatus: offerIntelligence.status,
+            exactSizeMatched: offerIntelligence.exactSizeMatched,
           }),
         },
+    offerIntelligence,
   };
 }
 
@@ -637,6 +642,7 @@ export function ResultView({
                     commercialPresentation={getCommercialPresentation(
                       match.product.affiliateUrl,
                     )}
+                    offerIntelligence={storeAction.offerIntelligence}
                   />
                 );
               })}
@@ -960,6 +966,7 @@ export function ResultView({
                     commercialPresentation={getCommercialPresentation(
                       match.product.affiliateUrl,
                     )}
+                    offerIntelligence={storeAction.offerIntelligence}
                   />
                 );
               })}
@@ -995,6 +1002,7 @@ export function ResultView({
                     commercialPresentation={getCommercialPresentation(
                       match.product.affiliateUrl,
                     )}
+                    offerIntelligence={storeAction.offerIntelligence}
                   />
                 );
               })}

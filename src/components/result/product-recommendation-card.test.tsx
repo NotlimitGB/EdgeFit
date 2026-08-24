@@ -32,6 +32,7 @@ vi.mock("@/components/analytics/tracked-store-link", () => ({
 import { ProductRecommendationCard } from "@/components/result/product-recommendation-card";
 import { buildResultStoreClickAction } from "@/components/result/result-view";
 import { getStoreDestinationPresentation } from "@/lib/store-redirect";
+import { getExactSizeOfferIntelligence } from "@/lib/exact-size-offer";
 
 const match: RecommendationMatch = {
   product: {
@@ -57,7 +58,17 @@ const match: RecommendationMatch = {
     sourceCheckedAt: null,
     scenarios: [],
     notIdealFor: [],
-    sizes: [],
+    sizes: [
+      {
+        sizeCm: 156,
+        sizeLabel: "156 cm",
+        waistWidthMm: 254,
+        recommendedWeightMin: 65,
+        recommendedWeightMax: 85,
+        widthType: "regular",
+        isAvailable: true,
+      },
+    ],
   },
   size: {
     sizeCm: 156,
@@ -101,6 +112,11 @@ function renderCard(
         affiliateUrl,
         resultMode,
       )}
+      offerIntelligence={getExactSizeOfferIntelligence({
+        product: currentMatch.product,
+        recommendedSize: currentMatch.size,
+        resultMode,
+      })}
     />,
   );
 }
@@ -125,6 +141,7 @@ describe("ProductRecommendationCard commercial presentation", () => {
         commercialPresentation={getStoreDestinationPresentation(
           match.product.affiliateUrl,
         )}
+        offerIntelligence={storeAction.offerIntelligence}
       />,
     );
 
@@ -141,6 +158,7 @@ describe("ProductRecommendationCard commercial presentation", () => {
     expect(markup).toContain("Открыть в Траектории");
     expect(markup).toContain("Ориентир цены");
     expect(markup).toContain("Актуальные цену и наличие проверь в магазине.");
+    expect(markup).toContain("Размер 156 отмечен доступным в Траектории");
     expect(markup).not.toContain("Цена от");
     expect(markup).toContain(
       'href="/go/jones-mountain-twin?from=result-top"',
@@ -154,6 +172,7 @@ describe("ProductRecommendationCard commercial presentation", () => {
 
     expect(markup).toContain("Искать в Trial Sport");
     expect(markup).toContain("Откроется поиск модели в магазине.");
+    expect(markup).toContain("Точного предложения по размеру 156 пока нет");
     expect(markup).not.toContain("jonessnowboards.com");
   });
 
@@ -167,5 +186,38 @@ describe("ProductRecommendationCard commercial presentation", () => {
     expect(markup).not.toContain("Траектория");
     expect(markup).not.toContain("Актуальные цену и наличие");
     expect(markup).not.toContain("data-analytics");
+    expect(markup).toContain("Наличие размера 156 нужно проверить в магазине");
+  });
+
+  it("uses cautious copy when the exact row is not confirmed", () => {
+    const unavailableMatch = {
+      ...match,
+      product: {
+        ...match.product,
+        sizes: match.product.sizes.map((size) => ({
+          ...size,
+          isAvailable: false,
+        })),
+      },
+    };
+    const offerIntelligence = getExactSizeOfferIntelligence({
+      product: unavailableMatch.product,
+      recommendedSize: unavailableMatch.size,
+    });
+    const markup = renderToStaticMarkup(
+      <ProductRecommendationCard
+        match={unavailableMatch}
+        position={1}
+        variant="featured"
+        shopHref="/go/jones-mountain-twin"
+        commercialPresentation={getStoreDestinationPresentation(
+          unavailableMatch.product.affiliateUrl,
+        )}
+        offerIntelligence={offerIntelligence}
+      />,
+    );
+
+    expect(markup).toContain("Наличие размера 156 не подтверждено");
+    expect(markup).not.toContain("Размер 156 отмечен доступным");
   });
 });

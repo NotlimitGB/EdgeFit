@@ -64,7 +64,17 @@ const recommendation: RecommendationResult = {
         sourceCheckedAt: null,
         scenarios: [],
         notIdealFor: [],
-        sizes: [],
+        sizes: [
+          {
+            sizeCm: 156,
+            sizeLabel: "156 cm",
+            waistWidthMm: 254,
+            recommendedWeightMin: 65,
+            recommendedWeightMax: 85,
+            widthType: "regular",
+            isAvailable: true,
+          },
+        ],
       },
       size: {
         sizeCm: 156,
@@ -134,11 +144,14 @@ describe("result store click provenance", () => {
       destination_url: "https://traektoria.ru/product/1_board/",
       result_variant: "session",
       algorithm_version: "v1.6.3",
+      exact_size_offer_status: "confirmed_available",
+      exact_size_matched: true,
       result_width_type: "regular",
       riding_style: "all-mountain",
     });
     expect(action.href).toContain("recommendationRank=1");
     expect(action.href).toContain("sizeLabel=156");
+    expect(action.offerIntelligence.status).toBe("confirmed_available");
   });
 
   it.each([
@@ -190,5 +203,6 @@ describe("result store click provenance", () => {
 
     expect(action.analyticsPayload).toBeUndefined();
     expect(action.href).not.toContain("recommendationRank");
+    expect(action.offerIntelligence.status).toBe("search_only");
   });
 });

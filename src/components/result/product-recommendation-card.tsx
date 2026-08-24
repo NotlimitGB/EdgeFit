@@ -9,6 +9,7 @@ import {
   widthTypeLabels,
 } from "@/lib/content";
 import { formatRecommendedWeightRange } from "@/lib/weight-range";
+import type { ExactSizeOfferIntelligence } from "@/lib/exact-size-offer";
 import type { StoreDestinationPresentation } from "@/lib/store-redirect";
 import type {
   RecommendationMatch,
@@ -29,6 +30,7 @@ export interface ProductRecommendationCardProps {
   shopHref: string;
   shopAnalyticsPayload?: Record<string, unknown>;
   commercialPresentation: StoreDestinationPresentation;
+  offerIntelligence: ExactSizeOfferIntelligence;
 }
 
 export const recommendationRoleLabels: Record<RecommendationRole, string> = {
@@ -52,6 +54,7 @@ export function ProductRecommendationCard({
   shopHref,
   shopAnalyticsPayload,
   commercialPresentation,
+  offerIntelligence,
 }: ProductRecommendationCardProps) {
   const reasons = match.reasons.length > 0
     ? match.reasons.slice(0, 3)
@@ -74,9 +77,18 @@ export function ProductRecommendationCard({
   const readinessLabel = match.isCatalogReady
     ? "Данные сверены"
     : "Характеристики перепроверить";
-  const availabilityLabel = match.size.isAvailable
-    ? "Размер отмечен доступным"
-    : "Наличие размера нужно уточнить";
+  const merchantLocationLabel =
+    offerIntelligence.storeCode === "traektoria"
+      ? "Траектории"
+      : offerIntelligence.merchantLabel;
+  const availabilityLabel =
+    commercialPresentation.mode === "saved"
+      ? `Наличие размера ${sizeLabel} нужно проверить в магазине`
+      : offerIntelligence.status === "confirmed_available"
+        ? `Размер ${sizeLabel} отмечен доступным в ${merchantLocationLabel}`
+        : offerIntelligence.status === "search_only"
+          ? `Точного предложения по размеру ${sizeLabel} пока нет`
+          : `Наличие размера ${sizeLabel} не подтверждено`;
 
   return (
     <article

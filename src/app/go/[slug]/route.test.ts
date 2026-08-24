@@ -29,7 +29,17 @@ const product: Product = {
   sourceCheckedAt: null,
   scenarios: [],
   notIdealFor: [],
-  sizes: [],
+  sizes: [
+    {
+      sizeCm: 156,
+      sizeLabel: "156W",
+      waistWidthMm: 264,
+      recommendedWeightMin: 65,
+      recommendedWeightMax: 85,
+      widthType: "wide",
+      isAvailable: true,
+    },
+  ],
 };
 
 vi.mock("next/headers", () => ({
@@ -53,6 +63,8 @@ import { GET } from "@/app/go/[slug]/route";
 describe("saved-result store redirect privacy", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    product.affiliateUrl = "https://trial-sport.ru/goods/1.html";
+    product.sizes[0].isAvailable = true;
     mocks.canonicalLookup.mockResolvedValue(undefined);
   });
 
@@ -74,6 +86,8 @@ describe("saved-result store redirect privacy", () => {
 describe("store click provenance", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    product.affiliateUrl = "https://trial-sport.ru/goods/1.html";
+    product.sizes[0].isAvailable = true;
     mocks.canonicalLookup.mockResolvedValue({
       boardSlug: "test-family",
       offerSlug: "test-board",
@@ -111,8 +125,52 @@ describe("store click provenance", () => {
         destination_url: product.affiliateUrl,
         result_variant: "session",
         algorithm_version: "v1.6.4",
+        exact_size_offer_status: "confirmed_available",
+        exact_size_matched: true,
       }),
     });
+  });
+
+  it("recomputes not-confirmed status from server ProductSize data", async () => {
+    product.sizes[0].isAvailable = false;
+
+    await GET(
+      new Request(
+        "https://edge-fit.test/go/test-board?from=result-top&sizeCm=156&sizeLabel=156W&widthType=wide&exactSizeOfferStatus=confirmed_available",
+      ),
+      { params: Promise.resolve({ slug: "test-board" }) },
+    );
+
+    expect(mocks.saveAnalyticsEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          exact_size_offer_status: "not_confirmed",
+          exact_size_matched: true,
+        }),
+      }),
+    );
+  });
+
+  it("recomputes search-only status for the server fallback destination", async () => {
+    product.affiliateUrl = "https://example.com/test-board";
+
+    const response = await GET(
+      new Request(
+        "https://edge-fit.test/go/test-board?from=result-top&sizeCm=156&sizeLabel=156W&widthType=wide",
+      ),
+      { params: Promise.resolve({ slug: "test-board" }) },
+    );
+
+    expect(response.headers.get("location")).toContain("trial-sport.ru/search/");
+    expect(mocks.saveAnalyticsEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          exact_size_offer_status: "search_only",
+          exact_size_matched: true,
+          source_product_id: null,
+        }),
+      }),
+    );
   });
 
   it("does not block merchant navigation when analytics persistence fails", async () => {

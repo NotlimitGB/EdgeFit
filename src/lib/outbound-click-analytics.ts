@@ -1,3 +1,5 @@
+import type { ExactSizeOfferStatus } from "@/lib/exact-size-offer";
+
 export interface BuildOutboundClickAnalyticsPayloadArgs {
   boardSlug: string;
   offerSlug: string;
@@ -18,6 +20,8 @@ export interface BuildOutboundClickAnalyticsPayloadArgs {
   sourceProductId?: string | null;
   resultVariant?: string | null;
   algorithmVersion?: string | null;
+  exactSizeOfferStatus?: ExactSizeOfferStatus | null;
+  exactSizeMatched?: boolean | null;
 }
 
 export interface OutboundClickAnalyticsPayload
@@ -41,6 +45,8 @@ export interface OutboundClickAnalyticsPayload
   source_product_id: string | null;
   result_variant: string | null;
   algorithm_version: string | null;
+  exact_size_offer_status: ExactSizeOfferStatus | null;
+  exact_size_matched: boolean | null;
 }
 
 export function buildOutboundClickAnalyticsPayload({
@@ -63,6 +69,8 @@ export function buildOutboundClickAnalyticsPayload({
   sourceProductId,
   resultVariant,
   algorithmVersion,
+  exactSizeOfferStatus,
+  exactSizeMatched,
 }: BuildOutboundClickAnalyticsPayloadArgs): OutboundClickAnalyticsPayload {
   return {
     board_slug: boardSlug,
@@ -84,6 +92,8 @@ export function buildOutboundClickAnalyticsPayload({
     source_product_id: sourceProductId ?? null,
     result_variant: resultVariant ?? null,
     algorithm_version: algorithmVersion ?? null,
+    exact_size_offer_status: exactSizeOfferStatus ?? null,
+    exact_size_matched: exactSizeMatched ?? null,
   };
 }
 
