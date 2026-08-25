@@ -31,6 +31,11 @@ import {
   type QuizStepKey,
 } from "@/lib/analytics/quiz-progression";
 import styles from "./quiz-flow.module.css";
+import {
+  createQuizQuestionHelpTracker,
+  WhyWeAsk,
+  type QuizQuestionField,
+} from "./why-we-ask";
 
 const stepDetails = [
   {
@@ -40,8 +45,7 @@ const stepDetails = [
     title: "Начнём с того, что реально влияет на размер",
     description:
       "Рост и вес помогают определить длину, а размер ботинка и стойка — безопасную ширину доски.",
-    context:
-      "Вес задаёт основу ростовки, рост уточняет диапазон, а ботинок и стойка определяют нужный запас по ширине.",
+    context: "Эти ответы задают физическую основу подбора.",
   },
   {
     key: "riding_context",
@@ -51,7 +55,7 @@ const stepDetails = [
     description:
       "Уровень, основной стиль и главный приоритет помогают выбрать подходящий характер доски.",
     context:
-      "Стиль задаёт общее направление, а приоритет уточняет, что важнее именно внутри твоего сценария.",
+      "Здесь уточняем опыт и сценарий, в котором должна работать доска.",
   },
   {
     key: "decision_preferences",
@@ -61,7 +65,7 @@ const stepDetails = [
     description:
       "Характер катания и линейка уточняют выдачу, а необязательный бюджет добавляет только ценовой ориентир.",
     context:
-      "Линейка и бюджет не меняют физический fit: бюджет сравнивается только с ориентиром цены каталога.",
+      "Эти ответы добавляют предпочтения поверх уже рассчитанного физического fit.",
   },
 ] as const;
 
@@ -233,6 +237,7 @@ interface QuizFlowStepFieldsProps {
     key: Key,
     value: QuizV2Draft[Key],
   ) => void;
+  onHelpOpened: (fieldName: QuizQuestionField) => void;
 }
 
 export function QuizFlowStepFields({
@@ -240,6 +245,7 @@ export function QuizFlowStepFields({
   draft,
   errors,
   onChange,
+  onHelpOpened,
 }: QuizFlowStepFieldsProps) {
   if (stepKey === "physical_fit") {
     return (
@@ -250,44 +256,45 @@ export function QuizFlowStepFields({
             label="Рост"
             unit="см"
             hint="Например, 178"
-            explanation="Помогает скорректировать рабочий диапазон длины."
             value={draft.heightCm}
             onChange={(value) => onChange("heightCm", value)}
             error={errors.heightCm}
             step="1"
+            onHelpOpened={onHelpOpened}
           />
           <NumberField
             id="weightKg"
             label="Вес"
             unit="кг"
             hint="Например, 74"
-            explanation="Главный ориентир для базовой ростовки."
             value={draft.weightKg}
             onChange={(value) => onChange("weightKg", value)}
             error={errors.weightKg}
             step="1"
+            onHelpOpened={onHelpOpened}
           />
           <NumberField
             id="bootSizeEu"
             label="Размер ботинка"
             unit="EU"
             hint="Например, 43 или 43.5"
-            explanation="Влияет на ширину доски и риск boot drag."
             value={draft.bootSizeEu}
             onChange={(value) => onChange("bootSizeEu", value)}
             error={errors.bootSizeEu}
             step="0.5"
+            onHelpOpened={onHelpOpened}
           />
         </div>
         <ChoiceGroup
           name="stanceType"
           label="Какая у тебя стойка?"
-          helper="Стойка немного влияет на запас против boot drag. Если не знаешь — это нормально."
+          helper="Если не знаешь — выбирай «Не знаю»."
           value={draft.stanceType}
           onChange={(value) => onChange("stanceType", value)}
           options={stanceOptions}
           error={errors.stanceType}
           columns="three"
+          onHelpOpened={onHelpOpened}
         />
       </div>
     );
@@ -305,6 +312,7 @@ export function QuizFlowStepFields({
           options={skillOptions}
           error={errors.skillLevel}
           columns="three"
+          onHelpOpened={onHelpOpened}
         />
         <ChoiceGroup
           name="ridingStyle"
@@ -315,6 +323,7 @@ export function QuizFlowStepFields({
           options={ridingStyleOptions}
           error={errors.ridingStyle}
           columns="three"
+          onHelpOpened={onHelpOpened}
         />
         <ChoiceGroup
           name="terrainPriority"
@@ -325,6 +334,7 @@ export function QuizFlowStepFields({
           options={terrainPriorityOptions}
           error={errors.terrainPriority}
           columns="two"
+          onHelpOpened={onHelpOpened}
         />
       </div>
     );
@@ -341,27 +351,29 @@ export function QuizFlowStepFields({
         options={aggressivenessOptions}
         error={errors.aggressiveness}
         columns="three"
+        onHelpOpened={onHelpOpened}
       />
       <ChoiceGroup
         name="boardLinePreference"
         label="Линейка досок"
-        helper="Линейка влияет на приоритет моделей в выдаче, но не меняет физический fit."
+        helper="«Без привязки» — нейтральный вариант."
         value={draft.boardLinePreference}
         onChange={(value) => onChange("boardLinePreference", value)}
         options={boardLineOptions}
         error={errors.boardLinePreference}
         columns="three"
+        onHelpOpened={onHelpOpened}
       />
       <NumberField
         id="budgetMaxRub"
         label="Максимальный бюджет"
         unit="₽"
         hint="Необязательно — пустое поле означает без лимита"
-        explanation="Сравним бюджет только с ориентиром цены каталога. На fit и порядок рекомендаций он не влияет."
         value={draft.budgetMaxRub}
         onChange={(value) => onChange("budgetMaxRub", value)}
         error={errors.budgetMaxRub}
         step="1"
+        onHelpOpened={onHelpOpened}
       />
     </div>
   );
@@ -378,8 +390,19 @@ export function QuizFlow() {
   const [isPending, startTransition] = useTransition();
   const stepHeadingRef = useRef<HTMLHeadingElement>(null);
   const isInitialStep = useRef(true);
+  const questionHelpTrackerRef = useRef<ReturnType<
+    typeof createQuizQuestionHelpTracker
+  > | null>(null);
   const isBusy = isSubmitting || isPending;
   const currentStep = stepDetails[step];
+
+  if (questionHelpTrackerRef.current == null) {
+    questionHelpTrackerRef.current = createQuizQuestionHelpTracker(
+      (eventName, payload) => {
+        void trackEvent(eventName, payload);
+      },
+    );
+  }
 
   useEffect(() => {
     setDraft(loadQuizV2Draft(window.sessionStorage));
@@ -576,6 +599,9 @@ export function QuizFlow() {
             draft={draft}
             errors={errors}
             onChange={updateDraft}
+            onHelpOpened={(fieldName) =>
+              questionHelpTrackerRef.current?.open(fieldName)
+            }
           />
         </div>
 
@@ -659,11 +685,11 @@ interface NumberFieldProps {
   label: string;
   unit: string;
   hint: string;
-  explanation: string;
   value: string;
   onChange: (value: string) => void;
   error?: string;
   step: string;
+  onHelpOpened: (fieldName: QuizQuestionField) => void;
 }
 
 function NumberField({
@@ -671,11 +697,11 @@ function NumberField({
   label,
   unit,
   hint,
-  explanation,
   value,
   onChange,
   error,
   step,
+  onHelpOpened,
 }: NumberFieldProps) {
   const hintId = `${id}-hint`;
   const errorId = `${id}-error`;
@@ -700,8 +726,12 @@ function NumberField({
       </div>
       <div id={hintId} className={styles.fieldHint}>
         <span>{hint}</span>
-        <p>{explanation}</p>
       </div>
+      <WhyWeAsk
+        fieldName={id}
+        questionLabel={label}
+        onOpen={onHelpOpened}
+      />
       {error ? (
         <p id={errorId} className={styles.fieldError} role="alert">
           {error}
@@ -720,6 +750,7 @@ interface ChoiceGroupProps<Value extends string> {
   options: readonly ChoiceOption<Value>[];
   error?: string;
   columns: "two" | "three";
+  onHelpOpened: (fieldName: QuizQuestionField) => void;
 }
 
 function ChoiceGroup<Value extends string>({
@@ -731,6 +762,7 @@ function ChoiceGroup<Value extends string>({
   options,
   error,
   columns,
+  onHelpOpened,
 }: ChoiceGroupProps<Value>) {
   const helperId = `${name}-helper`;
   const errorId = `${name}-error`;
@@ -746,6 +778,11 @@ function ChoiceGroup<Value extends string>({
       <p id={helperId} className={styles.groupHelper}>
         {helper}
       </p>
+      <WhyWeAsk
+        fieldName={name as QuizQuestionField}
+        questionLabel={label}
+        onOpen={onHelpOpened}
+      />
       <div className={styles.choiceGrid} data-columns={columns}>
         {options.map((option) => {
           const selected = value === option.value;

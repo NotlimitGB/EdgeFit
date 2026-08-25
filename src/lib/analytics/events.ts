@@ -4,6 +4,7 @@ export const analyticsEvents = {
   quizStepViewed: "quiz_step_viewed",
   quizStepCompleted: "quiz_step_completed",
   quizCompleted: "quiz_completed",
+  quizQuestionHelpOpened: "quiz_question_help_opened",
   resultViewed: "result_viewed",
   productClicked: "product_clicked",
   emailSubmitted: "email_submitted",

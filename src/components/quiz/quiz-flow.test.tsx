@@ -13,6 +13,7 @@ vi.mock("next/navigation", () => ({
 describe("Quiz v2 rendered fields", () => {
   const draft = createQuizV2Draft();
   const onChange = vi.fn();
+  const onHelpOpened = vi.fn();
 
   it("renders blank physical inputs followed by unanswered stance", () => {
     const markup = renderToStaticMarkup(
@@ -21,6 +22,7 @@ describe("Quiz v2 rendered fields", () => {
         draft={draft}
         errors={{}}
         onChange={onChange}
+        onHelpOpened={onHelpOpened}
       />,
     );
 
@@ -53,6 +55,7 @@ describe("Quiz v2 rendered fields", () => {
         draft={draft}
         errors={{}}
         onChange={onChange}
+        onHelpOpened={onHelpOpened}
       />,
     );
 
@@ -74,6 +77,7 @@ describe("Quiz v2 rendered fields", () => {
         draft={draft}
         errors={{}}
         onChange={onChange}
+        onHelpOpened={onHelpOpened}
       />,
     );
 
@@ -87,12 +91,10 @@ describe("Quiz v2 rendered fields", () => {
     expect(markup).toMatch(
       /name="boardLinePreference" checked="" value="any"/u,
     );
-    expect(markup).toContain(
-      "Линейка влияет на приоритет моделей в выдаче, но не меняет физический fit.",
-    );
+    expect(markup).toContain("«Без привязки» — нейтральный вариант.");
     expect(markup).not.toContain("Это фильтр каталога");
     expect(markup).toContain("Максимальный бюджет");
-    expect(markup).toContain("На fit и порядок рекомендаций он не влияет.");
+    expect(markup).toContain("Бюджет не меняет подбор и порядок моделей.");
     expect(markup).toMatch(
       /<input[^>]*type="number"[^>]*name="budgetMaxRub"[^>]*value=""/u,
     );

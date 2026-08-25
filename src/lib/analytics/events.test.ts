@@ -26,4 +26,10 @@ describe("getYandexGoalNames", () => {
       }),
     ).toEqual(["edgefit_product_clicked"]);
   });
+
+  it("keeps quiz help first-party only", () => {
+    expect(
+      getYandexGoalNames(analyticsEvents.quizQuestionHelpOpened),
+    ).toEqual([]);
+  });
 });

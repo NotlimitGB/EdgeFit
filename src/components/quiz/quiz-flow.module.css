@@ -339,8 +339,37 @@
   font-weight: 700;
 }
 
-.fieldHint > p {
+.whyWeAsk {
+  margin-top: 0.65rem;
+  color: var(--ef-text-soft);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.whyWeAsk summary {
+  width: fit-content;
+  cursor: pointer;
+  border-radius: 0.45rem;
+  padding: 0.75rem 0.25rem;
+  color: var(--ef-accent-strong);
+  font-weight: 800;
+}
+
+.whyWeAsk summary:hover {
+  color: var(--ef-text);
+}
+
+.whyWeAsk summary:focus-visible {
+  outline: 3px solid var(--ef-accent-strong);
+  outline-offset: 3px;
+}
+
+.whyWeAsk > p {
+  max-width: 44rem;
   margin-top: 0.2rem;
+  color: var(--ef-text-soft);
+  text-wrap: pretty;
 }
 
 .fieldError,
