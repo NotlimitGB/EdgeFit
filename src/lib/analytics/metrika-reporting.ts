@@ -15,6 +15,7 @@ import {
   type ReferralBreakdownMetric,
 } from "@/lib/analytics/reporting-core";
 import { getConfiguredSiteHosts } from "@/lib/site-url";
+import { normalizeReferralDomain } from "@/lib/analytics/referral-domain";
 
 const METRIKA_ENDPOINT = "https://api-metrika.yandex.net/stat/v1/data";
 export const METRIKA_MAX_CONCURRENCY = 1;
@@ -508,23 +509,6 @@ function parseAcquisitionLandings(
     }
     return [{ path, visits, users, goals }];
   });
-}
-
-export function normalizeReferralDomain(value: unknown) {
-  if (typeof value !== "string" || !value.trim()) {
-    return null;
-  }
-  const candidate = value.trim();
-  try {
-    const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//iu.test(candidate) ? candidate : `https://${candidate}`);
-    if (url.username || url.password) {
-      return null;
-    }
-    const hostname = url.hostname.toLowerCase().replace(/^www\./u, "").replace(/\.$/u, "");
-    return hostname && !hostname.includes(" ") ? hostname : null;
-  } catch {
-    return null;
-  }
 }
 
 function parseReferralBreakdown(

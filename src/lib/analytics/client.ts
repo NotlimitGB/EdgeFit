@@ -3,6 +3,10 @@ import {
   getYandexGoalNames,
   type AnalyticsEventName,
 } from "@/lib/analytics/events";
+import {
+  buildAcquisitionAnalyticsPayload,
+  captureCurrentFirstTouchAcquisitionContext,
+} from "@/lib/analytics/acquisition-context";
 
 type AnalyticsPayload = Record<string, unknown>;
 
@@ -68,20 +72,27 @@ function sendYandexGoal(eventName: AnalyticsEventName, payload: AnalyticsPayload
   }
 }
 
-function buildBody(
+export function buildAnalyticsRequestBody(
   eventName: AnalyticsEventName,
   payload: AnalyticsPayload = {},
   pagePath?: string,
 ) {
+  const internalPayload = {
+    ...buildAcquisitionAnalyticsPayload(
+      captureCurrentFirstTouchAcquisitionContext(),
+    ),
+    ...payload,
+  };
+
   return JSON.stringify({
     sessionId: getOrCreateSessionId(),
     eventName,
     pagePath:
       pagePath ??
       (typeof window !== "undefined"
-        ? `${window.location.pathname}${window.location.search}`
+        ? window.location.pathname
         : undefined),
-    payload,
+    payload: internalPayload,
   });
 }
 
@@ -100,7 +111,7 @@ export async function trackEvent(
     return;
   }
 
-  const body = buildBody(eventName, payload);
+  const body = buildAnalyticsRequestBody(eventName, payload);
 
   if (options.useBeacon && typeof navigator !== "undefined" && navigator.sendBeacon) {
     const sent = navigator.sendBeacon(

@@ -132,6 +132,13 @@ function makeDigest(overrides: Partial<AnalyticsDigest> = {}): AnalyticsDigest {
       ) as unknown as AnalyticsDigest["quizAbandonment"]["windows"],
     },
     recommendationFeedback,
+    firstPartyAcquisition: {
+      availableFrom: null,
+      windows: {
+        last7Days: { rows: [] },
+        last30Days: { rows: [] },
+      },
+    },
     commerce: {
       windows: commerceWindows as AnalyticsDigest["commerce"]["windows"],
       merchants30Days: [],

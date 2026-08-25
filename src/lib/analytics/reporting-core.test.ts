@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildFirstPartyAcquisitionReport,
   buildQuizAbandonmentReport,
   buildRecommendationFeedbackReport,
   addCalendarDays,
@@ -14,9 +15,121 @@ import {
   getMoscowCalendarDate,
   normalizeMerchantHostname,
   type RecommendationFeedbackEvent,
+  type FirstPartyAcquisitionContextEvidence,
+  type FirstPartyAcquisitionFunnelEvent,
 } from "@/lib/analytics/reporting-core";
 
 describe("analytics reporting core", () => {
+  it("joins first-touch acquisition to session-level funnel and feedback", () => {
+    const contexts: FirstPartyAcquisitionContextEvidence[] = [
+      ["a", "yandex", "campaign", null],
+      ["b", "yandex", "campaign", null],
+      ["c", "telegram", "campaign", null],
+      ["d", null, "self_referral", "edge-fit.vercel.app"],
+    ].map(([sessionId, source, classification, referrerDomain], index) => ({
+      eventId: `context-${index}`,
+      sessionId: sessionId!,
+      capturedAt: `2026-08-20T09:00:0${index}.000Z`,
+      source,
+      medium: source === "yandex" ? "cpc" : source === "telegram" ? "community" : null,
+      campaign: source ? "edgefit_023a" : null,
+      referrerDomain,
+      landingPath: "/",
+      classification: classification as
+        | "campaign"
+        | "self_referral",
+    }));
+    let sequence = 0;
+    const event = (
+      sessionId: string,
+      eventName: FirstPartyAcquisitionFunnelEvent["eventName"],
+      feedbackOutcome?: "would_consider" | "need_more_confidence",
+    ): FirstPartyAcquisitionFunnelEvent => {
+      const eventId = `funnel-${String(++sequence).padStart(2, "0")}`;
+      const createdAt = `2026-08-24T10:00:${String(sequence).padStart(2, "0")}.000Z`;
+      return {
+        eventId,
+        windowKey: "last7Days",
+        sessionId,
+        eventName,
+        createdAt,
+        feedback:
+          eventName === "recommendation_feedback_submitted"
+            ? {
+                eventId,
+                windowKey: "last7Days",
+                sessionId,
+                eventName,
+                createdAt,
+                feedbackOutcome: feedbackOutcome ?? null,
+                feedbackReason: null,
+                productId: "product-1",
+                productSlug: "test-board",
+                brand: "Test",
+                modelName: "Board",
+                recommendedSizeLabel: "156",
+                recommendedSizeCm: 156,
+                recommendedWidthType: "regular",
+                recommendationRank: 1,
+                recommendationScore: 90,
+                algorithmVersion: "v1.6.4",
+                resultVariant: "session",
+              }
+            : null,
+      };
+    };
+    const events = [
+      event("a", "quiz_started"),
+      event("a", "quiz_started"),
+      event("a", "quiz_completed"),
+      event("a", "result_viewed"),
+      event("a", "product_clicked"),
+      event("a", "recommendation_feedback_submitted", "would_consider"),
+      event("b", "quiz_started"),
+      event("b", "result_viewed"),
+      event("c", "quiz_started"),
+      event("c", "quiz_completed"),
+      event("c", "result_viewed"),
+      event("c", "recommendation_feedback_submitted", "need_more_confidence"),
+      event("d", "quiz_started"),
+      event("historical", "quiz_started"),
+    ];
+
+    const report = buildFirstPartyAcquisitionReport(
+      contexts,
+      events,
+      "2026-08-20T09:00:00.000Z",
+    );
+    const yandex = report.windows.last7Days.rows.find(
+      (row) => row.source === "yandex",
+    );
+
+    expect(report.availableFrom).toBe("2026-08-20T09:00:00.000Z");
+    expect(yandex).toMatchObject({
+      source: "yandex",
+      medium: "cpc",
+      campaign: "edgefit_023a",
+      classification: "campaign",
+      quizStartSessions: 2,
+      quizCompletedSessions: 1,
+      resultViewSessions: 2,
+      resultToStoreSessions: 1,
+      storeClickSessions: 1,
+      feedbackSessions: 1,
+      wouldConsiderSessions: 1,
+      quizCompletionRate: 0.5,
+      resultToStoreRate: 0.5,
+      feedbackResponseRate: 0.5,
+      wouldConsiderRate: 1,
+    });
+    expect(
+      report.windows.last7Days.rows.find(
+        (row) => row.classification === "unknown_historical",
+      )?.quizStartSessions,
+    ).toBe(1);
+    expect(report.windows.last30Days.rows).toEqual([]);
+  });
+
   it("builds session-deduplicated recommendation feedback metrics", () => {
     let sequence = 0;
     const primary = (

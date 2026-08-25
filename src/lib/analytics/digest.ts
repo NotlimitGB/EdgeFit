@@ -122,6 +122,7 @@ export interface AnalyticsDigest {
   >;
   quizAbandonment: AnalyticsReport["quizAbandonment"];
   recommendationFeedback: AnalyticsReport["recommendationFeedback"];
+  firstPartyAcquisition: AnalyticsReport["firstPartyAcquisition"];
   commerce: {
     windows: Record<WindowKey, { clickEvents: number; uniqueClickSessions: number }>;
     merchants30Days: Array<{
@@ -690,6 +691,37 @@ const recommendationFeedbackWindowSchema: Schema = {
     },
   },
 };
+const firstPartyAcquisitionRowSchema: Schema = {
+  type: "object",
+  fields: {
+    source: { schema: { type: "nullable", schema: stringSchema() } },
+    medium: { schema: { type: "nullable", schema: stringSchema() } },
+    campaign: { schema: { type: "nullable", schema: stringSchema() } },
+    referrerDomain: { schema: { type: "nullable", schema: stringSchema() } },
+    classification: {
+      schema: stringSchema({
+        values: [
+          "campaign",
+          "external_referral",
+          "self_referral",
+          "direct_or_unknown",
+          "unknown_historical",
+        ],
+      }),
+    },
+    quizStartSessions: { schema: numberSchema },
+    quizCompletedSessions: { schema: numberSchema },
+    resultViewSessions: { schema: numberSchema },
+    resultToStoreSessions: { schema: numberSchema },
+    storeClickSessions: { schema: numberSchema },
+    feedbackSessions: { schema: numberSchema },
+    wouldConsiderSessions: { schema: numberSchema },
+    quizCompletionRate: { schema: nullableNumberSchema },
+    resultToStoreRate: { schema: nullableNumberSchema },
+    feedbackResponseRate: { schema: nullableNumberSchema },
+    wouldConsiderRate: { schema: nullableNumberSchema },
+  },
+};
 const trendMetricSchema: Schema = {
   type: "object",
   fields: {
@@ -936,6 +968,37 @@ const digestSchema: Schema = {
                 WINDOW_KEYS.map((key) => [
                   key,
                   { schema: recommendationFeedbackWindowSchema },
+                ]),
+              ),
+            },
+          },
+        },
+      },
+    },
+    firstPartyAcquisition: {
+      schema: {
+        type: "object",
+        fields: {
+          availableFrom: { schema: { type: "nullable", schema: stringSchema() } },
+          windows: {
+            schema: {
+              type: "object",
+              fields: Object.fromEntries(
+                (["last7Days", "last30Days"] as const).map((key) => [
+                  key,
+                  {
+                    schema: {
+                      type: "object",
+                      fields: {
+                        rows: {
+                          schema: {
+                            type: "array",
+                            items: firstPartyAcquisitionRowSchema,
+                          },
+                        },
+                      },
+                    },
+                  },
                 ]),
               ),
             },
@@ -1335,6 +1398,7 @@ function buildAnalyticsDigest(report: AnalyticsReport, kind: DigestKind): Analyt
   const funnel = projectFunnel(report);
   const quizAbandonment = report.quizAbandonment;
   const recommendationFeedback = report.recommendationFeedback;
+  const firstPartyAcquisition = report.firstPartyAcquisition;
   const commerce = projectCommerce(report);
   const trends = projectTrends(report);
   const partnerReadiness = projectPartnerReadiness(report);
@@ -1365,6 +1429,7 @@ function buildAnalyticsDigest(report: AnalyticsReport, kind: DigestKind): Analyt
     funnel,
     quizAbandonment,
     recommendationFeedback,
+    firstPartyAcquisition,
     commerce,
     trends,
     partnerReadiness,
@@ -1399,6 +1464,7 @@ function buildAnalyticsDigest(report: AnalyticsReport, kind: DigestKind): Analyt
     funnel,
     quizAbandonment,
     recommendationFeedback,
+    firstPartyAcquisition,
     commerce,
     trends,
     partnerReadiness,

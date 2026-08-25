@@ -222,6 +222,34 @@ function makeReport(): AnalyticsReport {
         ]),
       ),
     },
+    firstPartyAcquisition: {
+      availableFrom: "2026-08-20T09:00:00.000Z",
+      windows: {
+        last7Days: {
+          rows: [
+            {
+              source: "yandex",
+              medium: "cpc",
+              campaign: "edgefit_023a",
+              referrerDomain: null,
+              classification: "campaign",
+              quizStartSessions: 2,
+              quizCompletedSessions: 1,
+              resultViewSessions: 2,
+              resultToStoreSessions: 1,
+              storeClickSessions: 1,
+              feedbackSessions: 1,
+              wouldConsiderSessions: 1,
+              quizCompletionRate: 0.5,
+              resultToStoreRate: 0.5,
+              feedbackResponseRate: 0.5,
+              wouldConsiderRate: 1,
+            },
+          ],
+        },
+        last30Days: { rows: [] },
+      },
+    },
     commerce: {
       windows: commerceWindows,
       clickSources30Days: [

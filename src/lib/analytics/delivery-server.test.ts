@@ -118,6 +118,13 @@ function makeServerDigest(overrides: Partial<AnalyticsDigest> = {}): AnalyticsDi
         ]),
       ) as AnalyticsDigest["recommendationFeedback"]["windows"],
     },
+    firstPartyAcquisition: {
+      availableFrom: null,
+      windows: {
+        last7Days: { rows: [] },
+        last30Days: { rows: [] },
+      },
+    },
     commerce: {
       windows: { last30Days: { clickEvents: 3, uniqueClickSessions: 2 } } as AnalyticsDigest["commerce"]["windows"],
       merchants30Days: [],

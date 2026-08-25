@@ -5,6 +5,7 @@ import { getMetrikaReporting } from "@/lib/analytics/metrika-reporting";
 import {
   ANALYTICS_REPORT_TIMEZONE,
   ANALYTICS_REPORT_VERSION,
+  buildFirstPartyAcquisitionReport,
   buildQuizAbandonmentReport,
   buildRecommendationFeedbackReport,
   buildFunnelMetrics,
@@ -22,6 +23,10 @@ import {
   type DataQualityWarning,
   type EventMetrics,
   type FunnelMetrics,
+  type FirstPartyAcquisitionContextEvidence,
+  type FirstPartyAcquisitionFunnelEvent,
+  type FirstPartyAcquisitionReport,
+  type FirstPartyAcquisitionWindowKey,
   type MerchantEvidence,
   type QuizAbandonmentReport,
   type QuizProgressionEvent,
@@ -76,6 +81,32 @@ interface TopCommerceRow {
 type QuizProgressionRow = QuizProgressionEvent;
 type RecommendationFeedbackRow = RecommendationFeedbackEvent;
 
+interface FirstPartyAcquisitionAvailabilityRow {
+  availableFrom: string | null;
+}
+
+type FirstPartyAcquisitionContextRow = FirstPartyAcquisitionContextEvidence;
+
+interface FirstPartyAcquisitionEventRow {
+  eventId: string;
+  windowKey: FirstPartyAcquisitionWindowKey;
+  sessionId: string;
+  eventName: FirstPartyAcquisitionFunnelEvent["eventName"];
+  createdAt: string;
+  feedbackOutcome: string | null;
+  productId: string | null;
+  productSlug: string | null;
+  brand: string | null;
+  modelName: string | null;
+  recommendedSizeLabel: string | null;
+  recommendedSizeCm: number | null;
+  recommendedWidthType: string | null;
+  recommendationRank: number | null;
+  recommendationScore: number | null;
+  algorithmVersion: string | null;
+  resultVariant: string | null;
+}
+
 interface QuizStepAvailabilityRow {
   availableFrom: string | null;
 }
@@ -96,6 +127,7 @@ interface FirstPartyResult {
   topOffers30Days: TopOfferMetric[];
   quizAbandonment: QuizAbandonmentReport;
   recommendationFeedback: RecommendationFeedbackReport;
+  firstPartyAcquisition: FirstPartyAcquisitionReport;
 }
 
 function emptyEventMetrics(): EventMetrics {
@@ -149,6 +181,7 @@ function emptyFirstParty(status: AnalyticsSourceStatus): FirstPartyResult {
         number
       >,
     ),
+    firstPartyAcquisition: buildFirstPartyAcquisitionReport([], []),
   };
 }
 
@@ -411,6 +444,197 @@ async function loadFirstPartyReport(
         order by n.created_at, n.id, w."windowKey"
       `;
 
+      const firstPartyAcquisitionAvailabilityRows = await tx<
+        FirstPartyAcquisitionAvailabilityRow[]
+      >`
+        with normalized as (
+          select
+            e.created_at,
+            case
+              when jsonb_typeof(e.payload) = 'object' then e.payload
+              when jsonb_typeof(e.payload) = 'string'
+                and pg_input_is_valid(e.payload #>> '{}', 'jsonb')
+                then case
+                  when jsonb_typeof((e.payload #>> '{}')::jsonb) = 'object'
+                    then (e.payload #>> '{}')::jsonb
+                  else '{}'::jsonb
+                end
+              else '{}'::jsonb
+            end as properties
+          from analytics_events e
+        )
+        select min(created_at)::text as "availableFrom"
+        from normalized
+        where properties->>'acquisition_classification' in (
+            'campaign', 'external_referral', 'self_referral', 'direct_or_unknown'
+          )
+          and properties->>'acquisition_landing_path' like '/%'
+          and properties->>'acquisition_landing_path' not like '//%'
+          and position('?' in properties->>'acquisition_landing_path') = 0
+          and position('#' in properties->>'acquisition_landing_path') = 0
+          and (
+            (
+              properties->>'acquisition_classification' = 'campaign'
+              and (
+                nullif(btrim(properties->>'acquisition_source'), '') is not null
+                or nullif(btrim(properties->>'acquisition_campaign'), '') is not null
+              )
+            )
+            or (
+              properties->>'acquisition_classification' in (
+                'external_referral', 'self_referral'
+              )
+              and nullif(btrim(properties->>'acquisition_source'), '') is null
+              and nullif(btrim(properties->>'acquisition_campaign'), '') is null
+              and nullif(btrim(properties->>'acquisition_referrer_domain'), '') is not null
+            )
+            or (
+              properties->>'acquisition_classification' = 'direct_or_unknown'
+              and nullif(btrim(properties->>'acquisition_source'), '') is null
+              and nullif(btrim(properties->>'acquisition_campaign'), '') is null
+              and nullif(btrim(properties->>'acquisition_referrer_domain'), '') is null
+            )
+          )
+      `;
+
+      const firstPartyAcquisitionContextRows = await tx<
+        FirstPartyAcquisitionContextRow[]
+      >`
+        with relevant_sessions as (
+          select distinct e.session_id
+          from analytics_events e
+          where e.created_at >= (
+              ${windows.last30Days.startDate}::date::timestamp at time zone 'Europe/Moscow'
+            )
+            and e.created_at < (
+              (${windows.last30Days.endDate}::date + 1)::timestamp at time zone 'Europe/Moscow'
+            )
+            and e.event_name in (
+              'quiz_started', 'quiz_completed', 'result_viewed', 'product_clicked',
+              'recommendation_feedback_submitted'
+            )
+        )
+        select
+          a.id::text as "eventId",
+          s.session_id as "sessionId",
+          a.created_at::text as "capturedAt",
+          nullif(btrim(a.properties->>'acquisition_source'), '') as source,
+          nullif(btrim(a.properties->>'acquisition_medium'), '') as medium,
+          nullif(btrim(a.properties->>'acquisition_campaign'), '') as campaign,
+          nullif(btrim(a.properties->>'acquisition_referrer_domain'), '') as "referrerDomain",
+          a.properties->>'acquisition_landing_path' as "landingPath",
+          a.properties->>'acquisition_classification' as classification
+        from relevant_sessions s
+        cross join lateral (
+          select
+            e.id,
+            e.created_at,
+            case
+              when jsonb_typeof(e.payload) = 'object' then e.payload
+              when jsonb_typeof(e.payload) = 'string'
+                and pg_input_is_valid(e.payload #>> '{}', 'jsonb')
+                then case
+                  when jsonb_typeof((e.payload #>> '{}')::jsonb) = 'object'
+                    then (e.payload #>> '{}')::jsonb
+                  else '{}'::jsonb
+                end
+              else '{}'::jsonb
+            end as properties
+          from analytics_events e
+          where e.session_id = s.session_id
+          order by e.created_at, e.id
+        ) a
+        where a.properties->>'acquisition_classification' in (
+            'campaign', 'external_referral', 'self_referral', 'direct_or_unknown'
+          )
+          and a.properties->>'acquisition_landing_path' like '/%'
+          and a.properties->>'acquisition_landing_path' not like '//%'
+          and position('?' in a.properties->>'acquisition_landing_path') = 0
+          and position('#' in a.properties->>'acquisition_landing_path') = 0
+          and (
+            (
+              a.properties->>'acquisition_classification' = 'campaign'
+              and (
+                nullif(btrim(a.properties->>'acquisition_source'), '') is not null
+                or nullif(btrim(a.properties->>'acquisition_campaign'), '') is not null
+              )
+            )
+            or (
+              a.properties->>'acquisition_classification' in (
+                'external_referral', 'self_referral'
+              )
+              and nullif(btrim(a.properties->>'acquisition_source'), '') is null
+              and nullif(btrim(a.properties->>'acquisition_campaign'), '') is null
+              and nullif(btrim(a.properties->>'acquisition_referrer_domain'), '') is not null
+            )
+            or (
+              a.properties->>'acquisition_classification' = 'direct_or_unknown'
+              and nullif(btrim(a.properties->>'acquisition_source'), '') is null
+              and nullif(btrim(a.properties->>'acquisition_campaign'), '') is null
+              and nullif(btrim(a.properties->>'acquisition_referrer_domain'), '') is null
+            )
+          )
+        order by s.session_id, a.created_at, a.id
+      `;
+
+      const firstPartyAcquisitionEventRows = await tx<
+        FirstPartyAcquisitionEventRow[]
+      >`
+        with windows("windowKey", start_date, end_date) as (
+          values
+            ('last7Days', ${windows.last7Days.startDate}::date, ${windows.last7Days.endDate}::date),
+            ('last30Days', ${windows.last30Days.startDate}::date, ${windows.last30Days.endDate}::date)
+        ), normalized as (
+          select
+            e.id,
+            e.session_id,
+            e.event_name,
+            e.created_at,
+            case
+              when jsonb_typeof(e.payload) = 'object' then e.payload
+              when jsonb_typeof(e.payload) = 'string'
+                and pg_input_is_valid(e.payload #>> '{}', 'jsonb')
+                then case
+                  when jsonb_typeof((e.payload #>> '{}')::jsonb) = 'object'
+                    then (e.payload #>> '{}')::jsonb
+                  else '{}'::jsonb
+                end
+              else '{}'::jsonb
+            end as properties
+          from analytics_events e
+          where e.event_name in (
+            'quiz_started', 'quiz_completed', 'result_viewed', 'product_clicked',
+            'recommendation_feedback_submitted'
+          )
+        )
+        select
+          n.id::text as "eventId",
+          w."windowKey",
+          n.session_id as "sessionId",
+          n.event_name as "eventName",
+          n.created_at::text as "createdAt",
+          nullif(btrim(n.properties->>'feedback_outcome'), '') as "feedbackOutcome",
+          nullif(btrim(n.properties->>'product_id'), '') as "productId",
+          nullif(btrim(n.properties->>'product_slug'), '') as "productSlug",
+          nullif(btrim(n.properties->>'brand'), '') as brand,
+          nullif(btrim(n.properties->>'model_name'), '') as "modelName",
+          nullif(btrim(n.properties->>'recommended_size_label'), '') as "recommendedSizeLabel",
+          case when n.properties->>'recommended_size_cm' ~ '^-?[0-9]+(\\.[0-9]+)?$'
+            then (n.properties->>'recommended_size_cm')::double precision else null end as "recommendedSizeCm",
+          nullif(btrim(n.properties->>'recommended_width_type'), '') as "recommendedWidthType",
+          case when n.properties->>'recommendation_rank' ~ '^[1-9][0-9]*$'
+            then (n.properties->>'recommendation_rank')::int else null end as "recommendationRank",
+          case when n.properties->>'recommendation_score' ~ '^-?[0-9]+(\\.[0-9]+)?$'
+            then (n.properties->>'recommendation_score')::double precision else null end as "recommendationScore",
+          nullif(btrim(n.properties->>'algorithm_version'), '') as "algorithmVersion",
+          nullif(btrim(n.properties->>'result_variant'), '') as "resultVariant"
+        from windows w
+        join normalized n
+          on n.created_at >= (w.start_date::timestamp at time zone 'Europe/Moscow')
+         and n.created_at < ((w.end_date + 1)::timestamp at time zone 'Europe/Moscow')
+        order by w."windowKey", n.created_at, n.id
+      `;
+
       const commerceRows = await tx<CommerceRow[]>`
         with windows("windowKey", start_date, end_date) as (
           values
@@ -613,6 +837,47 @@ async function loadFirstPartyReport(
             result.funnel[key].resultViewedSessions,
           ]),
         ) as Record<ReportWindowKey, number>,
+      );
+      const firstPartyAcquisitionAvailableFrom =
+        firstPartyAcquisitionAvailabilityRows[0]?.availableFrom;
+      result.firstPartyAcquisition = buildFirstPartyAcquisitionReport(
+        firstPartyAcquisitionContextRows.map((row) => ({
+          ...row,
+          capturedAt: new Date(row.capturedAt).toISOString(),
+        })),
+        firstPartyAcquisitionEventRows.map((row) => ({
+          eventId: row.eventId,
+          windowKey: row.windowKey,
+          sessionId: row.sessionId,
+          eventName: row.eventName,
+          createdAt: new Date(row.createdAt).toISOString(),
+          feedback:
+            row.eventName === "recommendation_feedback_submitted"
+              ? {
+                  eventId: row.eventId,
+                  windowKey: row.windowKey,
+                  sessionId: row.sessionId,
+                  eventName: row.eventName,
+                  createdAt: new Date(row.createdAt).toISOString(),
+                  feedbackOutcome: row.feedbackOutcome,
+                  feedbackReason: null,
+                  productId: row.productId,
+                  productSlug: row.productSlug,
+                  brand: row.brand,
+                  modelName: row.modelName,
+                  recommendedSizeLabel: row.recommendedSizeLabel,
+                  recommendedSizeCm: row.recommendedSizeCm,
+                  recommendedWidthType: row.recommendedWidthType,
+                  recommendationRank: row.recommendationRank,
+                  recommendationScore: row.recommendationScore,
+                  algorithmVersion: row.algorithmVersion,
+                  resultVariant: row.resultVariant,
+                }
+              : null,
+        })),
+        firstPartyAcquisitionAvailableFrom
+          ? new Date(firstPartyAcquisitionAvailableFrom).toISOString()
+          : null,
       );
       for (const row of commerceRows.filter((row) => row.kind === "total")) {
         if (row.windowKey) {
@@ -892,6 +1157,7 @@ export async function getAnalyticsReport({ now = new Date() } = {}) {
     funnel: firstParty.funnel,
     quizAbandonment: firstParty.quizAbandonment,
     recommendationFeedback: firstParty.recommendationFeedback,
+    firstPartyAcquisition: firstParty.firstPartyAcquisition,
     commerce: {
       windows: firstParty.commerce,
       clickSources30Days: firstParty.clickSources30Days,

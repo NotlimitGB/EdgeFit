@@ -225,6 +225,77 @@ export interface RecommendationFeedbackReport {
   windows: Record<ReportWindowKey, RecommendationFeedbackWindow>;
 }
 
+export const firstPartyAcquisitionWindowKeys = [
+  "last7Days",
+  "last30Days",
+] as const;
+
+export type FirstPartyAcquisitionWindowKey =
+  (typeof firstPartyAcquisitionWindowKeys)[number];
+
+export type FirstPartyAcquisitionClassification =
+  | "campaign"
+  | "external_referral"
+  | "self_referral"
+  | "direct_or_unknown"
+  | "unknown_historical";
+
+export interface FirstPartyAcquisitionContextEvidence {
+  eventId: string;
+  sessionId: string;
+  capturedAt: string;
+  source: string | null;
+  medium: string | null;
+  campaign: string | null;
+  referrerDomain: string | null;
+  landingPath: string;
+  classification: Exclude<
+    FirstPartyAcquisitionClassification,
+    "unknown_historical"
+  >;
+}
+
+export interface FirstPartyAcquisitionFunnelEvent {
+  eventId: string;
+  windowKey: FirstPartyAcquisitionWindowKey;
+  sessionId: string;
+  eventName:
+    | "quiz_started"
+    | "quiz_completed"
+    | "result_viewed"
+    | "product_clicked"
+    | "recommendation_feedback_submitted";
+  createdAt: string;
+  feedback: RecommendationFeedbackEvent | null;
+}
+
+export interface FirstPartyAcquisitionMetric {
+  source: string | null;
+  medium: string | null;
+  campaign: string | null;
+  referrerDomain: string | null;
+  classification: FirstPartyAcquisitionClassification;
+  quizStartSessions: number;
+  quizCompletedSessions: number;
+  resultViewSessions: number;
+  resultToStoreSessions: number;
+  storeClickSessions: number;
+  feedbackSessions: number;
+  wouldConsiderSessions: number;
+  quizCompletionRate: number | null;
+  resultToStoreRate: number | null;
+  feedbackResponseRate: number | null;
+  wouldConsiderRate: number | null;
+}
+
+export interface FirstPartyAcquisitionReport {
+  availableFrom: string | null;
+  windows: Record<
+    FirstPartyAcquisitionWindowKey,
+    { rows: FirstPartyAcquisitionMetric[] }
+  >;
+}
+
 export const quizCompletionAcquisitionPolicy = {
   authority: "first_party_ordered_funnel",
   yandexGoalId: 545241567,
@@ -574,7 +645,7 @@ function isNonEmpty(value: string | null) {
   return Boolean(value?.trim());
 }
 
-function isValidPrimaryFeedback(event: RecommendationFeedbackEvent) {
+export function isValidPrimaryFeedback(event: RecommendationFeedbackEvent) {
   return (
     event.eventName === "recommendation_feedback_submitted" &&
     recommendationFeedbackOutcomeKeys.includes(
@@ -725,6 +796,202 @@ export function buildFunnelMetrics(input: FunnelAggregateInput): FunnelMetrics {
       input.resultViewedSessions,
     ),
   };
+}
+
+function isValidAcquisitionContext(
+  context: FirstPartyAcquisitionContextEvidence,
+) {
+  const hasCampaignEvidence = Boolean(
+    context.source?.trim() || context.campaign?.trim(),
+  );
+  const hasReferrerEvidence = Boolean(context.referrerDomain?.trim());
+
+  return (
+    context.sessionId.trim() !== "" &&
+    context.landingPath.startsWith("/") &&
+    !context.landingPath.startsWith("//") &&
+    !context.landingPath.includes("?") &&
+    !context.landingPath.includes("#") &&
+    [
+      "campaign",
+      "external_referral",
+      "self_referral",
+      "direct_or_unknown",
+    ].includes(context.classification) &&
+    (context.classification === "campaign") === hasCampaignEvidence &&
+    (context.classification !== "direct_or_unknown" ||
+      !hasReferrerEvidence) &&
+    (!["external_referral", "self_referral"].includes(
+      context.classification,
+    ) || hasReferrerEvidence)
+  );
+}
+
+function compareNullable(left: string | null, right: string | null) {
+  if (left === right) {
+    return 0;
+  }
+  if (left === null) {
+    return 1;
+  }
+  if (right === null) {
+    return -1;
+  }
+  return left.localeCompare(right);
+}
+
+export function buildFirstPartyAcquisitionReport(
+  contexts: readonly FirstPartyAcquisitionContextEvidence[],
+  events: readonly FirstPartyAcquisitionFunnelEvent[],
+  availableFrom: string | null = null,
+): FirstPartyAcquisitionReport {
+  const firstContextBySession = new Map<
+    string,
+    FirstPartyAcquisitionContextEvidence
+  >();
+
+  for (const context of [...contexts].sort(
+    (left, right) =>
+      left.capturedAt.localeCompare(right.capturedAt) ||
+      left.eventId.localeCompare(right.eventId),
+  )) {
+    if (
+      isValidAcquisitionContext(context) &&
+      !firstContextBySession.has(context.sessionId)
+    ) {
+      firstContextBySession.set(context.sessionId, context);
+    }
+  }
+
+  const windows = Object.fromEntries(
+    firstPartyAcquisitionWindowKeys.map((windowKey) => {
+      const windowEvents = events.filter(
+        (event) => event.windowKey === windowKey,
+      );
+      const sessions = new Map<string, FirstPartyAcquisitionFunnelEvent[]>();
+
+      for (const event of windowEvents) {
+        const sessionEvents = sessions.get(event.sessionId) ?? [];
+        sessionEvents.push(event);
+        sessions.set(event.sessionId, sessionEvents);
+      }
+
+      const grouped = new Map<
+        string,
+        Omit<
+          FirstPartyAcquisitionMetric,
+          | "quizCompletionRate"
+          | "resultToStoreRate"
+          | "feedbackResponseRate"
+          | "wouldConsiderRate"
+        >
+      >();
+
+      for (const [sessionId, sessionEvents] of sessions) {
+        const context = firstContextBySession.get(sessionId);
+        const identity = context
+          ? {
+              source: context.source,
+              medium: context.medium,
+              campaign: context.campaign,
+              referrerDomain: context.referrerDomain,
+              classification:
+                context.classification as FirstPartyAcquisitionClassification,
+            }
+          : {
+              source: null,
+              medium: null,
+              campaign: null,
+              referrerDomain: null,
+              classification:
+                "unknown_historical" as FirstPartyAcquisitionClassification,
+            };
+        const groupKey = JSON.stringify([
+          identity.source,
+          identity.medium,
+          identity.campaign,
+          identity.referrerDomain,
+          identity.classification,
+        ]);
+        const metric = grouped.get(groupKey) ?? {
+          ...identity,
+          quizStartSessions: 0,
+          quizCompletedSessions: 0,
+          resultViewSessions: 0,
+          resultToStoreSessions: 0,
+          storeClickSessions: 0,
+          feedbackSessions: 0,
+          wouldConsiderSessions: 0,
+        };
+        const timeline = evaluateSessionTimeline(sessionEvents);
+        const primaryFeedback = sessionEvents
+          .map((event) => event.feedback)
+          .filter(
+            (feedback): feedback is RecommendationFeedbackEvent =>
+              Boolean(feedback && isValidPrimaryFeedback(feedback)),
+          )
+          .sort(
+            (left, right) =>
+              left.createdAt.localeCompare(right.createdAt) ||
+              left.eventId.localeCompare(right.eventId),
+          )[0];
+
+        metric.quizStartSessions += timeline.hasQuizStart ? 1 : 0;
+        metric.quizCompletedSessions += timeline.hasOrderedQuizCompletion ? 1 : 0;
+        metric.resultViewSessions += timeline.hasResultView ? 1 : 0;
+        metric.resultToStoreSessions += timeline.hasOrderedStoreClick ? 1 : 0;
+        metric.storeClickSessions += sessionEvents.some(
+          (event) => event.eventName === "product_clicked",
+        )
+          ? 1
+          : 0;
+        metric.feedbackSessions += primaryFeedback ? 1 : 0;
+        metric.wouldConsiderSessions +=
+          primaryFeedback?.feedbackOutcome === "would_consider" ? 1 : 0;
+        grouped.set(groupKey, metric);
+      }
+
+      const rows = [...grouped.values()]
+        .map((metric) => ({
+          ...metric,
+          quizCompletionRate: calculateRate(
+            metric.quizCompletedSessions,
+            metric.quizStartSessions,
+          ),
+          resultToStoreRate: calculateRate(
+            metric.resultToStoreSessions,
+            metric.resultViewSessions,
+          ),
+          feedbackResponseRate: calculateRate(
+            metric.feedbackSessions,
+            metric.resultViewSessions,
+          ),
+          wouldConsiderRate: calculateRate(
+            metric.wouldConsiderSessions,
+            metric.feedbackSessions,
+          ),
+        }))
+        .sort(
+          (left, right) =>
+            left.classification.localeCompare(right.classification) ||
+            compareNullable(left.source, right.source) ||
+            compareNullable(left.medium, right.medium) ||
+            compareNullable(left.campaign, right.campaign) ||
+            compareNullable(left.referrerDomain, right.referrerDomain),
+        );
+
+      return [windowKey, { rows }];
+    }),
+  ) as FirstPartyAcquisitionReport["windows"];
+
+  const resolvedAvailableFrom =
+    availableFrom ??
+    [...firstContextBySession.values()]
+      .map((context) => context.capturedAt)
+      .sort()[0] ??
+    null;
+
+  return { availableFrom: resolvedAvailableFrom, windows };
 }
 
 export function calculateTrend(current: number, previous: number): TrendDelta {
