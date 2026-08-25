@@ -96,6 +96,7 @@ function renderCard(
     | "within_catalog_estimate"
     | "over_catalog_estimate"
     | "price_unknown" = "budget_not_set",
+  showReasons = true,
 ) {
   const currentMatch = {
     ...match,
@@ -124,11 +125,27 @@ function renderCard(
       })}
       budgetRelation={budgetRelation}
       resultMode={resultMode}
+      showReasons={showReasons}
     />,
   );
 }
 
 describe("ProductRecommendationCard commercial presentation", () => {
+  it("keeps reasons by default and can hide the complete reason block", () => {
+    const defaultMarkup = renderCard("https://traektoria.ru/product/1_board/");
+    const hiddenMarkup = renderCard(
+      "https://traektoria.ru/product/1_board/",
+      "session",
+      "budget_not_set",
+      false,
+    );
+
+    expect(defaultMarkup).toContain("Почему подходит");
+    expect(defaultMarkup).toContain("Подходит по длине");
+    expect(hiddenMarkup).not.toContain("Почему подходит");
+    expect(hiddenMarkup).not.toContain("Подходит по длине");
+  });
+
   it("renders the exact result provenance on the merchant CTA", () => {
     const storeAction = buildResultStoreClickAction({
       match,

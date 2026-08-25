@@ -16,6 +16,7 @@ import {
 } from "@/components/result/product-recommendation-card";
 import { RecommendationFeedback } from "@/components/result/recommendation-feedback";
 import { RiderProfile } from "@/components/result/rider-profile";
+import { TopMatchExplanation } from "@/components/result/top-match-explanation";
 import { trackEvent } from "@/lib/analytics/client";
 import { getBoardSizeLabel } from "@/lib/board-size";
 import { getExactSizeOfferIntelligence } from "@/lib/exact-size-offer";
@@ -685,7 +686,14 @@ export function ResultView({
                       offerIntelligence={storeAction.offerIntelligence}
                       budgetRelation={storeAction.budgetRelation}
                       resultMode={mode}
+                      showReasons={index !== 0}
                     />
+                    {index === 0 ? (
+                      <TopMatchExplanation
+                        input={activeRecommendation.input}
+                        match={match}
+                      />
+                    ) : null}
                     {index === 0 && !isSavedMode ? (
                       <RecommendationFeedback
                         key={`${match.product.id}-${getBoardSizeLabel(match.size)}-${activeRecommendation.algorithmVersion}`}

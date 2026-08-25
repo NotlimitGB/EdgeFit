@@ -112,6 +112,7 @@ describe("ResultView saved mode", () => {
     expect(markup).toContain("Проверить в магазине");
     expect(markup).not.toContain("Траектория");
     expect(markup).not.toContain("Помогла рекомендация принять решение?");
+    expect(markup).toContain("Почему именно эта модель");
     expect(markup).toContain("Твой профиль");
     expect(markup).toContain("Бюджет");
     expect(markup).toContain("не указан");
@@ -169,15 +170,41 @@ describe("ResultView rider profile placement", () => {
 });
 
 describe("ResultView recommendation feedback placement", () => {
-  it("renders feedback after the primary card in session mode", () => {
+  it("renders the Top 1 bridge before feedback and keeps alternative reasons", () => {
+    const primary = {
+      ...recommendation.recommendedBoards[0],
+      reasons: ["UNIQUE_TOP_REASON"],
+    };
+    const alternative = {
+      ...primary,
+      product: {
+        ...primary.product,
+        id: "product-2",
+        slug: "alternative-board",
+        modelName: "Alternative Board",
+      },
+      reasons: ["UNIQUE_ALT_REASON"],
+      role: "stable" as const,
+    };
+    const withAlternative = {
+      ...recommendation,
+      recommendedBoards: [primary, alternative],
+    };
     const markup = renderToStaticMarkup(
-      <ResultView initialRecommendation={recommendation} mode="session" />,
+      <ResultView initialRecommendation={withAlternative} mode="session" />,
     );
     const primaryTitle = markup.indexOf("Mountain Twin");
+    const explanationTitle = markup.indexOf("Почему именно эта модель");
     const feedbackTitle = markup.indexOf("Помогла рекомендация принять решение?");
+    const alternativeTitle = markup.indexOf("Alternative Board");
 
     expect(primaryTitle).toBeGreaterThanOrEqual(0);
-    expect(feedbackTitle).toBeGreaterThan(primaryTitle);
+    expect(explanationTitle).toBeGreaterThan(primaryTitle);
+    expect(feedbackTitle).toBeGreaterThan(explanationTitle);
+    expect(alternativeTitle).toBeGreaterThan(feedbackTitle);
+    expect(markup.match(/UNIQUE_TOP_REASON/g)).toHaveLength(1);
+    expect(markup).toContain("UNIQUE_ALT_REASON");
+    expect(markup.match(/Почему подходит/g)).toHaveLength(1);
   });
 });
 

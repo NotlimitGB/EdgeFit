@@ -579,6 +579,99 @@
   margin-top: 2rem;
 }
 
+.topMatchExplanation {
+  display: grid;
+  min-width: 0;
+  gap: 1.25rem;
+  overflow: hidden;
+  border: 1px solid var(--ef-border-strong);
+  border-radius: 1rem;
+  padding: 1.1rem;
+  background:
+    linear-gradient(145deg, rgba(14, 38, 47, 0.82), rgba(8, 24, 31, 0.88)),
+    var(--ef-surface);
+}
+
+.topMatchExplanationHeader h3 {
+  margin-top: 0.45rem;
+  color: var(--ef-text);
+  font-size: clamp(1.35rem, 5vw, 1.8rem);
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.topMatchExplanationHeader > p:last-child {
+  max-width: 42rem;
+  margin-top: 0.65rem;
+  color: var(--ef-muted);
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+.topMatchFacts {
+  display: grid;
+  gap: 0;
+  border-top: 1px solid var(--ef-border);
+}
+
+.topMatchFacts > div {
+  min-width: 0;
+  padding: 0.9rem 0;
+  border-bottom: 1px solid var(--ef-border);
+}
+
+.topMatchFacts dt {
+  color: var(--ef-muted);
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.topMatchFacts dd {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.55rem 0 0;
+  color: var(--ef-text-soft);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.topMatchReasons {
+  min-width: 0;
+}
+
+.topMatchReasons ol {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.8rem;
+  padding: 0;
+  list-style: none;
+}
+
+.topMatchReasons li {
+  display: grid;
+  grid-template-columns: 1.75rem minmax(0, 1fr);
+  gap: 0.55rem;
+  color: var(--ef-text-soft);
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+.topMatchReasons li > span {
+  color: var(--ef-accent);
+  font-family: var(--font-space-grotesk), sans-serif;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+}
+
+.topMatchReasons li p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .recommendationFeedback {
   display: grid;
   gap: 1rem;
@@ -1406,8 +1499,45 @@
   }
 
   .recommendationCardFeatured,
-  .recommendationFeedback {
+  .recommendationFeedback,
+  .topMatchExplanation {
     grid-column: 1 / -1;
+  }
+
+  .topMatchExplanation {
+    padding: 1.35rem;
+  }
+
+  .topMatchFacts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .topMatchFacts > div {
+    padding: 1rem;
+  }
+
+  .topMatchFacts > div:nth-child(odd) {
+    padding-left: 0;
+    border-right: 1px solid var(--ef-border);
+  }
+
+  .topMatchReasons ol {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .topMatchReasons li {
+    display: block;
+    padding-left: 1rem;
+    border-left: 1px solid var(--ef-border);
+  }
+
+  .topMatchReasons li:first-child {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .topMatchReasons li p {
+    margin-top: 0.55rem;
   }
 
   .recommendationGrid {
@@ -1520,6 +1650,25 @@
   .recommendationGrid,
   .decisionGuideGrid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .topMatchFacts {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .topMatchFacts > div,
+  .topMatchFacts > div:nth-child(odd) {
+    padding: 1rem;
+    border-right: 1px solid var(--ef-border);
+  }
+
+  .topMatchFacts > div:first-child {
+    padding-left: 0;
+  }
+
+  .topMatchFacts > div:last-child {
+    padding-right: 0;
+    border-right: 0;
   }
 
   .decisionGuideItem,

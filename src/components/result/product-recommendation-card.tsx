@@ -34,6 +34,7 @@ export interface ProductRecommendationCardProps {
   offerIntelligence: ExactSizeOfferIntelligence;
   budgetRelation?: BudgetRelation;
   resultMode?: "session" | "saved";
+  showReasons?: boolean;
 }
 
 export const recommendationRoleLabels: Record<RecommendationRole, string> = {
@@ -60,6 +61,7 @@ export function ProductRecommendationCard({
   offerIntelligence,
   budgetRelation = "budget_not_set",
   resultMode = "session",
+  showReasons = true,
 }: ProductRecommendationCardProps) {
   const reasons = match.reasons.length > 0
     ? match.reasons.slice(0, 3)
@@ -139,17 +141,21 @@ export function ProductRecommendationCard({
         </div>
       </header>
 
-      <div className={styles.recommendationReasons}>
-        <p className={publicStyles.microLabel}>Почему подходит</p>
-        <ol>
-          {reasons.map((reason, index) => (
-            <li key={`${reason}-${index}`}>
-              <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
-              <p>{reason}</p>
-            </li>
-          ))}
-        </ol>
-      </div>
+      {showReasons ? (
+        <div className={styles.recommendationReasons}>
+          <p className={publicStyles.microLabel}>Почему подходит</p>
+          <ol>
+            {reasons.map((reason, index) => (
+              <li key={`${reason}-${index}`}>
+                <span aria-hidden="true">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <p>{reason}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
 
       <div className={styles.recommendedSize}>
         <div>
