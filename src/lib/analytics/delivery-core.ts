@@ -141,6 +141,12 @@ function formatMetric(value: number | null | undefined) {
   return value == null || !Number.isFinite(value) ? "—" : String(value);
 }
 
+function formatRate(value: number | null | undefined) {
+  return value == null || !Number.isFinite(value)
+    ? "—"
+    : `${Math.round(value * 1_000) / 10}%`;
+}
+
 export function getAnalyticsDeliveryIdempotencyKey(digest: AnalyticsDigest) {
   const key = `edgefit/${digest.logicalId}/${digest.delivery.contentHash}`;
   if (key.length > 256) {
@@ -163,6 +169,7 @@ export function buildAnalyticsDigestEmailEnvelope(
   const last30Acquisition = digest.acquisition.last30Days?.goals;
   const funnel = digest.funnel.last30Days;
   const commerce = digest.commerce.windows.last30Days;
+  const feedback = digest.recommendationFeedback.windows.last30Days;
   const readiness = digest.partnerReadiness;
   const status = digest.status.toUpperCase();
   const subject =
@@ -183,6 +190,7 @@ export function buildAnalyticsDigestEmailEnvelope(
     `Acquisition 30d: quiz ${formatMetric(last30Acquisition?.quizStarted.visits)}, result ${formatMetric(last30Acquisition?.resultViewed.visits)}, store ${formatMetric(last30Acquisition?.productClicked.visits)}`,
     `First-party 30d: ${funnel.quizCompletedSessions} quiz completions / ${funnel.resultViewedSessions} results / ${funnel.resultToStoreSessions} result-to-store`,
     `Store clicks 30d: ${commerce.uniqueClickSessions} sessions / ${commerce.clickEvents} events`,
+    `Recommendation feedback 30d: ${feedback.feedbackSessions} sessions / ${formatRate(feedback.wouldConsiderRate)} consideration rate`,
     `Partner readiness: ${formatMetric(readiness.score)} / ${readiness.status}`,
     `Data quality: ${warningCodes}`,
     `Content hash: ${digest.delivery.contentHash}`,

@@ -159,6 +159,7 @@ export default async function InternalAnalyticsPage() {
   const funnel30d = report.funnel.last30Days;
   const commerce30d = report.commerce.windows.last30Days;
   const acquisition30d = report.acquisition.last30Days;
+  const feedback30d = report.recommendationFeedback.windows.last30Days;
 
   return (
     <div className="container-shell py-10 sm:py-14">
@@ -231,6 +232,49 @@ export default async function InternalAnalyticsPage() {
               label="Result → store"
               value={formatPercent(funnel30d.resultToStoreRate)}
             />
+          </div>
+        </section>
+
+        <section aria-labelledby="feedback-title">
+          <div>
+            <h2 id="feedback-title" className="text-2xl font-bold text-slate-950">
+              Доверие к рекомендации
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm text-slate-600">
+              Уникальные session-result ответы за 30 дней. Это consideration,
+              а не purchase conversion.
+            </p>
+          </div>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <MetricCard
+              label="Ответили"
+              value={formatInteger(feedback30d.feedbackSessions)}
+              note={`${formatPercent(feedback30d.feedbackResponseRate)} от result sessions`}
+            />
+            <MetricCard
+              label="Рассмотрят доску"
+              value={formatInteger(feedback30d.wouldConsiderSessions)}
+              note={`${formatPercent(feedback30d.wouldConsiderRate)} consideration rate`}
+            />
+            <MetricCard
+              label="Нужно больше уверенности"
+              value={formatInteger(feedback30d.needMoreConfidenceSessions)}
+            />
+            <MetricCard
+              label="Не подходит"
+              value={formatInteger(feedback30d.notAFitSessions)}
+            />
+          </div>
+          <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h3 className="text-xl font-bold text-slate-950">Причины сомнений</h3>
+            <ul className="mt-4 divide-y divide-slate-100 text-sm">
+              {feedback30d.reasonBreakdown.map((item) => (
+                <li key={item.reason} className="flex justify-between gap-4 py-3">
+                  <span>{item.reason}</span>
+                  <strong>{item.sessions}</strong>
+                </li>
+              ))}
+            </ul>
           </div>
         </section>
 

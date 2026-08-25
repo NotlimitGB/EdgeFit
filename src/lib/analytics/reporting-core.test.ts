@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildQuizAbandonmentReport,
+  buildRecommendationFeedbackReport,
   addCalendarDays,
   buildFunnelMetrics,
   buildPartnerReadiness,
@@ -12,9 +13,81 @@ import {
   getHistoryDays,
   getMoscowCalendarDate,
   normalizeMerchantHostname,
+  type RecommendationFeedbackEvent,
 } from "@/lib/analytics/reporting-core";
 
 describe("analytics reporting core", () => {
+  it("builds session-deduplicated recommendation feedback metrics", () => {
+    let sequence = 0;
+    const primary = (
+      sessionId: string,
+      feedbackOutcome: "would_consider" | "need_more_confidence" | "not_a_fit",
+    ) => ({
+      eventId: `event-${String(++sequence).padStart(2, "0")}`,
+      windowKey: "last7Days" as const,
+      sessionId,
+      eventName: "recommendation_feedback_submitted" as const,
+      createdAt: `2026-08-24T10:00:${String(sequence).padStart(2, "0")}.000Z`,
+      feedbackOutcome,
+      feedbackReason: null,
+      productId: "product-1",
+      productSlug: "test-board",
+      brand: "Test",
+      modelName: "Board",
+      recommendedSizeLabel: "156",
+      recommendedSizeCm: 156,
+      recommendedWidthType: "regular",
+      recommendationRank: 1,
+      recommendationScore: 90,
+      algorithmVersion: "v1.6.4",
+      resultVariant: "session",
+    });
+    const events: RecommendationFeedbackEvent[] = [
+      primary("A", "would_consider"),
+      primary("A", "not_a_fit"),
+      primary("B", "need_more_confidence"),
+      primary("C", "not_a_fit"),
+    ];
+    events.push({
+      ...events[2],
+      eventId: "reason-1",
+      eventName: "recommendation_feedback_reason_selected",
+      createdAt: "2026-08-24T10:01:00.000Z",
+      feedbackReason: "size_uncertainty",
+    });
+    events.push({
+      ...events[3],
+      eventId: "reason-2",
+      eventName: "recommendation_feedback_reason_selected",
+      createdAt: "2026-08-24T10:01:01.000Z",
+      feedbackReason: "price_or_offer",
+    });
+
+    const result = buildRecommendationFeedbackReport(events, {
+      yesterday: 0,
+      last7Days: 4,
+      previous7Days: 0,
+      last30Days: 0,
+      previous30Days: 0,
+    });
+
+    expect(result.availableFrom).toBe("2026-08-24T10:00:01.000Z");
+    expect(result.windows.last7Days).toMatchObject({
+      feedbackSessions: 3,
+      wouldConsiderSessions: 1,
+      needMoreConfidenceSessions: 1,
+      notAFitSessions: 1,
+      wouldConsiderRate: 0.3333,
+      feedbackResponseRate: 3 / 4,
+    });
+    expect(result.windows.last7Days.reasonBreakdown).toEqual(
+      expect.arrayContaining([
+        { reason: "size_uncertainty", sessions: 1 },
+        { reason: "price_or_offer", sessions: 1 },
+      ]),
+    );
+  });
+
   it("builds session-level quiz abandonment without double-counting retries", () => {
     const at = "2026-08-24T10:00:00.000Z";
     const event = (

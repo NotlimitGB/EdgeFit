@@ -88,6 +88,36 @@ function makeServerDigest(overrides: Partial<AnalyticsDigest> = {}): AnalyticsDi
         previous30Days: { versions: [] },
       },
     },
+    recommendationFeedback: {
+      availableFrom: null,
+      windows: Object.fromEntries(
+        [
+          "yesterday",
+          "last7Days",
+          "previous7Days",
+          "last30Days",
+          "previous30Days",
+        ].map((key) => [
+          key,
+          {
+            feedbackSessions: 0,
+            wouldConsiderSessions: 0,
+            needMoreConfidenceSessions: 0,
+            notAFitSessions: 0,
+            wouldConsiderRate: null,
+            feedbackResponseRate: null,
+            reasonBreakdown: [
+              "size_uncertainty",
+              "board_uncertainty",
+              "explanation_insufficient",
+              "price_or_offer",
+              "preference_mismatch",
+              "other",
+            ].map((reason) => ({ reason, sessions: 0 })),
+          },
+        ]),
+      ) as AnalyticsDigest["recommendationFeedback"]["windows"],
+    },
     commerce: {
       windows: { last30Days: { clickEvents: 3, uniqueClickSessions: 2 } } as AnalyticsDigest["commerce"]["windows"],
       merchants30Days: [],

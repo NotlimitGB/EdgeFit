@@ -30,6 +30,8 @@ export const reportedEventNames = [
   "result_viewed",
   "product_clicked",
   "email_submitted",
+  "recommendation_feedback_submitted",
+  "recommendation_feedback_reason_selected",
 ] as const;
 
 export type ReportedEventName = (typeof reportedEventNames)[number];
@@ -159,6 +161,68 @@ export interface QuizAbandonmentReport {
     ReportWindowKey,
     { versions: QuizVersionAbandonmentMetric[] }
   >;
+}
+
+export const recommendationFeedbackOutcomeKeys = [
+  "would_consider",
+  "need_more_confidence",
+  "not_a_fit",
+] as const;
+
+export type RecommendationFeedbackOutcomeKey =
+  (typeof recommendationFeedbackOutcomeKeys)[number];
+
+export const recommendationFeedbackReasonKeys = [
+  "size_uncertainty",
+  "board_uncertainty",
+  "explanation_insufficient",
+  "price_or_offer",
+  "preference_mismatch",
+  "other",
+] as const;
+
+export type RecommendationFeedbackReasonKey =
+  (typeof recommendationFeedbackReasonKeys)[number];
+
+export interface RecommendationFeedbackEvent {
+  eventId: string;
+  windowKey: ReportWindowKey | null;
+  sessionId: string;
+  eventName:
+    | "recommendation_feedback_submitted"
+    | "recommendation_feedback_reason_selected";
+  createdAt: string;
+  feedbackOutcome: string | null;
+  feedbackReason: string | null;
+  productId: string | null;
+  productSlug: string | null;
+  brand: string | null;
+  modelName: string | null;
+  recommendedSizeLabel: string | null;
+  recommendedSizeCm: number | null;
+  recommendedWidthType: string | null;
+  recommendationRank: number | null;
+  recommendationScore: number | null;
+  algorithmVersion: string | null;
+  resultVariant: string | null;
+}
+
+export interface RecommendationFeedbackWindow {
+  feedbackSessions: number;
+  wouldConsiderSessions: number;
+  needMoreConfidenceSessions: number;
+  notAFitSessions: number;
+  wouldConsiderRate: number | null;
+  feedbackResponseRate: number | null;
+  reasonBreakdown: Array<{
+    reason: RecommendationFeedbackReasonKey;
+    sessions: number;
+  }>;
+}
+
+export interface RecommendationFeedbackReport {
+  availableFrom: string | null;
+  windows: Record<ReportWindowKey, RecommendationFeedbackWindow>;
 }
 
 export const quizCompletionAcquisitionPolicy = {
@@ -501,6 +565,149 @@ export function buildQuizAbandonmentReport(
         steps,
       });
     }
+  }
+
+  return { availableFrom, windows };
+}
+
+function isNonEmpty(value: string | null) {
+  return Boolean(value?.trim());
+}
+
+function isValidPrimaryFeedback(event: RecommendationFeedbackEvent) {
+  return (
+    event.eventName === "recommendation_feedback_submitted" &&
+    recommendationFeedbackOutcomeKeys.includes(
+      event.feedbackOutcome as RecommendationFeedbackOutcomeKey,
+    ) &&
+    event.resultVariant === "session" &&
+    event.recommendationRank === 1 &&
+    isNonEmpty(event.productId) &&
+    isNonEmpty(event.productSlug) &&
+    isNonEmpty(event.brand) &&
+    isNonEmpty(event.modelName) &&
+    isNonEmpty(event.recommendedSizeLabel) &&
+    Number.isFinite(event.recommendedSizeCm) &&
+    ["regular", "mid-wide", "wide"].includes(
+      event.recommendedWidthType ?? "",
+    ) &&
+    Number.isFinite(event.recommendationScore) &&
+    isNonEmpty(event.algorithmVersion)
+  );
+}
+
+function sameFeedbackContext(
+  primary: RecommendationFeedbackEvent,
+  reason: RecommendationFeedbackEvent,
+) {
+  return (
+    primary.feedbackOutcome === reason.feedbackOutcome &&
+    primary.productId === reason.productId &&
+    primary.productSlug === reason.productSlug &&
+    primary.recommendedSizeLabel === reason.recommendedSizeLabel &&
+    primary.recommendationRank === reason.recommendationRank &&
+    primary.algorithmVersion === reason.algorithmVersion &&
+    primary.resultVariant === reason.resultVariant
+  );
+}
+
+export function buildRecommendationFeedbackReport(
+  events: readonly RecommendationFeedbackEvent[],
+  resultViewedSessions: Readonly<Record<ReportWindowKey, number>>,
+): RecommendationFeedbackReport {
+  const windows = Object.fromEntries(
+    reportWindowKeys.map((windowKey) => [
+      windowKey,
+      {
+        feedbackSessions: 0,
+        wouldConsiderSessions: 0,
+        needMoreConfidenceSessions: 0,
+        notAFitSessions: 0,
+        wouldConsiderRate: null,
+        feedbackResponseRate: null,
+        reasonBreakdown: recommendationFeedbackReasonKeys.map((reason) => ({
+          reason,
+          sessions: 0,
+        })),
+      } satisfies RecommendationFeedbackWindow,
+    ]),
+  ) as Record<ReportWindowKey, RecommendationFeedbackWindow>;
+  const sortedEvents = [...events].sort(
+    (left, right) =>
+      left.createdAt.localeCompare(right.createdAt) ||
+      left.eventId.localeCompare(right.eventId),
+  );
+  const validPrimaryEvents = sortedEvents.filter(isValidPrimaryFeedback);
+  const availableFrom = validPrimaryEvents[0]?.createdAt ?? null;
+
+  for (const windowKey of reportWindowKeys) {
+    const primaryBySession = new Map<string, RecommendationFeedbackEvent>();
+    for (const event of validPrimaryEvents) {
+      if (event.windowKey === windowKey && !primaryBySession.has(event.sessionId)) {
+        primaryBySession.set(event.sessionId, event);
+      }
+    }
+
+    const reasonBySession = new Map<string, RecommendationFeedbackReasonKey>();
+    for (const event of sortedEvents) {
+      if (
+        event.windowKey !== windowKey ||
+        event.eventName !== "recommendation_feedback_reason_selected" ||
+        reasonBySession.has(event.sessionId) ||
+        !recommendationFeedbackReasonKeys.includes(
+          event.feedbackReason as RecommendationFeedbackReasonKey,
+        )
+      ) {
+        continue;
+      }
+
+      const primary = primaryBySession.get(event.sessionId);
+      if (
+        primary &&
+        (event.createdAt > primary.createdAt ||
+          (event.createdAt === primary.createdAt &&
+            event.eventId > primary.eventId)) &&
+        sameFeedbackContext(primary, event)
+      ) {
+        reasonBySession.set(
+          event.sessionId,
+          event.feedbackReason as RecommendationFeedbackReasonKey,
+        );
+      }
+    }
+
+    const primaryEvents = [...primaryBySession.values()];
+    const feedbackSessions = primaryEvents.length;
+    const wouldConsiderSessions = primaryEvents.filter(
+      (event) => event.feedbackOutcome === "would_consider",
+    ).length;
+    const needMoreConfidenceSessions = primaryEvents.filter(
+      (event) => event.feedbackOutcome === "need_more_confidence",
+    ).length;
+    const notAFitSessions = primaryEvents.filter(
+      (event) => event.feedbackOutcome === "not_a_fit",
+    ).length;
+
+    windows[windowKey] = {
+      feedbackSessions,
+      wouldConsiderSessions,
+      needMoreConfidenceSessions,
+      notAFitSessions,
+      wouldConsiderRate: calculateRate(
+        wouldConsiderSessions,
+        feedbackSessions,
+      ),
+      feedbackResponseRate: calculateRate(
+        feedbackSessions,
+        resultViewedSessions[windowKey],
+      ),
+      reasonBreakdown: recommendationFeedbackReasonKeys.map((reason) => ({
+        reason,
+        sessions: [...reasonBySession.values()].filter(
+          (selectedReason) => selectedReason === reason,
+        ).length,
+      })),
+    };
   }
 
   return { availableFrom, windows };

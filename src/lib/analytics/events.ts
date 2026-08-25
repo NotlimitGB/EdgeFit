@@ -9,6 +9,9 @@ export const analyticsEvents = {
   emailSubmitted: "email_submitted",
   recalculationStarted: "recalculation_started",
   resultExited: "result_exited",
+  recommendationFeedbackSubmitted: "recommendation_feedback_submitted",
+  recommendationFeedbackReasonSelected:
+    "recommendation_feedback_reason_selected",
 } as const;
 
 export type AnalyticsEventName =

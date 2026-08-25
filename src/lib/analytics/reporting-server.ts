@@ -6,6 +6,7 @@ import {
   ANALYTICS_REPORT_TIMEZONE,
   ANALYTICS_REPORT_VERSION,
   buildQuizAbandonmentReport,
+  buildRecommendationFeedbackReport,
   buildFunnelMetrics,
   buildPartnerReadiness,
   buildReportWindows,
@@ -24,6 +25,8 @@ import {
   type MerchantEvidence,
   type QuizAbandonmentReport,
   type QuizProgressionEvent,
+  type RecommendationFeedbackEvent,
+  type RecommendationFeedbackReport,
   type ReportWindowKey,
   type TopBoardMetric,
   type TopOfferMetric,
@@ -71,6 +74,7 @@ interface TopCommerceRow {
 }
 
 type QuizProgressionRow = QuizProgressionEvent;
+type RecommendationFeedbackRow = RecommendationFeedbackEvent;
 
 interface QuizStepAvailabilityRow {
   availableFrom: string | null;
@@ -91,6 +95,7 @@ interface FirstPartyResult {
   topBoards30Days: TopBoardMetric[];
   topOffers30Days: TopOfferMetric[];
   quizAbandonment: QuizAbandonmentReport;
+  recommendationFeedback: RecommendationFeedbackReport;
 }
 
 function emptyEventMetrics(): EventMetrics {
@@ -137,6 +142,13 @@ function emptyFirstParty(status: AnalyticsSourceStatus): FirstPartyResult {
     topBoards30Days: [],
     topOffers30Days: [],
     quizAbandonment: buildQuizAbandonmentReport([]),
+    recommendationFeedback: buildRecommendationFeedbackReport(
+      [],
+      Object.fromEntries(reportWindowKeys.map((key) => [key, 0])) as Record<
+        ReportWindowKey,
+        number
+      >,
+    ),
   };
 }
 
@@ -201,7 +213,9 @@ async function loadFirstPartyReport(
          and e.created_at < ((w.end_date + 1)::timestamp at time zone 'Europe/Moscow')
         where e.event_name in (
           'home_viewed', 'quiz_started', 'quiz_completed',
-          'result_viewed', 'product_clicked', 'email_submitted'
+          'result_viewed', 'product_clicked', 'email_submitted',
+          'recommendation_feedback_submitted',
+          'recommendation_feedback_reason_selected'
         )
         group by w."windowKey", e.event_name
         order by w."windowKey", e.event_name
@@ -335,6 +349,66 @@ async function loadFirstPartyReport(
           and properties->>'step_index' ~ '^[1-9][0-9]*$'
           and nullif(btrim(properties->>'step_key'), '') is not null
           and properties->>'total_steps' ~ '^[1-9][0-9]*$'
+      `;
+
+      const recommendationFeedbackRows = await tx<RecommendationFeedbackRow[]>`
+        with windows("windowKey", start_date, end_date) as (
+          values
+            ('yesterday', ${windows.yesterday.startDate}::date, ${windows.yesterday.endDate}::date),
+            ('last7Days', ${windows.last7Days.startDate}::date, ${windows.last7Days.endDate}::date),
+            ('previous7Days', ${windows.previous7Days.startDate}::date, ${windows.previous7Days.endDate}::date),
+            ('last30Days', ${windows.last30Days.startDate}::date, ${windows.last30Days.endDate}::date),
+            ('previous30Days', ${windows.previous30Days.startDate}::date, ${windows.previous30Days.endDate}::date)
+        ), normalized as (
+          select
+            e.id,
+            e.session_id,
+            e.event_name,
+            e.created_at,
+            case
+              when jsonb_typeof(e.payload) = 'object' then e.payload
+              when jsonb_typeof(e.payload) = 'string'
+                and pg_input_is_valid(e.payload #>> '{}', 'jsonb')
+                then case
+                  when jsonb_typeof((e.payload #>> '{}')::jsonb) = 'object'
+                    then (e.payload #>> '{}')::jsonb
+                  else '{}'::jsonb
+                end
+              else '{}'::jsonb
+            end as properties
+          from analytics_events e
+          where e.event_name in (
+            'recommendation_feedback_submitted',
+            'recommendation_feedback_reason_selected'
+          )
+        )
+        select
+          n.id::text as "eventId",
+          w."windowKey",
+          n.session_id as "sessionId",
+          n.event_name as "eventName",
+          n.created_at::text as "createdAt",
+          nullif(btrim(n.properties->>'feedback_outcome'), '') as "feedbackOutcome",
+          nullif(btrim(n.properties->>'feedback_reason'), '') as "feedbackReason",
+          nullif(btrim(n.properties->>'product_id'), '') as "productId",
+          nullif(btrim(n.properties->>'product_slug'), '') as "productSlug",
+          nullif(btrim(n.properties->>'brand'), '') as brand,
+          nullif(btrim(n.properties->>'model_name'), '') as "modelName",
+          nullif(btrim(n.properties->>'recommended_size_label'), '') as "recommendedSizeLabel",
+          case when n.properties->>'recommended_size_cm' ~ '^-?[0-9]+(\\.[0-9]+)?$'
+            then (n.properties->>'recommended_size_cm')::double precision else null end as "recommendedSizeCm",
+          nullif(btrim(n.properties->>'recommended_width_type'), '') as "recommendedWidthType",
+          case when n.properties->>'recommendation_rank' ~ '^[1-9][0-9]*$'
+            then (n.properties->>'recommendation_rank')::int else null end as "recommendationRank",
+          case when n.properties->>'recommendation_score' ~ '^-?[0-9]+(\\.[0-9]+)?$'
+            then (n.properties->>'recommendation_score')::double precision else null end as "recommendationScore",
+          nullif(btrim(n.properties->>'algorithm_version'), '') as "algorithmVersion",
+          nullif(btrim(n.properties->>'result_variant'), '') as "resultVariant"
+        from normalized n
+        left join windows w
+          on n.created_at >= (w.start_date::timestamp at time zone 'Europe/Moscow')
+         and n.created_at < ((w.end_date + 1)::timestamp at time zone 'Europe/Moscow')
+        order by n.created_at, n.id, w."windowKey"
       `;
 
       const commerceRows = await tx<CommerceRow[]>`
@@ -528,6 +602,18 @@ async function loadFirstPartyReport(
       result.quizAbandonment.availableFrom = stepAvailableFrom
         ? new Date(stepAvailableFrom).toISOString()
         : null;
+      result.recommendationFeedback = buildRecommendationFeedbackReport(
+        recommendationFeedbackRows.map((row) => ({
+          ...row,
+          createdAt: new Date(row.createdAt).toISOString(),
+        })),
+        Object.fromEntries(
+          reportWindowKeys.map((key) => [
+            key,
+            result.funnel[key].resultViewedSessions,
+          ]),
+        ) as Record<ReportWindowKey, number>,
+      );
       for (const row of commerceRows.filter((row) => row.kind === "total")) {
         if (row.windowKey) {
           result.commerce[row.windowKey] = {
@@ -805,6 +891,7 @@ export async function getAnalyticsReport({ now = new Date() } = {}) {
     },
     funnel: firstParty.funnel,
     quizAbandonment: firstParty.quizAbandonment,
+    recommendationFeedback: firstParty.recommendationFeedback,
     commerce: {
       windows: firstParty.commerce,
       clickSources30Days: firstParty.clickSources30Days,

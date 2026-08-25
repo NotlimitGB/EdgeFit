@@ -50,6 +50,30 @@ function makeDigest(overrides: Partial<AnalyticsDigest> = {}): AnalyticsDigest {
   const commerceWindows = Object.fromEntries(
     periodKeys.map((key) => [key, { clickEvents: 3, uniqueClickSessions: 2 }]),
   );
+  const recommendationFeedback = {
+    availableFrom: null,
+    windows: Object.fromEntries(
+      periodKeys.map((key) => [
+        key,
+        {
+          feedbackSessions: 2,
+          wouldConsiderSessions: 1,
+          needMoreConfidenceSessions: 1,
+          notAFitSessions: 0,
+          wouldConsiderRate: 0.5,
+          feedbackResponseRate: 0.5,
+          reasonBreakdown: [
+            "size_uncertainty",
+            "board_uncertainty",
+            "explanation_insufficient",
+            "price_or_offer",
+            "preference_mismatch",
+            "other",
+          ].map((reason) => ({ reason, sessions: 0 })),
+        },
+      ]),
+    ) as AnalyticsDigest["recommendationFeedback"]["windows"],
+  };
   const trend = {
     users: { current: 10, previous: 8, absolute: 2, percent: 25 },
     visits: { current: 20, previous: 16, absolute: 4, percent: 25 },
@@ -107,6 +131,7 @@ function makeDigest(overrides: Partial<AnalyticsDigest> = {}): AnalyticsDigest {
         periodKeys.map((key) => [key, { versions: [] }]),
       ) as unknown as AnalyticsDigest["quizAbandonment"]["windows"],
     },
+    recommendationFeedback,
     commerce: {
       windows: commerceWindows as AnalyticsDigest["commerce"]["windows"],
       merchants30Days: [],
@@ -237,6 +262,8 @@ describe("analytics delivery envelopes", () => {
     );
     expect(envelope.message.text).toContain("PRIVATE — EDGEFIT ANALYTICS");
     expect(envelope.message.text).toContain("Status: COMPLETE");
+    expect(envelope.message.text).toContain("Recommendation feedback 30d:");
+    expect(envelope.message.text).toContain("50% consideration rate");
     expect(envelope.message.attachments?.[0].filename).toBe("edgefit-daily-2026-08-09.json");
     const parsed = JSON.parse(
       Buffer.from(envelope.message.attachments![0].content, "base64").toString("utf8"),

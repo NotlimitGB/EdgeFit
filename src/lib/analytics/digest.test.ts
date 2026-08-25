@@ -58,6 +58,14 @@ function eventMetrics(seed: number) {
     result_viewed: { eventCount: seed + 4, uniqueSessions: seed + 4 },
     product_clicked: { eventCount: seed + 5, uniqueSessions: seed + 5 },
     email_submitted: { eventCount: seed + 6, uniqueSessions: seed + 6 },
+    recommendation_feedback_submitted: {
+      eventCount: seed + 7,
+      uniqueSessions: seed + 7,
+    },
+    recommendation_feedback_reason_selected: {
+      eventCount: seed + 8,
+      uniqueSessions: seed + 8,
+    },
   };
 }
 
@@ -190,6 +198,30 @@ function makeReport(): AnalyticsReport {
         windowKeys.map((key) => [key, { versions: [] }]),
       ),
     },
+    recommendationFeedback: {
+      availableFrom: null,
+      windows: Object.fromEntries(
+        windowKeys.map((key) => [
+          key,
+          {
+            feedbackSessions: 3,
+            wouldConsiderSessions: 1,
+            needMoreConfidenceSessions: 1,
+            notAFitSessions: 1,
+            wouldConsiderRate: 1 / 3,
+            feedbackResponseRate: 0.5,
+            reasonBreakdown: [
+              "size_uncertainty",
+              "board_uncertainty",
+              "explanation_insufficient",
+              "price_or_offer",
+              "preference_mismatch",
+              "other",
+            ].map((reason, index) => ({ reason, sessions: index < 2 ? 1 : 0 })),
+          },
+        ]),
+      ),
+    },
     commerce: {
       windows: commerceWindows,
       clickSources30Days: [
@@ -296,6 +328,12 @@ describe("analytics digest projection", () => {
     expect(digest.kind).toBe("daily");
     expect(digest.logicalId).toBe("daily:2026-08-09");
     expect(digest.sourceReport.version).toBe("edgefit-analytics-report-v1");
+    expect(digest.recommendationFeedback.windows.last30Days).toMatchObject({
+      feedbackSessions: 3,
+      wouldConsiderSessions: 1,
+      wouldConsiderRate: 1 / 3,
+      feedbackResponseRate: 0.5,
+    });
   });
 
   it("builds a weekly ISO identity from a completed Monday-to-Sunday window", () => {

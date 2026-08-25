@@ -110,6 +110,20 @@ describe("ResultView saved mode", () => {
     expect(markup).not.toContain("save-result-title");
     expect(markup).toContain("Проверить в магазине");
     expect(markup).not.toContain("Траектория");
+    expect(markup).not.toContain("Помогла рекомендация принять решение?");
+  });
+});
+
+describe("ResultView recommendation feedback placement", () => {
+  it("renders feedback after the primary card in session mode", () => {
+    const markup = renderToStaticMarkup(
+      <ResultView initialRecommendation={recommendation} mode="session" />,
+    );
+    const primaryTitle = markup.indexOf("Mountain Twin");
+    const feedbackTitle = markup.indexOf("Помогла рекомендация принять решение?");
+
+    expect(primaryTitle).toBeGreaterThanOrEqual(0);
+    expect(feedbackTitle).toBeGreaterThan(primaryTitle);
   });
 });
 

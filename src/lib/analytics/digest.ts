@@ -121,6 +121,7 @@ export interface AnalyticsDigest {
     }
   >;
   quizAbandonment: AnalyticsReport["quizAbandonment"];
+  recommendationFeedback: AnalyticsReport["recommendationFeedback"];
   commerce: {
     windows: Record<WindowKey, { clickEvents: number; uniqueClickSessions: number }>;
     merchants30Days: Array<{
@@ -654,6 +655,41 @@ const commerceWindowSchema: Schema = {
     uniqueClickSessions: { schema: numberSchema },
   },
 };
+
+const recommendationFeedbackWindowSchema: Schema = {
+  type: "object",
+  fields: {
+    feedbackSessions: { schema: numberSchema },
+    wouldConsiderSessions: { schema: numberSchema },
+    needMoreConfidenceSessions: { schema: numberSchema },
+    notAFitSessions: { schema: numberSchema },
+    wouldConsiderRate: { schema: nullableNumberSchema },
+    feedbackResponseRate: { schema: nullableNumberSchema },
+    reasonBreakdown: {
+      schema: {
+        type: "array",
+        items: {
+          type: "object",
+          fields: {
+            reason: {
+              schema: stringSchema({
+                values: [
+                  "size_uncertainty",
+                  "board_uncertainty",
+                  "explanation_insufficient",
+                  "price_or_offer",
+                  "preference_mismatch",
+                  "other",
+                ],
+              }),
+            },
+            sessions: { schema: numberSchema },
+          },
+        },
+      },
+    },
+  },
+};
 const trendMetricSchema: Schema = {
   type: "object",
   fields: {
@@ -881,6 +917,25 @@ const digestSchema: Schema = {
                       },
                     },
                   },
+                ]),
+              ),
+            },
+          },
+        },
+      },
+    },
+    recommendationFeedback: {
+      schema: {
+        type: "object",
+        fields: {
+          availableFrom: { schema: { type: "nullable", schema: stringSchema() } },
+          windows: {
+            schema: {
+              type: "object",
+              fields: Object.fromEntries(
+                WINDOW_KEYS.map((key) => [
+                  key,
+                  { schema: recommendationFeedbackWindowSchema },
                 ]),
               ),
             },
@@ -1279,6 +1334,7 @@ function buildAnalyticsDigest(report: AnalyticsReport, kind: DigestKind): Analyt
   const acquisition = projectAcquisition(report);
   const funnel = projectFunnel(report);
   const quizAbandonment = report.quizAbandonment;
+  const recommendationFeedback = report.recommendationFeedback;
   const commerce = projectCommerce(report);
   const trends = projectTrends(report);
   const partnerReadiness = projectPartnerReadiness(report);
@@ -1308,6 +1364,7 @@ function buildAnalyticsDigest(report: AnalyticsReport, kind: DigestKind): Analyt
     acquisition,
     funnel,
     quizAbandonment,
+    recommendationFeedback,
     commerce,
     trends,
     partnerReadiness,
@@ -1341,6 +1398,7 @@ function buildAnalyticsDigest(report: AnalyticsReport, kind: DigestKind): Analyt
     acquisition,
     funnel,
     quizAbandonment,
+    recommendationFeedback,
     commerce,
     trends,
     partnerReadiness,

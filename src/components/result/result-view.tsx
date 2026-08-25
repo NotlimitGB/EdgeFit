@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  Fragment,
   useEffect,
   useState,
   useSyncExternalStore,
@@ -13,6 +14,7 @@ import {
   ProductRecommendationCard,
   recommendationRoleLabels,
 } from "@/components/result/product-recommendation-card";
+import { RecommendationFeedback } from "@/components/result/recommendation-feedback";
 import { trackEvent } from "@/lib/analytics/client";
 import { getBoardSizeLabel } from "@/lib/board-size";
 import { getExactSizeOfferIntelligence } from "@/lib/exact-size-offer";
@@ -236,7 +238,9 @@ export function ResultView({
     () => null,
   );
   const recommendation =
-    mode === "saved" ? initialRecommendation : sessionRecommendation;
+    mode === "saved"
+      ? initialRecommendation
+      : sessionRecommendation ?? initialRecommendation;
   const [email, setEmail] = useState("");
   const [consent, setConsent] = useState(false);
   const [emailError, setEmailError] = useState("");
@@ -632,18 +636,27 @@ export function ResultView({
                 );
 
                 return (
-                  <ProductRecommendationCard
+                  <Fragment
                     key={`${match.product.id}-${getBoardSizeLabel(match.size)}`}
-                    match={match}
-                    position={rank}
-                    variant={index === 0 ? "featured" : "recommended"}
-                    shopHref={storeAction.href}
-                    shopAnalyticsPayload={storeAction.analyticsPayload}
-                    commercialPresentation={getCommercialPresentation(
-                      match.product.affiliateUrl,
-                    )}
-                    offerIntelligence={storeAction.offerIntelligence}
-                  />
+                  >
+                    <ProductRecommendationCard
+                      match={match}
+                      position={rank}
+                      variant={index === 0 ? "featured" : "recommended"}
+                      shopHref={storeAction.href}
+                      shopAnalyticsPayload={storeAction.analyticsPayload}
+                      commercialPresentation={getCommercialPresentation(
+                        match.product.affiliateUrl,
+                      )}
+                      offerIntelligence={storeAction.offerIntelligence}
+                    />
+                    {index === 0 && !isSavedMode ? (
+                      <RecommendationFeedback
+                        key={`${match.product.id}-${getBoardSizeLabel(match.size)}-${activeRecommendation.algorithmVersion}`}
+                        recommendation={activeRecommendation}
+                      />
+                    ) : null}
+                  </Fragment>
                 );
               })}
             </div>

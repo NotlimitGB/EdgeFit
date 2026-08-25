@@ -566,6 +566,79 @@
   margin-top: 2rem;
 }
 
+.recommendationFeedback {
+  display: grid;
+  gap: 1rem;
+  border: 1px solid var(--ef-border);
+  border-radius: 1rem;
+  padding: 1.1rem;
+  background: rgba(10, 27, 34, 0.76);
+}
+
+.feedbackEyebrow {
+  color: var(--ef-accent);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.recommendationFeedback h3 {
+  margin-top: 0.35rem;
+  color: var(--ef-text);
+  font-size: 1.05rem;
+  line-height: 1.35;
+}
+
+.feedbackChoices,
+.feedbackReasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.feedbackChoices button,
+.feedbackReasons button {
+  min-height: 2.75rem;
+  border: 1px solid var(--ef-border-strong);
+  border-radius: 0.65rem;
+  padding: 0.65rem 0.85rem;
+  color: var(--ef-text-soft);
+  background: rgba(8, 24, 31, 0.9);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.feedbackChoices button:hover,
+.feedbackReasons button:hover {
+  border-color: rgba(158, 223, 240, 0.48);
+  color: var(--ef-text);
+}
+
+.feedbackChoices button:focus-visible,
+.feedbackReasons button:focus-visible {
+  outline: 2px solid var(--ef-accent);
+  outline-offset: 3px;
+}
+
+.feedbackFollowUp {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.feedbackFollowUp > p,
+.feedbackAcknowledgement {
+  color: var(--ef-text-soft);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.feedbackAcknowledgement {
+  color: var(--ef-success);
+}
+
 .recommendationCard {
   display: flex;
   min-width: 0;
@@ -1329,6 +1402,11 @@
   .recommendationGrid,
   .decisionGuideGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .recommendationCardFeatured,
+  .recommendationFeedback {
+    grid-column: 1 / -1;
   }
 
   .recommendationGrid {
