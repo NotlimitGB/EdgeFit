@@ -58,6 +58,7 @@ describe("outbound click analytics", () => {
       algorithm_version: null,
       exact_size_offer_status: null,
       exact_size_matched: null,
+      clicked_product_budget_relation: null,
     });
   });
 

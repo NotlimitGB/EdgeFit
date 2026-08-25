@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createQuizV2Draft,
   loadQuizV2Draft,
+  parseQuizV2PurchasePreferences,
   parseQuizV2Submission,
   QUIZ_V2_DRAFT_STORAGE_KEY,
   QUIZ_V2_STEP_FIELDS,
@@ -36,6 +37,7 @@ const completedDraft: QuizV2Draft = {
   terrainPriority: "balanced",
   aggressiveness: "balanced",
   boardLinePreference: "any",
+  budgetMaxRub: "",
 };
 
 describe("Quiz v2 draft contract", () => {
@@ -50,6 +52,7 @@ describe("Quiz v2 draft contract", () => {
       terrainPriority: null,
       aggressiveness: null,
       boardLinePreference: "any",
+      budgetMaxRub: "",
     });
     expect(parseQuizV2Submission(createQuizV2Draft()).success).toBe(false);
   });
@@ -58,7 +61,11 @@ describe("Quiz v2 draft contract", () => {
     expect(QUIZ_V2_STEP_FIELDS).toEqual({
       physical_fit: ["heightCm", "weightKg", "bootSizeEu", "stanceType"],
       riding_context: ["skillLevel", "ridingStyle", "terrainPriority"],
-      decision_preferences: ["aggressiveness", "boardLinePreference"],
+      decision_preferences: [
+        "aggressiveness",
+        "boardLinePreference",
+        "budgetMaxRub",
+      ],
     });
   });
 
@@ -115,6 +122,44 @@ describe("Quiz v2 draft contract", () => {
     });
   });
 
+  it.each([
+    ["", null, true],
+    ["1", 1, true],
+    ["50000", 50_000, true],
+    ["1000000", 1_000_000, true],
+    ["0", null, false],
+    ["-1", null, false],
+    ["1000001", null, false],
+    ["50000.5", null, false],
+    ["abc", null, false],
+  ] as const)("normalizes budget draft %s", (budgetMaxRub, expected, success) => {
+    const draft = { ...completedDraft, budgetMaxRub };
+    const result = parseQuizV2PurchasePreferences(draft);
+
+    expect(result.success).toBe(success);
+    if (result.success) {
+      expect(result.data.budgetMaxRub).toBe(expected);
+    }
+  });
+
+  it("keeps blank budget optional but blocks an invalid Step 3 budget", () => {
+    expect(validateQuizV2Step(completedDraft, "decision_preferences")).toEqual({
+      success: true,
+    });
+    expect(
+      validateQuizV2Step(
+        { ...completedDraft, budgetMaxRub: "1000001" },
+        "decision_preferences",
+      ),
+    ).toEqual({
+      success: false,
+      errors: {
+        budgetMaxRub:
+          "Укажите целое число от 1 до 1 000 000 ₽ или оставьте поле пустым.",
+      },
+    });
+  });
+
   it("normalizes an explicit completed draft to the unchanged API payload", () => {
     const result = parseQuizV2Submission(completedDraft);
 
@@ -146,6 +191,18 @@ describe("Quiz v2 draft contract", () => {
       values: draft,
     });
     expect(loadQuizV2Draft(storage)).toEqual(draft);
+  });
+
+  it("preserves a pre-budget v2 draft and supplies an empty budget", () => {
+    const storage = new MemoryStorage();
+    const { budgetMaxRub, ...legacyV2Values } = completedDraft;
+    expect(budgetMaxRub).toBe("");
+    storage.setItem(
+      QUIZ_V2_DRAFT_STORAGE_KEY,
+      JSON.stringify({ version: "v2", values: legacyV2Values }),
+    );
+
+    expect(loadQuizV2Draft(storage)).toEqual(completedDraft);
   });
 
   it("never imports the legacy v1 draft key", () => {
@@ -180,6 +237,10 @@ describe("Quiz v2 draft contract", () => {
     JSON.stringify({
       version: "v2",
       values: { ...completedDraft, unexpected: true },
+    }),
+    JSON.stringify({
+      version: "v2",
+      values: { ...completedDraft, budgetMaxRub: "50000.5" },
     }),
     JSON.stringify({ version: "v2", values: [] }),
   ])("discards malformed stored state without constructing a persona", (raw) => {

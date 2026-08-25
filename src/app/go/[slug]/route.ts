@@ -7,6 +7,7 @@ import { buildOutboundClickAnalyticsPayload } from "@/lib/outbound-click-analyti
 import { getExactSizeOfferIntelligence } from "@/lib/exact-size-offer";
 import { getProductBySlug } from "@/lib/products";
 import { isSavedResultStoreSource } from "@/lib/saved-result-contract";
+import { getBudgetRelation } from "@/lib/purchase-preferences";
 import { SESSION_COOKIE_NAME } from "@/lib/session-id";
 import {
   getStoreDestinationProvenance,
@@ -24,6 +25,7 @@ const outboundClickQuerySchema = z.object({
   recommendationScore: z.coerce.number().finite().optional(),
   resultVariant: z.string().trim().max(40).optional(),
   algorithmVersion: z.string().trim().max(40).optional(),
+  budgetMaxRub: z.coerce.number().int().min(1).max(1_000_000).optional(),
 });
 
 function getFallbackRedirectUrl(request: Request) {
@@ -130,6 +132,10 @@ export async function GET(
           algorithmVersion: payload.data.algorithmVersion,
           exactSizeOfferStatus: offerIntelligence.status,
           exactSizeMatched: offerIntelligence.exactSizeMatched,
+          clickedProductBudgetRelation: getBudgetRelation(
+            product.priceFrom,
+            payload.data.budgetMaxRub ?? null,
+          ),
         }),
       });
     } catch (error) {

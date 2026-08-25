@@ -14,6 +14,7 @@ interface BuildStoreRedirectHrefArgs {
   recommendationScore?: number | null;
   resultVariant?: string | null;
   algorithmVersion?: string | null;
+  budgetMaxRub?: number | null;
 }
 
 type SupportedStoreDestination = {
@@ -196,6 +197,7 @@ export function buildStoreRedirectHref(
     recommendationScore,
     resultVariant,
     algorithmVersion,
+    budgetMaxRub,
   } =
     typeof productSlugOrArgs === "string"
       ? { productSlug: productSlugOrArgs, ...maybeArgs }
@@ -240,6 +242,10 @@ export function buildStoreRedirectHref(
 
   if (algorithmVersion) {
     searchParams.set("algorithmVersion", algorithmVersion);
+  }
+
+  if (budgetMaxRub != null) {
+    searchParams.set("budgetMaxRub", String(budgetMaxRub));
   }
 
   const query = searchParams.toString();

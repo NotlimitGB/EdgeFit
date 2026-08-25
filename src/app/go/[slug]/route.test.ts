@@ -97,7 +97,7 @@ describe("store click provenance", () => {
   it("persists one server-authoritative first-party event and redirects", async () => {
     const response = await GET(
       new Request(
-        "https://edge-fit.test/go/test-board?from=result-top&placement=primary_recommendation&sizeCm=156&sizeLabel=156W&widthType=wide&recommendationRank=1&recommendationScore=92&resultVariant=session&algorithmVersion=v1.6.4",
+        "https://edge-fit.test/go/test-board?from=result-top&placement=primary_recommendation&sizeCm=156&sizeLabel=156W&widthType=wide&recommendationRank=1&recommendationScore=92&resultVariant=session&algorithmVersion=v1.6.4&budgetMaxRub=40000",
       ),
       { params: Promise.resolve({ slug: "test-board" }) },
     );
@@ -127,8 +127,26 @@ describe("store click provenance", () => {
         algorithm_version: "v1.6.4",
         exact_size_offer_status: "confirmed_available",
         exact_size_matched: true,
+        clicked_product_budget_relation: "over_catalog_estimate",
       }),
     });
+  });
+
+  it("rejects a forged relation and recomputes from validated budget context", async () => {
+    await GET(
+      new Request(
+        "https://edge-fit.test/go/test-board?from=result-top&budgetMaxRub=60000&clickedProductBudgetRelation=over_catalog_estimate",
+      ),
+      { params: Promise.resolve({ slug: "test-board" }) },
+    );
+
+    expect(mocks.saveAnalyticsEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          clicked_product_budget_relation: "within_catalog_estimate",
+        }),
+      }),
+    );
   });
 
   it("recomputes not-confirmed status from server ProductSize data", async () => {

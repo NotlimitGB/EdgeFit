@@ -6,6 +6,11 @@ import { получитьКлиентБазы } from "@/lib/database/client";
 import { базаНастроена } from "@/lib/database/config";
 import { isSavedResultToken } from "@/lib/saved-result-contract";
 import type { RecommendationResult } from "@/types/domain";
+import {
+  EMPTY_PURCHASE_PREFERENCES,
+  purchasePreferencesSchema,
+  type PurchasePreferences,
+} from "@/lib/purchase-preferences";
 
 const ridingStyleSchema = z.enum(["all-mountain", "park", "freeride"]);
 const skillLevelSchema = z.enum(["beginner", "intermediate", "advanced"]);
@@ -121,6 +126,17 @@ const recommendationResultSchema = z
   })
   .strict();
 
+const savedResultSnapshotV2Schema = z.strictObject({
+  snapshotVersion: z.literal(2),
+  recommendation: recommendationResultSchema,
+  purchasePreferences: purchasePreferencesSchema,
+});
+
+export interface SavedResultSnapshot {
+  recommendation: RecommendationResult;
+  purchasePreferences: PurchasePreferences;
+}
+
 export class SavedResultUnavailableError extends Error {
   constructor() {
     super("Saved result is temporarily unavailable.");
@@ -148,7 +164,29 @@ export function isRecommendationResultSnapshot(
   return recommendationResultSchema.safeParse(value).success;
 }
 
-export async function loadSavedRecommendationByToken(token: string) {
+export function parseSavedResultSnapshot(
+  value: unknown,
+): SavedResultSnapshot | null {
+  const legacyResult = recommendationResultSchema.safeParse(value);
+  if (legacyResult.success) {
+    return {
+      recommendation: legacyResult.data,
+      purchasePreferences: EMPTY_PURCHASE_PREFERENCES,
+    };
+  }
+
+  const versionedResult = savedResultSnapshotV2Schema.safeParse(value);
+  if (!versionedResult.success) {
+    return null;
+  }
+
+  return {
+    recommendation: versionedResult.data.recommendation,
+    purchasePreferences: versionedResult.data.purchasePreferences,
+  };
+}
+
+export async function loadSavedResultByToken(token: string) {
   if (!isSavedResultsEnabled() || !isSavedResultToken(token)) {
     return null;
   }
@@ -167,8 +205,13 @@ export async function loadSavedRecommendationByToken(token: string) {
     `;
     const snapshot = rows[0]?.resultSnapshot;
 
-    return isRecommendationResultSnapshot(snapshot) ? snapshot : null;
+    return parseSavedResultSnapshot(snapshot);
   } catch {
     throw new SavedResultUnavailableError();
   }
+}
+
+export async function loadSavedRecommendationByToken(token: string) {
+  const savedResult = await loadSavedResultByToken(token);
+  return savedResult?.recommendation ?? null;
 }

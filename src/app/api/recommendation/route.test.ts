@@ -118,4 +118,48 @@ describe("recommendation API saved-result transport", () => {
       /familyId|familyKey|familyMemberRole/u,
     );
   });
+
+  it("separates optional purchase preferences before calling the engine", async () => {
+    mocks.save.mockResolvedValue(null);
+    const response = await POST(
+      new Request("http://localhost/api/recommendation", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...recommendation.input,
+          purchasePreferences: { budgetMaxRub: 40_000 },
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(recommendation);
+    expect(mocks.getRecommendation).toHaveBeenCalledWith(
+      recommendation.input,
+      expect.any(Array),
+      expect.any(Object),
+    );
+    expect(mocks.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        вход: recommendation.input,
+        purchasePreferences: { budgetMaxRub: 40_000 },
+      }),
+    );
+  });
+
+  it("rejects malformed purchase preferences", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/recommendation", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...recommendation.input,
+          purchasePreferences: { budgetMaxRub: 40_000.5 },
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(mocks.getRecommendation).not.toHaveBeenCalled();
+  });
 });

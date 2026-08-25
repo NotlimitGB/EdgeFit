@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  EMPTY_PURCHASE_PREFERENCES,
+  purchasePreferencesSchema,
+} from "@/lib/purchase-preferences";
 
 export const quizSubmissionSchema = z.object({
   heightCm: z.coerce
@@ -27,3 +31,12 @@ export const quizSubmissionSchema = z.object({
 });
 
 export type QuizSubmission = z.infer<typeof quizSubmissionSchema>;
+
+export const recommendationRequestSchema = quizSubmissionSchema
+  .extend({
+    purchasePreferences: purchasePreferencesSchema.optional(),
+  })
+  .transform(({ purchasePreferences, ...riderInput }) => ({
+    riderInput,
+    purchasePreferences: purchasePreferences ?? EMPTY_PURCHASE_PREFERENCES,
+  }));

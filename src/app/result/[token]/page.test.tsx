@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("next/navigation", () => ({ notFound: mocks.notFound }));
 vi.mock("@/lib/saved-results", () => ({
-  loadSavedRecommendationByToken: (...parameters: unknown[]) =>
+  loadSavedResultByToken: (...parameters: unknown[]) =>
     mocks.load(...parameters),
 }));
 vi.mock("@/components/result/result-view", () => ({

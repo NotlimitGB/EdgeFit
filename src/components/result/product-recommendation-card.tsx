@@ -11,6 +11,7 @@ import {
 import { formatRecommendedWeightRange } from "@/lib/weight-range";
 import type { ExactSizeOfferIntelligence } from "@/lib/exact-size-offer";
 import type { StoreDestinationPresentation } from "@/lib/store-redirect";
+import type { BudgetRelation } from "@/lib/purchase-preferences";
 import type {
   RecommendationMatch,
   RecommendationRole,
@@ -31,6 +32,8 @@ export interface ProductRecommendationCardProps {
   shopAnalyticsPayload?: Record<string, unknown>;
   commercialPresentation: StoreDestinationPresentation;
   offerIntelligence: ExactSizeOfferIntelligence;
+  budgetRelation?: BudgetRelation;
+  resultMode?: "session" | "saved";
 }
 
 export const recommendationRoleLabels: Record<RecommendationRole, string> = {
@@ -55,6 +58,8 @@ export function ProductRecommendationCard({
   shopAnalyticsPayload,
   commercialPresentation,
   offerIntelligence,
+  budgetRelation = "budget_not_set",
+  resultMode = "session",
 }: ProductRecommendationCardProps) {
   const reasons = match.reasons.length > 0
     ? match.reasons.slice(0, 3)
@@ -89,6 +94,18 @@ export function ProductRecommendationCard({
         : offerIntelligence.status === "search_only"
           ? `Точного предложения по размеру ${sizeLabel} пока нет`
           : `Наличие размера ${sizeLabel} не подтверждено`;
+  const budgetLabel =
+    budgetRelation === "within_catalog_estimate"
+      ? resultMode === "saved"
+        ? "По ориентиру каталога на момент подбора цена была не выше указанного бюджета."
+        : "По ориентиру каталога цена не выше указанного бюджета."
+      : budgetRelation === "over_catalog_estimate"
+        ? resultMode === "saved"
+          ? "По ориентиру каталога на момент подбора цена была выше указанного бюджета."
+          : "По ориентиру каталога цена выше указанного бюджета."
+        : budgetRelation === "price_unknown"
+          ? "Нет надёжного ценового ориентира для сравнения с бюджетом."
+          : null;
 
   return (
     <article
@@ -172,6 +189,7 @@ export function ProductRecommendationCard({
           <strong>{formatMoney(match.product.priceFrom)}</strong>
         </p>
         <p>{availabilityLabel}</p>
+        {budgetLabel ? <p>{budgetLabel}</p> : null}
       </div>
 
       {commercialPresentation.note ? (

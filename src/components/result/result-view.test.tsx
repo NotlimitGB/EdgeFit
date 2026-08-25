@@ -11,6 +11,7 @@ vi.mock("next/link", () => ({
 }));
 
 import {
+  buildResultAnalyticsPayload,
   buildResultStoreClickAction,
   ResultView,
 } from "@/components/result/result-view";
@@ -112,6 +113,36 @@ describe("ResultView saved mode", () => {
     expect(markup).not.toContain("Траектория");
     expect(markup).not.toContain("Помогла рекомендация принять решение?");
   });
+
+  it("keeps an over-budget Top 1 ahead of a lower-price alternative", () => {
+    const alternative = {
+      ...recommendation.recommendedBoards[0],
+      product: {
+        ...recommendation.recommendedBoards[0].product,
+        id: "product-2",
+        slug: "lower-price-alternative",
+        modelName: "Lower Price Alternative",
+        priceFrom: 30_000,
+      },
+    };
+    const withAlternative = {
+      ...recommendation,
+      recommendedBoards: [recommendation.recommendedBoards[0], alternative],
+    };
+    const markup = renderToStaticMarkup(
+      <ResultView
+        initialRecommendation={withAlternative}
+        initialPurchasePreferences={{ budgetMaxRub: 50_000 }}
+        mode="saved"
+      />,
+    );
+
+    expect(markup.indexOf("Mountain Twin")).toBeLessThan(
+      markup.indexOf("Lower Price Alternative"),
+    );
+    expect(markup).toContain("цена была выше указанного бюджета");
+    expect(markup).toContain("цена была не выше указанного бюджета");
+  });
 });
 
 describe("ResultView recommendation feedback placement", () => {
@@ -142,6 +173,7 @@ describe("result store click provenance", () => {
         result_width_type: recommendation.recommendedWidthType,
         riding_style: recommendation.input.ridingStyle,
       },
+      purchasePreferences: { budgetMaxRub: 50_000 },
     });
 
     expect(action.analyticsPayload).toMatchObject({
@@ -162,9 +194,11 @@ describe("result store click provenance", () => {
       exact_size_matched: true,
       result_width_type: "regular",
       riding_style: "all-mountain",
+      clicked_product_budget_relation: "over_catalog_estimate",
     });
     expect(action.href).toContain("recommendationRank=1");
     expect(action.href).toContain("sizeLabel=156");
+    expect(action.href).toContain("budgetMaxRub=50000");
     expect(action.offerIntelligence.status).toBe("confirmed_available");
   });
 
@@ -218,5 +252,22 @@ describe("result store click provenance", () => {
     expect(action.analyticsPayload).toBeUndefined();
     expect(action.href).not.toContain("recommendationRank");
     expect(action.offerIntelligence.status).toBe("search_only");
+  });
+});
+
+describe("result budget analytics", () => {
+  it("reports top recommendation relation without changing recommendation data", () => {
+    const payload = buildResultAnalyticsPayload(recommendation, {
+      budgetMaxRub: 50_000,
+    });
+
+    expect(payload).toMatchObject({
+      budget_set: true,
+      budget_max_rub: 50_000,
+      top_recommendation_budget_relation: "over_catalog_estimate",
+    });
+    expect(recommendation.recommendedBoards[0].product.slug).toBe(
+      "jones-mountain-twin",
+    );
   });
 });

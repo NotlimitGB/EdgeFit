@@ -91,6 +91,11 @@ const match: RecommendationMatch = {
 function renderCard(
   affiliateUrl: string,
   resultMode: "session" | "saved" = "session",
+  budgetRelation:
+    | "budget_not_set"
+    | "within_catalog_estimate"
+    | "over_catalog_estimate"
+    | "price_unknown" = "budget_not_set",
 ) {
   const currentMatch = {
     ...match,
@@ -117,6 +122,8 @@ function renderCard(
         recommendedSize: currentMatch.size,
         resultMode,
       })}
+      budgetRelation={budgetRelation}
+      resultMode={resultMode}
     />,
   );
 }
@@ -236,5 +243,40 @@ describe("ProductRecommendationCard commercial presentation", () => {
     expect(markup).toContain("Наличие размера 156 не подтверждено");
     expect(markup).not.toContain("По данным каталога размер 156 отмечен доступным");
     expect(markup).not.toContain("Распродано");
+  });
+
+  it.each([
+    [
+      "within_catalog_estimate",
+      "По ориентиру каталога цена не выше указанного бюджета.",
+    ],
+    [
+      "over_catalog_estimate",
+      "По ориентиру каталога цена выше указанного бюджета.",
+    ],
+    [
+      "price_unknown",
+      "Нет надёжного ценового ориентира для сравнения с бюджетом.",
+    ],
+  ] as const)("renders truthful %s budget copy", (relation, copy) => {
+    const markup = renderCard(
+      "https://traektoria.ru/product/1_board/",
+      "session",
+      relation,
+    );
+
+    expect(markup).toContain(copy);
+    expect(markup).not.toContain("В пределах бюджета");
+    expect(markup).not.toContain("Можно купить");
+    expect(markup).not.toContain("Самый доступный");
+  });
+
+  it("uses historical wording for a saved budget snapshot", () => {
+    const markup = renderCard(
+      "https://traektoria.ru/product/1_board/",
+      "saved",
+      "within_catalog_estimate",
+    );
+    expect(markup).toContain("на момент подбора");
   });
 });

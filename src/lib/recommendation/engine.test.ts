@@ -4,6 +4,7 @@ import {
   getStoreDestinationPresentation,
   resolveProductStoreUrl,
 } from "@/lib/store-redirect";
+import { recommendationRequestSchema } from "@/lib/quiz/schema";
 import { ALGORITHM_VERSION, getRecommendation } from "./engine";
 
 const baseInput: QuizInput = {
@@ -94,6 +95,19 @@ const defaultBoards = [
 describe("getRecommendation", () => {
   it("reports the localized width-safety algorithm version", () => {
     expect(ALGORITHM_VERSION).toBe("v1.6.4");
+  });
+
+  it("keeps fit output identical across advisory budget preferences", () => {
+    const results = [null, 40_000, 100_000].map((budgetMaxRub) => {
+      const request = recommendationRequestSchema.parse({
+        ...baseInput,
+        purchasePreferences: { budgetMaxRub },
+      });
+      return getRecommendation(request.riderInput, defaultBoards);
+    });
+
+    expect(results[1]).toEqual(results[0]);
+    expect(results[2]).toEqual(results[0]);
   });
 
   it("returns stable all-mountain length range for base input", () => {

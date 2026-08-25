@@ -37,9 +37,16 @@ import {
 } from "@/lib/store-redirect";
 import {
   getSavedResultPath,
+  loadPurchasePreferencesSessionState,
+  PURCHASE_PREFERENCES_STORAGE_KEY,
   RECOMMENDATION_RESULT_STORAGE_KEY,
   SAVED_RESULT_TOKEN_STORAGE_KEY,
 } from "@/lib/saved-result-contract";
+import {
+  EMPTY_PURCHASE_PREFERENCES,
+  getBudgetRelation,
+  type PurchasePreferences,
+} from "@/lib/purchase-preferences";
 import type {
   RecommendationMatch,
   RecommendationResult,
@@ -50,6 +57,8 @@ let cachedRawRecommendation: string | null | undefined;
 let cachedRecommendation: RecommendationResult | null = null;
 let cachedRawSavedResultToken: string | null | undefined;
 let cachedSavedResultToken: string | null = null;
+let cachedRawPurchasePreferences: string | null | undefined;
+let cachedPurchasePreferences: PurchasePreferences = EMPTY_PURCHASE_PREFERENCES;
 
 const riskDescriptions: Record<RecommendationResult["bootDragRisk"], string> = {
   low: "Запас по ширине выглядит спокойным.",
@@ -78,6 +87,7 @@ interface BuildResultStoreClickActionArgs {
   algorithmVersion: string;
   isSavedMode: boolean;
   resultPayload?: Readonly<Record<string, unknown>>;
+  purchasePreferences?: PurchasePreferences;
 }
 
 export function buildResultStoreClickAction({
@@ -88,6 +98,7 @@ export function buildResultStoreClickAction({
   algorithmVersion,
   isSavedMode,
   resultPayload,
+  purchasePreferences = EMPTY_PURCHASE_PREFERENCES,
 }: BuildResultStoreClickActionArgs) {
   const sizeLabel = getBoardSizeLabel(match.size);
   const offerIntelligence = getExactSizeOfferIntelligence({
@@ -102,7 +113,12 @@ export function buildResultStoreClickAction({
         recommendationScore: match.score,
         resultVariant: "session",
         algorithmVersion,
+        budgetMaxRub: purchasePreferences.budgetMaxRub,
       };
+  const budgetRelation = getBudgetRelation(
+    match.product.priceFrom,
+    purchasePreferences.budgetMaxRub,
+  );
 
   return {
     href: buildStoreRedirectHrefForSize(match.product.slug, match.size, {
@@ -137,9 +153,11 @@ export function buildResultStoreClickAction({
             algorithmVersion,
             exactSizeOfferStatus: offerIntelligence.status,
             exactSizeMatched: offerIntelligence.exactSizeMatched,
+            clickedProductBudgetRelation: budgetRelation,
           }),
         },
     offerIntelligence,
+    budgetRelation,
   };
 }
 
@@ -196,7 +214,30 @@ function getSavedResultTokenSnapshot() {
   return cachedSavedResultToken;
 }
 
-function buildResultPayload(recommendation: RecommendationResult) {
+function getPurchasePreferencesSnapshot() {
+  if (typeof window === "undefined") {
+    return EMPTY_PURCHASE_PREFERENCES;
+  }
+
+  const rawPreferences = window.sessionStorage.getItem(
+    PURCHASE_PREFERENCES_STORAGE_KEY,
+  );
+  if (rawPreferences === cachedRawPurchasePreferences) {
+    return cachedPurchasePreferences;
+  }
+
+  cachedRawPurchasePreferences = rawPreferences;
+  cachedPurchasePreferences = loadPurchasePreferencesSessionState(
+    window.sessionStorage,
+  );
+  return cachedPurchasePreferences;
+}
+
+export function buildResultAnalyticsPayload(
+  recommendation: RecommendationResult,
+  purchasePreferences: PurchasePreferences,
+) {
+  const topRecommendation = recommendation.recommendedBoards[0];
   return {
     result_width_type: recommendation.recommendedWidthType,
     result_boot_drag_risk: recommendation.bootDragRisk,
@@ -205,6 +246,16 @@ function buildResultPayload(recommendation: RecommendationResult) {
     terrain_priority: recommendation.input.terrainPriority,
     skill_level: recommendation.input.skillLevel,
     board_line_preference: recommendation.input.boardLinePreference,
+    budget_set: purchasePreferences.budgetMaxRub != null,
+    budget_max_rub: purchasePreferences.budgetMaxRub,
+    top_recommendation_budget_relation: topRecommendation
+      ? getBudgetRelation(
+          topRecommendation.product.priceFrom,
+          purchasePreferences.budgetMaxRub,
+        )
+      : purchasePreferences.budgetMaxRub == null
+        ? "budget_not_set"
+        : "price_unknown",
   };
 }
 
@@ -218,12 +269,14 @@ function getCompactExplanation(recommendation: RecommendationResult) {
 
 export interface ResultViewProps {
   initialRecommendation?: RecommendationResult | null;
+  initialPurchasePreferences?: PurchasePreferences;
   mode?: "session" | "saved";
   savedResultsEnabled?: boolean;
 }
 
 export function ResultView({
   initialRecommendation = null,
+  initialPurchasePreferences = EMPTY_PURCHASE_PREFERENCES,
   mode = "session",
   savedResultsEnabled = false,
 }: ResultViewProps = {}) {
@@ -237,6 +290,13 @@ export function ResultView({
     getSavedResultTokenSnapshot,
     () => null,
   );
+  const sessionPurchasePreferences = useSyncExternalStore(
+    subscribe,
+    getPurchasePreferencesSnapshot,
+    () => EMPTY_PURCHASE_PREFERENCES,
+  );
+  const purchasePreferences =
+    mode === "saved" ? initialPurchasePreferences : sessionPurchasePreferences;
   const recommendation =
     mode === "saved"
       ? initialRecommendation
@@ -255,8 +315,11 @@ export function ResultView({
       return;
     }
 
-    void trackEvent("result_viewed", buildResultPayload(recommendation));
-  }, [mode, recommendation]);
+    void trackEvent(
+      "result_viewed",
+      buildResultAnalyticsPayload(recommendation, purchasePreferences),
+    );
+  }, [mode, purchasePreferences, recommendation]);
 
   useEffect(() => {
     if (!recommendation || mode !== "session") {
@@ -266,7 +329,7 @@ export function ResultView({
     const currentRecommendation = recommendation;
 
     function handlePageHide() {
-      void trackEvent("result_exited", buildResultPayload(currentRecommendation), {
+      void trackEvent("result_exited", buildResultAnalyticsPayload(currentRecommendation, purchasePreferences), {
         useBeacon: true,
       });
     }
@@ -276,7 +339,7 @@ export function ResultView({
     return () => {
       window.removeEventListener("pagehide", handlePageHide);
     };
-  }, [mode, recommendation]);
+  }, [mode, purchasePreferences, recommendation]);
 
   if (!recommendation) {
     return (
@@ -382,7 +445,7 @@ export function ResultView({
 
       void trackEvent("email_submitted", {
         source: "result-page",
-        ...buildResultPayload(activeRecommendation),
+        ...buildResultAnalyticsPayload(activeRecommendation, purchasePreferences),
       });
     } catch (error) {
       setEmailError(
@@ -408,7 +471,8 @@ export function ResultView({
       recommendationRank,
       algorithmVersion: activeRecommendation.algorithmVersion,
       isSavedMode,
-      resultPayload: buildResultPayload(activeRecommendation),
+      resultPayload: buildResultAnalyticsPayload(activeRecommendation, purchasePreferences),
+      purchasePreferences,
     });
   }
 
@@ -417,7 +481,7 @@ export function ResultView({
       return;
     }
 
-    void trackEvent("recalculation_started", buildResultPayload(activeRecommendation));
+    void trackEvent("recalculation_started", buildResultAnalyticsPayload(activeRecommendation, purchasePreferences));
   }
 
   return (
@@ -649,6 +713,8 @@ export function ResultView({
                         match.product.affiliateUrl,
                       )}
                       offerIntelligence={storeAction.offerIntelligence}
+                      budgetRelation={storeAction.budgetRelation}
+                      resultMode={mode}
                     />
                     {index === 0 && !isSavedMode ? (
                       <RecommendationFeedback
@@ -980,6 +1046,8 @@ export function ResultView({
                       match.product.affiliateUrl,
                     )}
                     offerIntelligence={storeAction.offerIntelligence}
+                    budgetRelation={storeAction.budgetRelation}
+                    resultMode={mode}
                   />
                 );
               })}
@@ -1016,6 +1084,8 @@ export function ResultView({
                       match.product.affiliateUrl,
                     )}
                     offerIntelligence={storeAction.offerIntelligence}
+                    budgetRelation={storeAction.budgetRelation}
+                    resultMode={mode}
                   />
                 );
               })}

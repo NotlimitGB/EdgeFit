@@ -1,6 +1,9 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { QuizFlowStepFields } from "@/components/quiz/quiz-flow";
+import {
+  buildQuizCompletionAnalyticsPayload,
+  QuizFlowStepFields,
+} from "@/components/quiz/quiz-flow";
 import { createQuizV2Draft } from "@/lib/quiz/draft";
 
 vi.mock("next/navigation", () => ({
@@ -77,6 +80,9 @@ describe("Quiz v2 rendered fields", () => {
     expect(markup.indexOf('name="aggressiveness"')).toBeLessThan(
       markup.indexOf('name="boardLinePreference"'),
     );
+    expect(markup.indexOf('name="boardLinePreference"')).toBeLessThan(
+      markup.indexOf('name="budgetMaxRub"'),
+    );
     expect(markup).not.toMatch(/name="aggressiveness"[^>]*checked/u);
     expect(markup).toMatch(
       /name="boardLinePreference" checked="" value="any"/u,
@@ -85,5 +91,38 @@ describe("Quiz v2 rendered fields", () => {
       "Линейка влияет на приоритет моделей в выдаче, но не меняет физический fit.",
     );
     expect(markup).not.toContain("Это фильтр каталога");
+    expect(markup).toContain("Максимальный бюджет");
+    expect(markup).toContain("На fit и порядок рекомендаций он не влияет.");
+    expect(markup).toMatch(
+      /<input[^>]*type="number"[^>]*name="budgetMaxRub"[^>]*value=""/u,
+    );
+  });
+});
+
+describe("Quiz v2 completion analytics", () => {
+  it("adds normalized budget context without changing rider fields", () => {
+    const payload = buildQuizCompletionAnalyticsPayload(
+      {
+        heightCm: 178,
+        weightKg: 74,
+        bootSizeEu: 43,
+        stanceType: "unknown",
+        skillLevel: "intermediate",
+        ridingStyle: "all-mountain",
+        terrainPriority: "balanced",
+        aggressiveness: "balanced",
+        boardLinePreference: "any",
+      },
+      { recommendedWidthType: "regular", bootDragRisk: "low" },
+      { budgetMaxRub: 60_000 },
+    );
+
+    expect(payload).toMatchObject({
+      quiz_version: "v2",
+      budget_set: true,
+      budget_max_rub: 60_000,
+      riding_style: "all-mountain",
+      result_width_type: "regular",
+    });
   });
 });

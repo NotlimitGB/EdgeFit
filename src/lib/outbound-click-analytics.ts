@@ -1,4 +1,5 @@
 import type { ExactSizeOfferStatus } from "@/lib/exact-size-offer";
+import type { BudgetRelation } from "@/lib/purchase-preferences";
 
 export interface BuildOutboundClickAnalyticsPayloadArgs {
   boardSlug: string;
@@ -22,6 +23,7 @@ export interface BuildOutboundClickAnalyticsPayloadArgs {
   algorithmVersion?: string | null;
   exactSizeOfferStatus?: ExactSizeOfferStatus | null;
   exactSizeMatched?: boolean | null;
+  clickedProductBudgetRelation?: BudgetRelation | null;
 }
 
 export interface OutboundClickAnalyticsPayload
@@ -47,6 +49,7 @@ export interface OutboundClickAnalyticsPayload
   algorithm_version: string | null;
   exact_size_offer_status: ExactSizeOfferStatus | null;
   exact_size_matched: boolean | null;
+  clicked_product_budget_relation: BudgetRelation | null;
 }
 
 export function buildOutboundClickAnalyticsPayload({
@@ -71,6 +74,7 @@ export function buildOutboundClickAnalyticsPayload({
   algorithmVersion,
   exactSizeOfferStatus,
   exactSizeMatched,
+  clickedProductBudgetRelation,
 }: BuildOutboundClickAnalyticsPayloadArgs): OutboundClickAnalyticsPayload {
   return {
     board_slug: boardSlug,
@@ -94,6 +98,7 @@ export function buildOutboundClickAnalyticsPayload({
     algorithm_version: algorithmVersion ?? null,
     exact_size_offer_status: exactSizeOfferStatus ?? null,
     exact_size_matched: exactSizeMatched ?? null,
+    clicked_product_budget_relation: clickedProductBudgetRelation ?? null,
   };
 }
 

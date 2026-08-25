@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ResultView } from "@/components/result/result-view";
-import { loadSavedRecommendationByToken } from "@/lib/saved-results";
+import { loadSavedResultByToken } from "@/lib/saved-results";
 
 interface SavedResultPageProps {
   params: Promise<{ token: string }>;
@@ -23,11 +23,17 @@ export const metadata: Metadata = {
 
 export default async function SavedResultPage({ params }: SavedResultPageProps) {
   const { token } = await params;
-  const recommendation = await loadSavedRecommendationByToken(token);
+  const savedResult = await loadSavedResultByToken(token);
 
-  if (!recommendation) {
+  if (!savedResult) {
     notFound();
   }
 
-  return <ResultView initialRecommendation={recommendation} mode="saved" />;
+  return (
+    <ResultView
+      initialRecommendation={savedResult.recommendation}
+      initialPurchasePreferences={savedResult.purchasePreferences}
+      mode="saved"
+    />
+  );
 }

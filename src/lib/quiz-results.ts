@@ -8,16 +8,22 @@ import {
   isSavedResultsEnabled,
 } from "@/lib/saved-results";
 import type { QuizInput, RecommendationResult } from "@/types/domain";
+import {
+  EMPTY_PURCHASE_PREFERENCES,
+  type PurchasePreferences,
+} from "@/lib/purchase-preferences";
 
 interface ПараметрыСохраненияРезультата {
   вход: QuizInput;
   результат: RecommendationResult;
+  purchasePreferences?: PurchasePreferences;
   идентификаторСессии?: string | null;
 }
 
 export async function сохранитьРезультатКвиза({
   вход,
   результат,
+  purchasePreferences = EMPTY_PURCHASE_PREFERENCES,
   идентификаторСессии,
 }: ПараметрыСохраненияРезультата) {
   if (!базаНастроена()) {
@@ -90,7 +96,11 @@ export async function сохранитьРезультатКвиза({
       set
         public_token_hash = ${publicTokenHash},
         result_snapshot = ${sql.json(
-          результат as unknown as Parameters<typeof sql.json>[0],
+          {
+            snapshotVersion: 2,
+            recommendation: результат,
+            purchasePreferences,
+          } as unknown as Parameters<typeof sql.json>[0],
         )}
       where id = ${savedResult.id}::uuid
         and public_token_hash is null

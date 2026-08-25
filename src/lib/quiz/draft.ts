@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { QuizStepKey } from "@/lib/analytics/quiz-progression";
+import { parseBudgetDraftValue } from "@/lib/purchase-preferences";
 import { quizSubmissionSchema } from "@/lib/quiz/schema";
 
 export const QUIZ_V2_DRAFT_STORAGE_KEY = "edgefit.quiz-draft.v2";
@@ -12,7 +13,14 @@ const numericDraftValueSchema = z
     "invalid_quiz_numeric_draft",
   );
 
-const quizV2DraftSchema = z.strictObject({
+const budgetDraftValueSchema = z
+  .string()
+  .refine(
+    (value) => value === "" || /^-?\d+$/u.test(value),
+    "invalid_budget_numeric_draft",
+  );
+
+const quizV2RiderDraftShape = {
   heightCm: numericDraftValueSchema,
   weightKg: numericDraftValueSchema,
   bootSizeEu: numericDraftValueSchema,
@@ -24,11 +32,21 @@ const quizV2DraftSchema = z.strictObject({
     .nullable(),
   aggressiveness: z.enum(["relaxed", "balanced", "aggressive"]).nullable(),
   boardLinePreference: z.enum(["men", "women", "any"]),
+} as const;
+
+const quizV2DraftSchema = z.strictObject({
+  ...quizV2RiderDraftShape,
+  budgetMaxRub: budgetDraftValueSchema,
+});
+
+const storedQuizV2DraftSchema = z.strictObject({
+  ...quizV2RiderDraftShape,
+  budgetMaxRub: budgetDraftValueSchema.optional(),
 });
 
 const quizV2DraftEnvelopeSchema = z.strictObject({
   version: z.literal(QUIZ_V2_DRAFT_VERSION),
-  values: quizV2DraftSchema,
+  values: storedQuizV2DraftSchema,
 });
 
 export type QuizV2Draft = z.infer<typeof quizV2DraftSchema>;
@@ -44,7 +62,11 @@ interface QuizDraftStorage {
 export const QUIZ_V2_STEP_FIELDS = {
   physical_fit: ["heightCm", "weightKg", "bootSizeEu", "stanceType"],
   riding_context: ["skillLevel", "ridingStyle", "terrainPriority"],
-  decision_preferences: ["aggressiveness", "boardLinePreference"],
+  decision_preferences: [
+    "aggressiveness",
+    "boardLinePreference",
+    "budgetMaxRub",
+  ],
 } as const satisfies Record<QuizStepKey, readonly QuizV2DraftField[]>;
 
 const quizV2StepSchemas = {
@@ -75,6 +97,7 @@ const requiredFieldMessages = {
   terrainPriority: "Выберите главный приоритет катания.",
   aggressiveness: "Выберите характер катания.",
   boardLinePreference: "Выберите предпочтение по линейке.",
+  budgetMaxRub: "Укажите целое число от 1 до 1 000 000 ₽ или оставьте поле пустым.",
 } as const satisfies Record<QuizV2DraftField, string>;
 
 export function createQuizV2Draft(): QuizV2Draft {
@@ -88,6 +111,7 @@ export function createQuizV2Draft(): QuizV2Draft {
     terrainPriority: null,
     aggressiveness: null,
     boardLinePreference: "any",
+    budgetMaxRub: "",
   };
 }
 
@@ -102,7 +126,10 @@ export function loadQuizV2Draft(storage: QuizDraftStorage): QuizV2Draft {
       JSON.parse(rawDraft),
     );
     if (parsedEnvelope.success) {
-      return parsedEnvelope.data.values;
+      return {
+        ...parsedEnvelope.data.values,
+        budgetMaxRub: parsedEnvelope.data.values.budgetMaxRub ?? "",
+      };
     }
 
     storage.removeItem(QUIZ_V2_DRAFT_STORAGE_KEY);
@@ -122,9 +149,16 @@ export function saveQuizV2Draft(
   draft: QuizV2Draft,
 ) {
   try {
+    const parsedDraft = quizV2DraftSchema.safeParse(draft);
+    if (!parsedDraft.success) {
+      return false;
+    }
     storage.setItem(
       QUIZ_V2_DRAFT_STORAGE_KEY,
-      JSON.stringify({ version: QUIZ_V2_DRAFT_VERSION, values: draft }),
+      JSON.stringify({
+        version: QUIZ_V2_DRAFT_VERSION,
+        values: parsedDraft.data,
+      }),
     );
     return true;
   } catch {
@@ -132,13 +166,16 @@ export function saveQuizV2Draft(
   }
 }
 
-function normalizeQuizV2Draft(draft: QuizV2Draft) {
+function normalizeQuizV2RiderDraft(draft: QuizV2Draft) {
   return Object.fromEntries(
-    Object.entries(draft).map(([field, value]) => [
+    Object.entries(quizV2RiderDraftShape).map(([field]) => [
       field,
-      value === "" || value === null ? undefined : value,
+      draft[field as keyof typeof quizV2RiderDraftShape] === "" ||
+      draft[field as keyof typeof quizV2RiderDraftShape] === null
+        ? undefined
+        : draft[field as keyof typeof quizV2RiderDraftShape],
     ]),
-  ) as Record<QuizV2DraftField, unknown>;
+  );
 }
 
 function getMissingFieldErrors(
@@ -146,7 +183,10 @@ function getMissingFieldErrors(
   fields: readonly QuizV2DraftField[],
 ) {
   return fields.reduce<QuizV2DraftErrors>((errors, field) => {
-    if (draft[field] === "" || draft[field] === null) {
+    if (
+      field !== "budgetMaxRub" &&
+      (draft[field] === "" || draft[field] === null)
+    ) {
       errors[field] = requiredFieldMessages[field];
     }
     return errors;
@@ -164,16 +204,24 @@ export function validateQuizV2Step(
   }
 
   const result = quizV2StepSchemas[stepKey].safeParse(
-    normalizeQuizV2Draft(draft),
+    normalizeQuizV2RiderDraft(draft),
   );
-  if (result.success) {
+  const budgetResult =
+    stepKey === "decision_preferences"
+      ? parseBudgetDraftValue(draft.budgetMaxRub)
+      : null;
+  if (result.success && (!budgetResult || budgetResult.success)) {
     return { success: true };
   }
 
-  const fieldErrors = result.error.flatten().fieldErrors as Partial<
+  const fieldErrors = (result.success ? {} : result.error.flatten().fieldErrors) as Partial<
     Record<QuizV2DraftField, string[]>
   >;
   const errors = fields.reduce<QuizV2DraftErrors>((current, field) => {
+    if (field === "budgetMaxRub" && budgetResult && !budgetResult.success) {
+      current[field] = requiredFieldMessages[field];
+      return current;
+    }
     const message = fieldErrors[field]?.[0];
     if (message) {
       current[field] = message;
@@ -185,5 +233,9 @@ export function validateQuizV2Step(
 }
 
 export function parseQuizV2Submission(draft: QuizV2Draft) {
-  return quizSubmissionSchema.safeParse(normalizeQuizV2Draft(draft));
+  return quizSubmissionSchema.safeParse(normalizeQuizV2RiderDraft(draft));
+}
+
+export function parseQuizV2PurchasePreferences(draft: QuizV2Draft) {
+  return parseBudgetDraftValue(draft.budgetMaxRub);
 }

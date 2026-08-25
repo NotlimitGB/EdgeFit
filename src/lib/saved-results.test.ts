@@ -30,8 +30,10 @@ import {
   isPrivateSavedResultPath,
   isSavedResultStoreSource,
   isSavedResultToken,
+  loadPurchasePreferencesSessionState,
   persistRecommendationSessionState,
   RECOMMENDATION_RESULT_STORAGE_KEY,
+  PURCHASE_PREFERENCES_STORAGE_KEY,
   SAVED_RESULT_TOKEN_STORAGE_KEY,
 } from "@/lib/saved-result-contract";
 import { сохранитьРезультатКвиза } from "@/lib/quiz-results";
@@ -41,6 +43,8 @@ import {
   isRecommendationResultSnapshot,
   isSavedResultsEnabled,
   loadSavedRecommendationByToken,
+  loadSavedResultByToken,
+  parseSavedResultSnapshot,
   SavedResultUnavailableError,
 } from "@/lib/saved-results";
 
@@ -123,6 +127,10 @@ describe("saved result contracts", () => {
       JSON.stringify(recommendation),
     );
     expect(storage.setItem).toHaveBeenCalledWith(
+      PURCHASE_PREFERENCES_STORAGE_KEY,
+      JSON.stringify({ budgetMaxRub: null }),
+    );
+    expect(storage.setItem).toHaveBeenCalledWith(
       SAVED_RESULT_TOKEN_STORAGE_KEY,
       token,
     );
@@ -131,6 +139,38 @@ describe("saved result contracts", () => {
     expect(storage.removeItem).toHaveBeenCalledWith(
       SAVED_RESULT_TOKEN_STORAGE_KEY,
     );
+  });
+
+  it("stores purchase preferences separately from the recommendation", () => {
+    const storage = { setItem: vi.fn(), removeItem: vi.fn() };
+    persistRecommendationSessionState(
+      storage,
+      recommendation,
+      null,
+      { budgetMaxRub: 60_000 },
+    );
+
+    expect(storage.setItem).toHaveBeenCalledWith(
+      RECOMMENDATION_RESULT_STORAGE_KEY,
+      JSON.stringify(recommendation),
+    );
+    expect(storage.setItem).toHaveBeenCalledWith(
+      PURCHASE_PREFERENCES_STORAGE_KEY,
+      JSON.stringify({ budgetMaxRub: 60_000 }),
+    );
+  });
+
+  it("fails malformed session purchase preferences to no budget", () => {
+    expect(
+      loadPurchasePreferencesSessionState({
+        getItem: () => JSON.stringify({ budgetMaxRub: "60000" }),
+      }),
+    ).toEqual({ budgetMaxRub: null });
+    expect(
+      loadPurchasePreferencesSessionState({
+        getItem: () => JSON.stringify({ budgetMaxRub: 60_000 }),
+      }),
+    ).toEqual({ budgetMaxRub: 60_000 });
   });
 
   it("performs only the legacy insert while disabled", async () => {
@@ -163,10 +203,18 @@ describe("saved result contracts", () => {
 
     expect(isSavedResultToken(token)).toBe(true);
     expect(mocks.query).toHaveBeenCalledTimes(2);
-    expect(mocks.json).toHaveBeenCalledWith(recommendation);
+    expect(mocks.json).toHaveBeenCalledWith({
+      snapshotVersion: 2,
+      recommendation,
+      purchasePreferences: { budgetMaxRub: null },
+    });
     const updateParameters = mocks.query.mock.calls[1]?.slice(1) ?? [];
     expect(updateParameters).toContain(hashSavedResultToken(token as string));
-    expect(updateParameters).toContain(recommendation);
+    expect(updateParameters).toContainEqual({
+      snapshotVersion: 2,
+      recommendation,
+      purchasePreferences: { budgetMaxRub: null },
+    });
     expect(JSON.stringify(updateParameters)).not.toContain(token);
   });
 
@@ -212,6 +260,30 @@ describe("saved result contracts", () => {
     const parameters = mocks.query.mock.calls[0]?.slice(1) ?? [];
     expect(parameters).toEqual([hashSavedResultToken(token)]);
     expect(JSON.stringify(parameters)).not.toContain(token);
+  });
+
+  it("loads legacy and versioned saved snapshots through one strict contract", async () => {
+    process.env.SAVED_RESULTS_ENABLED = "true";
+    const token = generateSavedResultToken();
+    const versioned = {
+      snapshotVersion: 2,
+      recommendation,
+      purchasePreferences: { budgetMaxRub: 60_000 },
+    } as const;
+    mocks.responses.push(
+      [{ resultSnapshot: recommendation }],
+      [{ resultSnapshot: versioned }],
+    );
+
+    await expect(loadSavedResultByToken(token)).resolves.toEqual({
+      recommendation,
+      purchasePreferences: { budgetMaxRub: null },
+    });
+    await expect(loadSavedResultByToken(token)).resolves.toEqual({
+      recommendation,
+      purchasePreferences: { budgetMaxRub: 60_000 },
+    });
+    expect(parseSavedResultSnapshot({ ...versioned, extra: true })).toBeNull();
   });
 
   it("does not create a DB client for disabled or malformed lookup", async () => {

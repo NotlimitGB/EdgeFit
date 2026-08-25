@@ -8,6 +8,7 @@ import type { QuizSubmission } from "@/lib/quiz/schema";
 import {
   createQuizV2Draft,
   loadQuizV2Draft,
+  parseQuizV2PurchasePreferences,
   parseQuizV2Submission,
   saveQuizV2Draft,
   validateQuizV2Step,
@@ -20,6 +21,7 @@ import {
   SAVED_RESULT_TOKEN_HEADER,
 } from "@/lib/saved-result-contract";
 import type { RecommendationResult } from "@/types/domain";
+import type { PurchasePreferences } from "@/lib/purchase-preferences";
 import {
   buildQuizStepAnalyticsPayload,
   buildQuizStepCompletionPayload,
@@ -55,11 +57,11 @@ const stepDetails = [
     key: "decision_preferences",
     shortLabel: "Предпочтения",
     eyebrow: "Последние детали",
-    title: "Осталось уточнить характер и линейку",
+    title: "Осталось уточнить характер, линейку и бюджет",
     description:
-      "Характер катания уточняет ощущение доски, а линейка влияет на приоритет моделей в выдаче.",
+      "Характер катания и линейка уточняют выдачу, а необязательный бюджет добавляет только ценовой ориентир.",
     context:
-      "Линейка не меняет физический fit: она только помогает расставить подходящие модели в выдаче.",
+      "Линейка и бюджет не меняют физический fit: бюджет сравнивается только с ориентиром цены каталога.",
   },
 ] as const;
 
@@ -202,6 +204,27 @@ const resultOutputs = [
   ["05", "Модели", "варианты для сравнения"],
 ] as const;
 
+export function buildQuizCompletionAnalyticsPayload(
+  payload: QuizSubmission,
+  recommendation: Pick<
+    RecommendationResult,
+    "recommendedWidthType" | "bootDragRisk"
+  >,
+  purchasePreferences: PurchasePreferences,
+) {
+  return {
+    quiz_version: QUIZ_VERSION,
+    riding_style: payload.ridingStyle,
+    terrain_priority: payload.terrainPriority,
+    skill_level: payload.skillLevel,
+    board_line_preference: payload.boardLinePreference,
+    budget_set: purchasePreferences.budgetMaxRub != null,
+    budget_max_rub: purchasePreferences.budgetMaxRub,
+    result_width_type: recommendation.recommendedWidthType,
+    result_boot_drag_risk: recommendation.bootDragRisk,
+  };
+}
+
 interface QuizFlowStepFieldsProps {
   stepKey: QuizStepKey;
   draft: QuizV2Draft;
@@ -329,6 +352,17 @@ export function QuizFlowStepFields({
         error={errors.boardLinePreference}
         columns="three"
       />
+      <NumberField
+        id="budgetMaxRub"
+        label="Максимальный бюджет"
+        unit="₽"
+        hint="Необязательно — пустое поле означает без лимита"
+        explanation="Сравним бюджет только с ориентиром цены каталога. На fit и порядок рекомендаций он не влияет."
+        value={draft.budgetMaxRub}
+        onChange={(value) => onChange("budgetMaxRub", value)}
+        error={errors.budgetMaxRub}
+        step="1"
+      />
     </div>
   );
 }
@@ -407,11 +441,13 @@ export function QuizFlow() {
       return;
     }
     const result = parseQuizV2Submission(draft);
-    if (!result.success) {
+    const purchasePreferencesResult = parseQuizV2PurchasePreferences(draft);
+    if (!result.success || !purchasePreferencesResult.success) {
       setSubmissionError("Проверьте ответы на предыдущих шагах.");
       return;
     }
     const payload = result.data;
+    const purchasePreferences = purchasePreferencesResult.data;
 
     setSubmissionError("");
     setIsSubmitting(true);
@@ -424,7 +460,7 @@ export function QuizFlow() {
           "Content-Type": "application/json",
           "x-edgefit-session-id": идентификаторСессии,
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, purchasePreferences }),
       });
 
       if (!response.ok) {
@@ -442,18 +478,18 @@ export function QuizFlow() {
         window.sessionStorage,
         recommendation,
         response.headers.get(SAVED_RESULT_TOKEN_HEADER),
+        purchasePreferences,
       );
 
       void trackEvent("quiz_step_completed", buildQuizStepCompletionPayload(step));
-      void trackEvent("quiz_completed", {
-        quiz_version: QUIZ_VERSION,
-        riding_style: payload.ridingStyle,
-        terrain_priority: payload.terrainPriority,
-        skill_level: payload.skillLevel,
-        board_line_preference: payload.boardLinePreference,
-        result_width_type: recommendation.recommendedWidthType,
-        result_boot_drag_risk: recommendation.bootDragRisk,
-      });
+      void trackEvent(
+        "quiz_completed",
+        buildQuizCompletionAnalyticsPayload(
+          payload,
+          recommendation,
+          purchasePreferences,
+        ),
+      );
 
       startTransition(() => {
         router.push("/result");
@@ -619,7 +655,7 @@ export function QuizFlow() {
 }
 
 interface NumberFieldProps {
-  id: "heightCm" | "weightKg" | "bootSizeEu";
+  id: "heightCm" | "weightKg" | "bootSizeEu" | "budgetMaxRub";
   label: string;
   unit: string;
   hint: string;

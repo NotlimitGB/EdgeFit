@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import { сохранитьРезультатКвиза } from "@/lib/quiz-results";
 import { getRecommendationCatalog } from "@/lib/products";
 import { getRecommendation } from "@/lib/recommendation/engine";
-import { quizSubmissionSchema } from "@/lib/quiz/schema";
+import { recommendationRequestSchema } from "@/lib/quiz/schema";
 import { SAVED_RESULT_TOKEN_HEADER } from "@/lib/saved-result-contract";
 
 export async function POST(request: Request) {
   try {
-    const payload = quizSubmissionSchema.parse(await request.json());
+    const { riderInput, purchasePreferences } =
+      recommendationRequestSchema.parse(await request.json());
     const { products, familyKeyByProductId } =
       await getRecommendationCatalog();
 
@@ -21,13 +22,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const recommendation = getRecommendation(payload, products, {
+    const recommendation = getRecommendation(riderInput, products, {
       familyKeyByProductId,
     });
 
     const savedResultToken = await сохранитьРезультатКвиза({
-      вход: payload,
+      вход: riderInput,
       результат: recommendation,
+      purchasePreferences,
       идентификаторСессии: request.headers.get("x-edgefit-session-id"),
     });
 
