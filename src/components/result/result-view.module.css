@@ -398,57 +398,70 @@
   margin-top: 1.35rem;
 }
 
-.inputContext {
-  min-width: 0;
-  margin-top: 1.5rem;
-  border-top: 1px solid var(--ef-border-strong);
-  padding-top: 1.15rem;
+.riderProfile {
+  padding-top: 5rem;
 }
 
-.inputContextHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+.riderProfileHeader {
+  max-width: 42rem;
 }
 
-.inputContextHeader > span {
+.riderProfileHeader h2 {
+  margin-top: 0.55rem;
+  font-size: clamp(1.8rem, 7vw, 3rem);
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.riderProfileHeader > p:last-child {
+  margin-top: 0.85rem;
   color: var(--ef-muted);
-  font-family: var(--font-space-grotesk), sans-serif;
-  font-size: 0.65rem;
-  letter-spacing: 0.13em;
+  font-size: 0.86rem;
+  line-height: 1.65;
 }
 
-.inputRail {
+.riderProfileGroups {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-top: 0.9rem;
-  border-top: 1px solid var(--ef-border);
+  gap: 1.5rem;
+  margin-top: 1.75rem;
 }
 
-.inputRail > div {
+.riderProfileGroup {
   min-width: 0;
-  padding: 0.8rem 0.6rem 0.8rem 0;
+  border-top: 1px solid var(--ef-border-strong);
+  padding-top: 1rem;
+}
+
+.riderProfileGroup h3 {
+  color: var(--ef-text);
+  font-size: 1rem;
+  line-height: 1.3;
+}
+
+.riderProfileGroup dl {
+  margin-top: 0.75rem;
+}
+
+.riderProfileGroup dl > div {
+  display: grid;
+  grid-template-columns: minmax(5.75rem, 0.65fr) minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.75rem 0;
   border-bottom: 1px solid var(--ef-border);
 }
 
-.inputRail > div:nth-child(even) {
-  padding-right: 0;
-  padding-left: 0.6rem;
-  border-left: 1px solid var(--ef-border);
-}
-
-.inputRail dt {
+.riderProfileGroup dt {
   color: var(--ef-muted);
-  font-size: 0.68rem;
+  font-size: 0.72rem;
 }
 
-.inputRail dd {
-  margin: 0.2rem 0 0;
+.riderProfileGroup dd {
+  margin: 0;
   color: var(--ef-text);
-  font-size: 0.78rem;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
   font-weight: 700;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 .reasonSection,
@@ -1355,20 +1368,8 @@
     border-left: 0;
   }
 
-  .inputRail {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .inputRail > div:nth-child(even) {
-    padding-right: 0.6rem;
-    padding-left: 0;
-    border-left: 0;
-  }
-
-  .inputRail > div:nth-child(3n + 2),
-  .inputRail > div:nth-child(3n + 3) {
-    padding-left: 0.6rem;
-    border-left: 1px solid var(--ef-border);
+  .riderProfileGroups {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .fitContext,
@@ -1476,30 +1477,8 @@
 }
 
 @media (min-width: 900px) {
-  .summaryLayout {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(17rem, 0.38fr);
-    gap: 2.5rem;
-  }
-
-  .inputContext {
-    margin-top: 0;
-    border-top: 0;
-    border-left: 1px solid var(--ef-border-strong);
-    padding-top: 0;
-    padding-left: 1.5rem;
-  }
-
-  .inputRail {
-    grid-template-columns: 1fr;
-  }
-
-  .inputRail > div,
-  .inputRail > div:nth-child(even),
-  .inputRail > div:nth-child(3n + 2),
-  .inputRail > div:nth-child(3n + 3) {
-    padding: 0.85rem 0;
-    border-left: 0;
+  .riderProfileGroups {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .comparisonRow {

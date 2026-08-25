@@ -15,14 +15,13 @@ import {
   recommendationRoleLabels,
 } from "@/components/result/product-recommendation-card";
 import { RecommendationFeedback } from "@/components/result/recommendation-feedback";
+import { RiderProfile } from "@/components/result/rider-profile";
 import { trackEvent } from "@/lib/analytics/client";
 import { getBoardSizeLabel } from "@/lib/board-size";
 import { getExactSizeOfferIntelligence } from "@/lib/exact-size-offer";
 import {
   boardShapeLabels,
   bootDragRiskLabels,
-  ridingStyleLabels,
-  stanceLabels,
   terrainPriorityLabels,
   widthTypeLabels,
 } from "@/lib/content";
@@ -583,42 +582,13 @@ export function ResultView({
               </div>
             </div>
 
-            <aside className={styles.inputContext} aria-label="Ваши параметры">
-              <div className={styles.inputContextHeader}>
-                <p className={publicStyles.microLabel}>Контекст расчёта</p>
-                <span aria-hidden="true">EF / INPUT</span>
-              </div>
-              <dl className={styles.inputRail}>
-                <InputMetric
-                  term="Рост"
-                  description={`${recommendation.input.heightCm} см`}
-                />
-                <InputMetric
-                  term="Вес"
-                  description={`${recommendation.input.weightKg} кг`}
-                />
-                <InputMetric
-                  term="Ботинок"
-                  description={`EU ${recommendation.input.bootSizeEu}`}
-                />
-                <InputMetric
-                  term="Стиль"
-                  description={ridingStyleLabels[recommendation.input.ridingStyle]}
-                />
-                <InputMetric
-                  term="Приоритет"
-                  description={
-                    terrainPriorityLabels[recommendation.input.terrainPriority]
-                  }
-                />
-                <InputMetric
-                  term="Стойка"
-                  description={stanceLabels[recommendation.input.stanceType]}
-                />
-              </dl>
-            </aside>
           </div>
         </section>
+
+        <RiderProfile
+          input={recommendation.input}
+          purchasePreferences={purchasePreferences}
+        />
 
         {savedResultPath ? (
           <section
@@ -1150,19 +1120,5 @@ function DetailMetric({ label, value, description }: DetailMetricProps) {
       <h3>{value}</h3>
       <p>{description}</p>
     </article>
-  );
-}
-
-interface InputMetricProps {
-  term: string;
-  description: string;
-}
-
-function InputMetric({ term, description }: InputMetricProps) {
-  return (
-    <div>
-      <dt>{term}</dt>
-      <dd>{description}</dd>
-    </div>
   );
 }

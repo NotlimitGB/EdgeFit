@@ -112,6 +112,9 @@ describe("ResultView saved mode", () => {
     expect(markup).toContain("Проверить в магазине");
     expect(markup).not.toContain("Траектория");
     expect(markup).not.toContain("Помогла рекомендация принять решение?");
+    expect(markup).toContain("Твой профиль");
+    expect(markup).toContain("Бюджет");
+    expect(markup).toContain("не указан");
   });
 
   it("keeps an over-budget Top 1 ahead of a lower-price alternative", () => {
@@ -140,8 +143,28 @@ describe("ResultView saved mode", () => {
     expect(markup.indexOf("Mountain Twin")).toBeLessThan(
       markup.indexOf("Lower Price Alternative"),
     );
+    expect(markup).toContain("до 50 000 ₽");
     expect(markup).toContain("цена была выше указанного бюджета");
     expect(markup).toContain("цена была не выше указанного бюджета");
+  });
+});
+
+describe("ResultView rider profile placement", () => {
+  it("renders one complete profile after the fit summary and before explanation", () => {
+    const markup = renderToStaticMarkup(
+      <ResultView initialRecommendation={recommendation} mode="session" />,
+    );
+    const fitTitle = markup.indexOf("Твой рабочий fit");
+    const profileTitle = markup.indexOf("Твой профиль");
+    const explanationTitle = markup.indexOf("Почему получился такой fit");
+
+    expect(markup.match(/Твой профиль/g)).toHaveLength(1);
+    expect(markup).not.toContain("Контекст расчёта");
+    expect(fitTitle).toBeGreaterThanOrEqual(0);
+    expect(profileTitle).toBeGreaterThan(fitTitle);
+    expect(explanationTitle).toBeGreaterThan(profileTitle);
+    expect(markup).toContain("не указан");
+    expect(markup.indexOf("Mountain Twin")).toBeGreaterThan(profileTitle);
   });
 });
 
