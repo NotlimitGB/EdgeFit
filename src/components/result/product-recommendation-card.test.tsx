@@ -158,7 +158,13 @@ describe("ProductRecommendationCard commercial presentation", () => {
     expect(markup).toContain("Открыть в Траектории");
     expect(markup).toContain("Ориентир цены");
     expect(markup).toContain("Актуальные цену и наличие проверь в магазине.");
-    expect(markup).toContain("Размер 156 отмечен доступным в Траектории");
+    expect(markup).toContain(
+      "По данным каталога размер 156 отмечен доступным — актуальное наличие проверь в Траектории",
+    );
+    expect(markup).not.toContain("в наличии сейчас");
+    expect(markup).not.toContain("доступен сейчас");
+    expect(markup).not.toContain("проверено недавно");
+    expect(markup).not.toContain("свежие данные");
     expect(markup).not.toContain("Цена от");
     expect(markup).toContain(
       'href="/go/jones-mountain-twin?from=result-top"',
@@ -174,6 +180,16 @@ describe("ProductRecommendationCard commercial presentation", () => {
     expect(markup).toContain("Откроется поиск модели в магазине.");
     expect(markup).toContain("Точного предложения по размеру 156 пока нет");
     expect(markup).not.toContain("jonessnowboards.com");
+  });
+
+  it("uses cautious catalog-evidence wording for a direct Trial Sport offer", () => {
+    const markup = renderCard(
+      "https://trial-sport.ru/goods/1/3131513.html",
+    );
+
+    expect(markup).toContain(
+      "По данным каталога размер 156 отмечен доступным — актуальное наличие проверь в Trial Sport",
+    );
   });
 
   it("uses generic commerce wording for immutable saved results", () => {
@@ -218,6 +234,7 @@ describe("ProductRecommendationCard commercial presentation", () => {
     );
 
     expect(markup).toContain("Наличие размера 156 не подтверждено");
-    expect(markup).not.toContain("Размер 156 отмечен доступным");
+    expect(markup).not.toContain("По данным каталога размер 156 отмечен доступным");
+    expect(markup).not.toContain("Распродано");
   });
 });

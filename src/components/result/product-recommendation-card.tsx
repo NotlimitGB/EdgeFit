@@ -85,7 +85,7 @@ export function ProductRecommendationCard({
     commercialPresentation.mode === "saved"
       ? `Наличие размера ${sizeLabel} нужно проверить в магазине`
       : offerIntelligence.status === "confirmed_available"
-        ? `Размер ${sizeLabel} отмечен доступным в ${merchantLocationLabel}`
+        ? `По данным каталога размер ${sizeLabel} отмечен доступным — актуальное наличие проверь в ${merchantLocationLabel}`
         : offerIntelligence.status === "search_only"
           ? `Точного предложения по размеру ${sizeLabel} пока нет`
           : `Наличие размера ${sizeLabel} не подтверждено`;
