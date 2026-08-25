@@ -15,7 +15,10 @@ export async function POST(request: Request) {
   try {
     const payload = analyticsEventSchema.parse(await request.json());
 
-    await saveAnalyticsEvent(payload);
+    await saveAnalyticsEvent({
+      ...payload,
+      requestUrl: request.url,
+    });
 
     return NextResponse.json({
       received: true,

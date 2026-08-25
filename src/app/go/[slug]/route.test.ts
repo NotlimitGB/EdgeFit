@@ -95,10 +95,11 @@ describe("store click provenance", () => {
   });
 
   it("persists one server-authoritative first-party event and redirects", async () => {
+    const request = new Request(
+      "https://edge-fit.test/go/test-board?from=result-top&placement=primary_recommendation&sizeCm=156&sizeLabel=156W&widthType=wide&recommendationRank=1&recommendationScore=92&resultVariant=session&algorithmVersion=v1.6.4&budgetMaxRub=40000",
+    );
     const response = await GET(
-      new Request(
-        "https://edge-fit.test/go/test-board?from=result-top&placement=primary_recommendation&sizeCm=156&sizeLabel=156W&widthType=wide&recommendationRank=1&recommendationScore=92&resultVariant=session&algorithmVersion=v1.6.4&budgetMaxRub=40000",
-      ),
+      request,
       { params: Promise.resolve({ slug: "test-board" }) },
     );
 
@@ -108,6 +109,7 @@ describe("store click provenance", () => {
     expect(mocks.saveAnalyticsEvent).toHaveBeenCalledWith({
       sessionId: "session-1",
       eventName: "product_clicked",
+      requestUrl: request.url,
       pagePath: "/outbound/result-top",
       payload: expect.objectContaining({
         board_slug: "test-family",
@@ -130,6 +132,22 @@ describe("store click provenance", () => {
         clicked_product_budget_relation: "over_catalog_estimate",
       }),
     });
+  });
+
+  it("passes localhost request context without affecting the redirect", async () => {
+    const request = new Request(
+      "http://localhost:3000/go/test-board?from=result-top&placement=primary_recommendation",
+    );
+
+    const response = await GET(request, {
+      params: Promise.resolve({ slug: "test-board" }),
+    });
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(product.affiliateUrl);
+    expect(mocks.saveAnalyticsEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ requestUrl: request.url }),
+    );
   });
 
   it("rejects a forged relation and recomputes from validated budget context", async () => {

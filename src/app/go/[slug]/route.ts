@@ -109,6 +109,7 @@ export async function GET(
       await saveAnalyticsEvent({
         sessionId,
         eventName: "product_clicked",
+        requestUrl: request.url,
         pagePath: await getPagePathFromRequest(payload.data.from),
         payload: buildOutboundClickAnalyticsPayload({
           boardSlug: canonicalIdentity.boardSlug,

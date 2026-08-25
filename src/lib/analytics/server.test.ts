@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const json = vi.fn((value: unknown) => value);
@@ -8,7 +8,9 @@ const mocks = vi.hoisted(() => {
   });
   const sql = Object.assign(query, { json });
 
-  return { json, query, sql };
+  const getClient = vi.fn(() => sql);
+
+  return { getClient, json, query, sql };
 });
 
 vi.mock("server-only", () => ({}));
@@ -18,7 +20,7 @@ vi.mock("@/lib/database/config", () => ({
 }));
 
 vi.mock("@/lib/database/client", () => ({
-  получитьКлиентБазы: () => mocks.sql,
+  получитьКлиентБазы: () => mocks.getClient(),
 }));
 
 import { saveAnalyticsEvent } from "@/lib/analytics/server";
@@ -26,7 +28,37 @@ import { saveAnalyticsEvent } from "@/lib/analytics/server";
 describe("saveAnalyticsEvent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv("NODE_ENV", "production");
   });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it.each([
+    ["development", "https://edgefit-real-nonlocal.example/result"],
+    ["test", "https://edgefit-real-nonlocal.example/result"],
+    ["production", "http://localhost:3000/result"],
+    ["production", "http://app.localhost:3000/result"],
+    ["production", "http://127.0.0.1:3000/result"],
+    ["production", "http://0.0.0.0:3000/result"],
+    ["production", "http://[::1]:3000/result"],
+    ["production", "not-a-valid-url"],
+  ])(
+    "skips persistence for NODE_ENV=%s and request %s",
+    async (nodeEnv, requestUrl) => {
+      vi.stubEnv("NODE_ENV", nodeEnv);
+
+      await saveAnalyticsEvent({
+        sessionId: "session-local",
+        eventName: "result_viewed",
+        requestUrl,
+      });
+
+      expect(mocks.getClient).not.toHaveBeenCalled();
+      expect(mocks.query).not.toHaveBeenCalled();
+    },
+  );
 
   it("passes a structured payload through the Postgres JSONB parameter", async () => {
     const payload = {
@@ -42,6 +74,7 @@ describe("saveAnalyticsEvent", () => {
     await saveAnalyticsEvent({
       sessionId: "session-1",
       eventName: "product_clicked",
+      requestUrl: "https://edgefit-real-nonlocal.example/result",
       pagePath: "/result",
       payload,
     });
@@ -63,6 +96,7 @@ describe("saveAnalyticsEvent", () => {
     await saveAnalyticsEvent({
       sessionId: "session-2",
       eventName: "home_viewed",
+      requestUrl: "https://edgefit-real-nonlocal.example/",
     });
 
     expect(mocks.json).toHaveBeenCalledOnce();
