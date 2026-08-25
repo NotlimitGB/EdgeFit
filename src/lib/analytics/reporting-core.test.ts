@@ -262,6 +262,95 @@ describe("analytics reporting core", () => {
     expect(report.windows.previous7Days.versions).toEqual([]);
   });
 
+  it("keeps historical v1 and new v2 progression in separate report groups", () => {
+    const at = "2026-08-24T10:00:00.000Z";
+    const base = {
+      windowKey: "last7Days" as const,
+      createdAt: at,
+      totalSteps: 3,
+    };
+    const events = [
+      {
+        ...base,
+        sessionId: "legacy",
+        eventName: "quiz_started" as const,
+        quizVersion: "v1",
+        stepIndex: null,
+        stepKey: null,
+        totalSteps: null,
+      },
+      ...["body", "profile", "style"].map((stepKey, index) => ({
+        ...base,
+        sessionId: "legacy",
+        eventName: "quiz_step_completed" as const,
+        quizVersion: "v1",
+        stepIndex: index + 1,
+        stepKey,
+      })),
+      {
+        ...base,
+        sessionId: "legacy",
+        eventName: "quiz_completed" as const,
+        quizVersion: "v1",
+        stepIndex: null,
+        stepKey: null,
+        totalSteps: null,
+      },
+      {
+        ...base,
+        sessionId: "current",
+        eventName: "quiz_started" as const,
+        quizVersion: "v2",
+        stepIndex: null,
+        stepKey: null,
+        totalSteps: null,
+      },
+      ...["physical_fit", "riding_context", "decision_preferences"].map(
+        (stepKey, index) => ({
+          ...base,
+          sessionId: "current",
+          eventName: "quiz_step_completed" as const,
+          quizVersion: "v2",
+          stepIndex: index + 1,
+          stepKey,
+        }),
+      ),
+      {
+        ...base,
+        sessionId: "current",
+        eventName: "quiz_completed" as const,
+        quizVersion: "v2",
+        stepIndex: null,
+        stepKey: null,
+        totalSteps: null,
+      },
+    ];
+
+    const report = buildQuizAbandonmentReport(events);
+
+    expect(report.windows.last7Days.versions).toEqual([
+      expect.objectContaining({
+        quizVersion: "v1",
+        quizCompletedSessions: 1,
+        steps: expect.arrayContaining([
+          expect.objectContaining({ stepIndex: 1, stepKey: "body" }),
+          expect.objectContaining({ stepIndex: 3, stepKey: "style" }),
+        ]),
+      }),
+      expect.objectContaining({
+        quizVersion: "v2",
+        quizCompletedSessions: 1,
+        steps: expect.arrayContaining([
+          expect.objectContaining({ stepIndex: 1, stepKey: "physical_fit" }),
+          expect.objectContaining({
+            stepIndex: 3,
+            stepKey: "decision_preferences",
+          }),
+        ]),
+      }),
+    ]);
+  });
+
   it("uses yesterday in Europe/Moscow as the report date", () => {
     const result = buildReportWindows(new Date("2026-08-09T21:30:00.000Z"));
     expect(result.asOfDate).toBe("2026-08-09");

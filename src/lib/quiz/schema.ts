@@ -26,16 +26,4 @@ export const quizSubmissionSchema = z.object({
   stanceType: z.enum(["standard", "duck", "unknown"]),
 });
 
-export const defaultQuizDraft = {
-  heightCm: 178,
-  weightKg: 74,
-  bootSizeEu: 43,
-  boardLinePreference: "men",
-  skillLevel: "intermediate",
-  ridingStyle: "all-mountain",
-  terrainPriority: "balanced",
-  aggressiveness: "balanced",
-  stanceType: "unknown",
-} as const;
-
 export type QuizSubmission = z.infer<typeof quizSubmissionSchema>;

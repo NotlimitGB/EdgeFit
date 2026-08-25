@@ -4,11 +4,16 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import publicStyles from "@/components/public/public-ui.module.css";
 import { trackEvent } from "@/lib/analytics/client";
+import type { QuizSubmission } from "@/lib/quiz/schema";
 import {
-  defaultQuizDraft,
-  quizSubmissionSchema,
-  type QuizSubmission,
-} from "@/lib/quiz/schema";
+  createQuizV2Draft,
+  loadQuizV2Draft,
+  parseQuizV2Submission,
+  saveQuizV2Draft,
+  validateQuizV2Step,
+  type QuizV2Draft,
+  type QuizV2DraftErrors,
+} from "@/lib/quiz/draft";
 import { getOrCreateSessionId } from "@/lib/session-id";
 import {
   persistRecommendationSessionState,
@@ -16,51 +21,47 @@ import {
 } from "@/lib/saved-result-contract";
 import type { RecommendationResult } from "@/types/domain";
 import {
+  buildQuizStepAnalyticsPayload,
   buildQuizStepCompletionPayload,
   getQuizStepAfterNavigation,
   QUIZ_STEPS,
   QUIZ_VERSION,
+  type QuizStepKey,
 } from "@/lib/analytics/quiz-progression";
 import styles from "./quiz-flow.module.css";
 
-const STORAGE_KEY = "edgefit.quiz-draft";
-
-const stepFields = [
-  ["heightCm", "weightKg", "bootSizeEu"],
-  ["boardLinePreference", "skillLevel"],
-  ["ridingStyle", "terrainPriority", "aggressiveness", "stanceType"],
-] as const;
 const stepDetails = [
   {
+    key: "physical_fit",
     shortLabel: "Параметры",
     eyebrow: "Твои параметры",
     title: "Начнём с того, что реально влияет на размер",
     description:
-      "Рост и вес помогают определить рабочую длину, а размер ботинка — безопасную ширину доски.",
+      "Рост и вес помогают определить длину, а размер ботинка и стойка — безопасную ширину доски.",
     context:
-      "Вес задаёт основу ростовки, рост уточняет диапазон, а ботинок определяет нужный запас по ширине.",
+      "Вес задаёт основу ростовки, рост уточняет диапазон, а ботинок и стойка определяют нужный запас по ширине.",
   },
   {
-    shortLabel: "Профиль",
-    eyebrow: "Твой профиль",
-    title: "Уровень и предпочтение по линейке",
-    description:
-      "Уровень влияет на характер подходящих моделей. Линейка фильтрует каталог, но не меняет твой физический fit.",
-    context:
-      "Здесь мы отделяем физические параметры райдера от того, в какой части каталога искать подходящие модели.",
-  },
-  {
+    key: "riding_context",
     shortLabel: "Катание",
     eyebrow: "Как ты катаешься",
-    title: "Осталось понять характер и сценарий катания",
+    title: "Теперь уточним твой опыт и сценарий катания",
     description:
-      "Стиль, приоритет и стойка помогают уточнить длину, ширину и профиль доски.",
+      "Уровень, основной стиль и главный приоритет помогают выбрать подходящий характер доски.",
     context:
-      "Стиль задаёт общее направление, а приоритет объясняет, что важнее именно внутри твоего сценария.",
+      "Стиль задаёт общее направление, а приоритет уточняет, что важнее именно внутри твоего сценария.",
+  },
+  {
+    key: "decision_preferences",
+    shortLabel: "Предпочтения",
+    eyebrow: "Последние детали",
+    title: "Осталось уточнить характер и линейку",
+    description:
+      "Характер катания уточняет ощущение доски, а линейка влияет на приоритет моделей в выдаче.",
+    context:
+      "Линейка не меняет физический fit: она только помогает расставить подходящие модели в выдаче.",
   },
 ] as const;
-
-type DraftState = Record<keyof QuizSubmission, string>;
 
 interface ChoiceOption<Value extends string> {
   value: Value;
@@ -73,19 +74,19 @@ const boardLineOptions = [
     value: "men",
     title: "Мужская / унисекс",
     description:
-      "Сначала ищем модели из этой линейки. Размер и ширину всё равно считаем по твоим параметрам.",
+      "Выше ставим модели из этой линейки. Размер и ширину всё равно считаем по твоим параметрам.",
   },
   {
     value: "women",
     title: "Женская",
     description:
-      "Сначала ищем модели из женской линейки. Физический fit остаётся персональным.",
+      "Выше ставим модели из женской линейки. Физический fit остаётся персональным.",
   },
   {
     value: "any",
     title: "Без привязки",
     description:
-      "Не ограничиваем каталог линейкой и смотрим прежде всего на fit.",
+      "Не даём линейке дополнительный приоритет и смотрим прежде всего на fit.",
   },
 ] as const satisfies readonly ChoiceOption<
   QuizSubmission["boardLinePreference"]
@@ -201,27 +202,143 @@ const resultOutputs = [
   ["05", "Модели", "варианты для сравнения"],
 ] as const;
 
-function createInitialDraft(): DraftState {
-  return {
-    heightCm: String(defaultQuizDraft.heightCm),
-    weightKg: String(defaultQuizDraft.weightKg),
-    bootSizeEu: String(defaultQuizDraft.bootSizeEu),
-    boardLinePreference: defaultQuizDraft.boardLinePreference,
-    skillLevel: defaultQuizDraft.skillLevel,
-    ridingStyle: defaultQuizDraft.ridingStyle,
-    terrainPriority: defaultQuizDraft.terrainPriority,
-    aggressiveness: defaultQuizDraft.aggressiveness,
-    stanceType: defaultQuizDraft.stanceType,
-  };
+interface QuizFlowStepFieldsProps {
+  stepKey: QuizStepKey;
+  draft: QuizV2Draft;
+  errors: QuizV2DraftErrors;
+  onChange: <Key extends keyof QuizV2Draft>(
+    key: Key,
+    value: QuizV2Draft[Key],
+  ) => void;
+}
+
+export function QuizFlowStepFields({
+  stepKey,
+  draft,
+  errors,
+  onChange,
+}: QuizFlowStepFieldsProps) {
+  if (stepKey === "physical_fit") {
+    return (
+      <div className={styles.questionStack}>
+        <div className={styles.measurementGrid}>
+          <NumberField
+            id="heightCm"
+            label="Рост"
+            unit="см"
+            hint="Например, 178"
+            explanation="Помогает скорректировать рабочий диапазон длины."
+            value={draft.heightCm}
+            onChange={(value) => onChange("heightCm", value)}
+            error={errors.heightCm}
+            step="1"
+          />
+          <NumberField
+            id="weightKg"
+            label="Вес"
+            unit="кг"
+            hint="Например, 74"
+            explanation="Главный ориентир для базовой ростовки."
+            value={draft.weightKg}
+            onChange={(value) => onChange("weightKg", value)}
+            error={errors.weightKg}
+            step="1"
+          />
+          <NumberField
+            id="bootSizeEu"
+            label="Размер ботинка"
+            unit="EU"
+            hint="Например, 43 или 43.5"
+            explanation="Влияет на ширину доски и риск boot drag."
+            value={draft.bootSizeEu}
+            onChange={(value) => onChange("bootSizeEu", value)}
+            error={errors.bootSizeEu}
+            step="0.5"
+          />
+        </div>
+        <ChoiceGroup
+          name="stanceType"
+          label="Какая у тебя стойка?"
+          helper="Стойка немного влияет на запас против boot drag. Если не знаешь — это нормально."
+          value={draft.stanceType}
+          onChange={(value) => onChange("stanceType", value)}
+          options={stanceOptions}
+          error={errors.stanceType}
+          columns="three"
+        />
+      </div>
+    );
+  }
+
+  if (stepKey === "riding_context") {
+    return (
+      <div className={styles.questionStack}>
+        <ChoiceGroup
+          name="skillLevel"
+          label="Как ты оцениваешь свой уровень?"
+          helper="Выбери описание, которое ближе к твоему катанию сейчас."
+          value={draft.skillLevel}
+          onChange={(value) => onChange("skillLevel", value)}
+          options={skillOptions}
+          error={errors.skillLevel}
+          columns="three"
+        />
+        <ChoiceGroup
+          name="ridingStyle"
+          label="Основной стиль катания"
+          helper="Выбери ближайшее направление. Ниже отдельно уточним главный приоритет."
+          value={draft.ridingStyle}
+          onChange={(value) => onChange("ridingStyle", value)}
+          options={ridingStyleOptions}
+          error={errors.ridingStyle}
+          columns="three"
+        />
+        <ChoiceGroup
+          name="terrainPriority"
+          label="Главный приоритет"
+          helper="Что ты хочешь получить от доски в первую очередь?"
+          value={draft.terrainPriority}
+          onChange={(value) => onChange("terrainPriority", value)}
+          options={terrainPriorityOptions}
+          error={errors.terrainPriority}
+          columns="two"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.questionStack}>
+      <ChoiceGroup
+        name="aggressiveness"
+        label="Какой характер доски нравится?"
+        helper="Это про ощущение доски, а не про уровень райдера."
+        value={draft.aggressiveness}
+        onChange={(value) => onChange("aggressiveness", value)}
+        options={aggressivenessOptions}
+        error={errors.aggressiveness}
+        columns="three"
+      />
+      <ChoiceGroup
+        name="boardLinePreference"
+        label="Линейка досок"
+        helper="Линейка влияет на приоритет моделей в выдаче, но не меняет физический fit."
+        value={draft.boardLinePreference}
+        onChange={(value) => onChange("boardLinePreference", value)}
+        options={boardLineOptions}
+        error={errors.boardLinePreference}
+        columns="three"
+      />
+    </div>
+  );
 }
 
 export function QuizFlow() {
   const router = useRouter();
   const [step, setStep] = useState(0);
-  const [draft, setDraft] = useState<DraftState>(createInitialDraft);
-  const [errors, setErrors] = useState<
-    Partial<Record<keyof QuizSubmission, string>>
-  >({});
+  const [draft, setDraft] = useState<QuizV2Draft>(createQuizV2Draft);
+  const [errors, setErrors] = useState<QuizV2DraftErrors>({});
+  const [draftHydrated, setDraftHydrated] = useState(false);
   const [submissionError, setSubmissionError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -231,23 +348,15 @@ export function QuizFlow() {
   const currentStep = stepDetails[step];
 
   useEffect(() => {
-    const rawDraft = window.sessionStorage.getItem(STORAGE_KEY);
-
-    if (!rawDraft) {
-      return;
-    }
-
-    try {
-      const parsedDraft = JSON.parse(rawDraft) as DraftState;
-      setDraft((current) => ({ ...current, ...parsedDraft }));
-    } catch {
-      window.sessionStorage.removeItem(STORAGE_KEY);
-    }
+    setDraft(loadQuizV2Draft(window.sessionStorage));
+    setDraftHydrated(true);
   }, []);
 
   useEffect(() => {
-    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
-  }, [draft]);
+    if (draftHydrated) {
+      saveQuizV2Draft(window.sessionStorage, draft);
+    }
+  }, [draft, draftHydrated]);
 
   useEffect(() => {
     getOrCreateSessionId();
@@ -255,10 +364,7 @@ export function QuizFlow() {
   }, []);
 
   useEffect(() => {
-    void trackEvent("quiz_step_viewed", {
-      step_name: QUIZ_STEPS[step],
-      step_number: step + 1,
-    });
+    void trackEvent("quiz_step_viewed", buildQuizStepAnalyticsPayload(step));
   }, [step]);
 
   useEffect(() => {
@@ -270,36 +376,26 @@ export function QuizFlow() {
     stepHeadingRef.current?.focus();
   }, [step]);
 
-  function updateDraft<Key extends keyof DraftState>(
+  function updateDraft<Key extends keyof QuizV2Draft>(
     key: Key,
-    value: DraftState[Key],
+    value: QuizV2Draft[Key],
   ) {
     setDraft((current) => ({ ...current, [key]: value }));
     setErrors((current) => ({ ...current, [key]: undefined }));
   }
 
   function validateCurrentStep() {
-    const result = quizSubmissionSchema.safeParse(draft);
-
+    const stepKey = QUIZ_STEPS[step];
+    if (!stepKey) {
+      return false;
+    }
+    const result = validateQuizV2Step(draft, stepKey);
     if (result.success) {
       setErrors({});
-      return result.data;
+      return true;
     }
-
-    const nextErrors = result.error.flatten().fieldErrors;
-    const fields = stepFields[step];
-    const scopedErrors = fields.reduce<
-      Partial<Record<keyof QuizSubmission, string>>
-    >((accumulator, field) => {
-      const message = nextErrors[field]?.[0];
-      if (message) {
-        accumulator[field] = message;
-      }
-      return accumulator;
-    }, {});
-
-    setErrors((current) => ({ ...current, ...scopedErrors }));
-    return null;
+    setErrors((current) => ({ ...current, ...result.errors }));
+    return false;
   }
 
   async function handleSubmit() {
@@ -307,11 +403,15 @@ export function QuizFlow() {
       return;
     }
 
-    const payload = validateCurrentStep();
-
-    if (!payload) {
+    if (!validateCurrentStep()) {
       return;
     }
+    const result = parseQuizV2Submission(draft);
+    if (!result.success) {
+      setSubmissionError("Проверьте ответы на предыдущих шагах.");
+      return;
+    }
+    const payload = result.data;
 
     setSubmissionError("");
     setIsSubmitting(true);
@@ -373,9 +473,7 @@ export function QuizFlow() {
       return;
     }
 
-    const parsed = validateCurrentStep();
-
-    if (!parsed) {
+    if (!validateCurrentStep()) {
       return;
     }
 
@@ -403,9 +501,9 @@ export function QuizFlow() {
         <div
           className={styles.progress}
           role="progressbar"
-          aria-label={`Шаг ${step + 1} из 3: ${currentStep.shortLabel}`}
+          aria-label={`Шаг ${step + 1} из ${QUIZ_STEPS.length}: ${currentStep.shortLabel}`}
           aria-valuemin={1}
-          aria-valuemax={stepFields.length}
+          aria-valuemax={QUIZ_STEPS.length}
           aria-valuenow={step + 1}
         >
           <ol className={styles.progressSteps} aria-hidden="true">
@@ -428,7 +526,7 @@ export function QuizFlow() {
 
         <header className={styles.stepHeader}>
           <p className={publicStyles.microLabel}>
-            Шаг {step + 1} / {stepFields.length} · {currentStep.eyebrow}
+            Шаг {step + 1} / {QUIZ_STEPS.length} · {currentStep.eyebrow}
           </p>
           <h2 id="quiz-step-title" ref={stepHeadingRef} tabIndex={-1}>
             {currentStep.title}
@@ -436,114 +534,13 @@ export function QuizFlow() {
           <p>{currentStep.description}</p>
         </header>
 
-        <div className={styles.stepContent} key={step}>
-          {step === 0 ? (
-            <div className={styles.measurementGrid}>
-              <NumberField
-                id="heightCm"
-                label="Рост"
-                unit="см"
-                hint="Например, 178"
-                explanation="Помогает скорректировать рабочий диапазон длины."
-                value={draft.heightCm}
-                onChange={(value) => updateDraft("heightCm", value)}
-                error={errors.heightCm}
-                step="1"
-              />
-              <NumberField
-                id="weightKg"
-                label="Вес"
-                unit="кг"
-                hint="Например, 74"
-                explanation="Главный ориентир для базовой ростовки."
-                value={draft.weightKg}
-                onChange={(value) => updateDraft("weightKg", value)}
-                error={errors.weightKg}
-                step="1"
-              />
-              <NumberField
-                id="bootSizeEu"
-                label="Размер ботинка"
-                unit="EU"
-                hint="Например, 43 или 43.5"
-                explanation="Влияет на ширину доски и риск boot drag."
-                value={draft.bootSizeEu}
-                onChange={(value) => updateDraft("bootSizeEu", value)}
-                error={errors.bootSizeEu}
-                step="0.5"
-              />
-            </div>
-          ) : null}
-
-          {step === 1 ? (
-            <div className={styles.questionStack}>
-              <ChoiceGroup
-                name="boardLinePreference"
-                label="Линейка досок"
-                helper="Это фильтр каталога, а не отдельная формула размера."
-                value={draft.boardLinePreference}
-                onChange={(value) => updateDraft("boardLinePreference", value)}
-                options={boardLineOptions}
-                error={errors.boardLinePreference}
-                columns="three"
-              />
-              <ChoiceGroup
-                name="skillLevel"
-                label="Как ты оцениваешь свой уровень?"
-                helper="Выбери описание, которое ближе к твоему катанию сейчас."
-                value={draft.skillLevel}
-                onChange={(value) => updateDraft("skillLevel", value)}
-                options={skillOptions}
-                error={errors.skillLevel}
-                columns="three"
-              />
-            </div>
-          ) : null}
-
-          {step === 2 ? (
-            <div className={styles.questionStack}>
-              <ChoiceGroup
-                name="ridingStyle"
-                label="Базовый стиль"
-                helper="Выбери ближайшее направление. Ниже отдельно уточним главный приоритет."
-                value={draft.ridingStyle}
-                onChange={(value) => updateDraft("ridingStyle", value)}
-                options={ridingStyleOptions}
-                error={errors.ridingStyle}
-                columns="three"
-              />
-              <ChoiceGroup
-                name="terrainPriority"
-                label="Главный приоритет"
-                helper="Что ты хочешь получить от доски в первую очередь?"
-                value={draft.terrainPriority}
-                onChange={(value) => updateDraft("terrainPriority", value)}
-                options={terrainPriorityOptions}
-                error={errors.terrainPriority}
-                columns="two"
-              />
-              <ChoiceGroup
-                name="aggressiveness"
-                label="Какой характер доски нравится?"
-                helper="Это про ощущение доски, а не про уровень райдера."
-                value={draft.aggressiveness}
-                onChange={(value) => updateDraft("aggressiveness", value)}
-                options={aggressivenessOptions}
-                error={errors.aggressiveness}
-                columns="three"
-              />
-              <ChoiceGroup
-                name="stanceType"
-                label="Какая у тебя стойка?"
-                helper="Стойка немного влияет на запас против boot drag. Если не знаешь — это нормально."
-                value={draft.stanceType}
-                onChange={(value) => updateDraft("stanceType", value)}
-                options={stanceOptions}
-                error={errors.stanceType}
-                columns="three"
-              />
-            </div>
-          ) : null}
+        <div className={styles.stepContent} key={currentStep.key}>
+          <QuizFlowStepFields
+            stepKey={currentStep.key}
+            draft={draft}
+            errors={errors}
+            onChange={updateDraft}
+          />
         </div>
 
         {submissionError ? (
@@ -594,7 +591,7 @@ export function QuizFlow() {
           </button>
         ) : null}
 
-        {step < stepFields.length - 1 ? (
+        {step < QUIZ_STEPS.length - 1 ? (
           <button
             type="button"
             onClick={nextStep}
@@ -682,7 +679,7 @@ interface ChoiceGroupProps<Value extends string> {
   name: keyof QuizSubmission;
   label: string;
   helper: string;
-  value: Value;
+  value: Value | null;
   onChange: (value: Value) => void;
   options: readonly ChoiceOption<Value>[];
   error?: string;

@@ -1,6 +1,10 @@
-export const QUIZ_VERSION = "v1" as const;
+export const QUIZ_VERSION = "v2" as const;
 
-export const QUIZ_STEPS = ["body", "profile", "style"] as const;
+export const QUIZ_STEPS = [
+  "physical_fit",
+  "riding_context",
+  "decision_preferences",
+] as const;
 
 export type QuizStepKey = (typeof QUIZ_STEPS)[number];
 
@@ -13,7 +17,7 @@ export interface QuizStepCompletionPayload extends Record<string, unknown> {
   total_steps: number;
 }
 
-export function buildQuizStepCompletionPayload(
+export function buildQuizStepAnalyticsPayload(
   zeroBasedStepIndex: number,
 ): QuizStepCompletionPayload {
   const stepKey = QUIZ_STEPS[zeroBasedStepIndex];
@@ -31,6 +35,10 @@ export function buildQuizStepCompletionPayload(
   };
 }
 
+export function buildQuizStepCompletionPayload(zeroBasedStepIndex: number) {
+  return buildQuizStepAnalyticsPayload(zeroBasedStepIndex);
+}
+
 export function getQuizStepAfterNavigation(
   currentStep: number,
   direction: "forward" | "back",
@@ -44,6 +52,6 @@ export function getQuizStepAfterNavigation(
 
   return {
     nextStep: Math.min(currentStep + 1, QUIZ_STEPS.length - 1),
-    completionPayload: buildQuizStepCompletionPayload(currentStep),
+    completionPayload: buildQuizStepAnalyticsPayload(currentStep),
   } as const;
 }
