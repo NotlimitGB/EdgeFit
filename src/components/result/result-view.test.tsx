@@ -340,9 +340,14 @@ describe("ResultView decision-oriented Top 3", () => {
         mode="session"
       />,
     );
+    const comparisonStart = markup.indexOf("Финальный выбор");
     const top3Markup = markup.slice(
       markup.indexOf("С чего начать"),
-      markup.indexOf('aria-label="Сравнение рекомендаций"'),
+      comparisonStart === -1 ? undefined : comparisonStart,
+    );
+    const comparisonMarkup = markup.slice(
+      markup.indexOf("Финальный выбор"),
+      markup.indexOf('id="email-title"'),
     );
 
     expect(top3Markup.indexOf("Board A")).toBeLessThan(
@@ -361,6 +366,17 @@ describe("ResultView decision-oriented Top 3", () => {
     expect(top3Markup).toContain("REASON_board-c");
     expect(markup).not.toContain("Если выбирать по характеру");
     expect(markup).not.toContain("decision_guide");
+    expect(comparisonMarkup.indexOf("Board A")).toBeLessThan(
+      comparisonMarkup.indexOf("Board B"),
+    );
+    expect(comparisonMarkup.indexOf("Board B")).toBeLessThan(
+      comparisonMarkup.indexOf("Board C"),
+    );
+    expect(comparisonMarkup).not.toContain("Board D");
+    expect(comparisonMarkup.match(/placement=recommendation_comparison/g)).toHaveLength(3);
+    expect(comparisonMarkup).toContain("recommendationRank=1");
+    expect(comparisonMarkup).toContain("recommendationRank=2");
+    expect(comparisonMarkup).toContain("recommendationRank=3");
   });
 
   it.each([1, 2, 3])("renders %s canonical choices without placeholders", (count) => {
@@ -375,11 +391,19 @@ describe("ResultView decision-oriented Top 3", () => {
         mode="saved"
       />,
     );
+    const top3Markup = markup.slice(
+      markup.indexOf("С чего начать"),
+      markup.indexOf("Финальный выбор"),
+    );
 
-    expect(markup.match(/Основной выбор · №1/g)).toHaveLength(1);
-    expect(markup.match(/Альтернатива ·/g) ?? []).toHaveLength(count - 1);
+    expect(top3Markup.match(/Основной выбор · №1/g)).toHaveLength(1);
+    expect(top3Markup.match(/Альтернатива ·/g) ?? []).toHaveLength(count - 1);
     expect(markup).toContain("Почему именно эта модель");
     expect(markup).not.toContain("Помогла рекомендация принять решение?");
+    expect(markup.includes("Сравнить варианты")).toBe(count >= 2);
+    expect(markup.match(/Ориентир цены/g) ?? []).toHaveLength(
+      count >= 2 ? count * 2 : count,
+    );
   });
 });
 

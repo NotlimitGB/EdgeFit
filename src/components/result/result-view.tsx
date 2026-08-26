@@ -8,12 +8,9 @@ import {
   useSyncExternalStore,
   type FormEvent,
 } from "react";
-import { TrackedStoreLink } from "@/components/analytics/tracked-store-link";
 import publicStyles from "@/components/public/public-ui.module.css";
-import {
-  ProductRecommendationCard,
-  recommendationRoleLabels,
-} from "@/components/result/product-recommendation-card";
+import { ProductRecommendationCard } from "@/components/result/product-recommendation-card";
+import { RecommendationComparison } from "@/components/result/recommendation-comparison";
 import { RecommendationFeedback } from "@/components/result/recommendation-feedback";
 import { getRecommendationDecisionCue } from "@/components/result/recommendation-decision-cue";
 import { RiderProfile } from "@/components/result/rider-profile";
@@ -378,7 +375,7 @@ export function ResultView({
   const priorityImpact = buildRecommendationPriorityImpact(recommendation);
   const compactExplanation = getCompactExplanation(recommendation);
   const topBoards = recommendation.recommendedBoards.slice(0, 3);
-  const comparisonBoards = recommendation.recommendedBoards.slice(0, 3);
+  const comparisonBoards = topBoards;
   const extraRecommendedBoards = recommendation.recommendedBoards.slice(3);
   const isSavedMode = mode === "saved";
   const savedResultPath =
@@ -733,66 +730,27 @@ export function ResultView({
           )}
         </section>
 
-        {comparisonBoards.length > 0 ? (
-          <section
-            className={styles.decisionSection}
-            aria-label="Сравнение рекомендаций"
-          >
-              <div className={styles.comparison}>
-                <div className={styles.comparisonHeader}>
-                  <p className={publicStyles.microLabel}>Верхние варианты рядом</p>
-                  <p>Роль, размер и fit — без повторения полных карточек.</p>
-                </div>
-                <div className={styles.comparisonRows}>
-                  {comparisonBoards.map((match, index) => {
-                    const storeAction = buildProductClickAction(
-                      match,
-                      "comparison",
-                      "recommendation_comparison",
-                      index + 1,
-                    );
+        <RecommendationComparison
+          items={comparisonBoards.map((match, index) => {
+            const rank = index + 1;
+            const storeAction = buildProductClickAction(
+              match,
+              "comparison",
+              "recommendation_comparison",
+              rank,
+            );
 
-                    return (
-                    <article
-                      key={`${match.product.id}-${match.size.sizeCm}-comparison`}
-                      className={styles.comparisonRow}
-                    >
-                      <span aria-hidden="true">
-                        {String(index + 1).padStart(2, "0")}
-                      </span>
-                      <div>
-                        <p>{recommendationRoleLabels[match.role]}</p>
-                        <h3>
-                          {match.product.brand} {match.product.modelName}
-                        </h3>
-                      </div>
-                      <p>
-                        <strong>{getBoardSizeLabel(match.size)}</strong>
-                        {match.fitLabel}
-                      </p>
-                      <div className={styles.comparisonActions}>
-                        <Link
-                          href={`/boards/${match.product.slug}`}
-                          className={styles.textAction}
-                        >
-                          О модели
-                        </Link>
-                        <TrackedStoreLink
-                          href={storeAction.href}
-                          analyticsPayload={storeAction.analyticsPayload}
-                          className={styles.textActionStrong}
-                        >
-                          {getCommercialPresentation(match.product.affiliateUrl)
-                            .actionLabel} ↗
-                        </TrackedStoreLink>
-                      </div>
-                    </article>
-                    );
-                  })}
-                </div>
-              </div>
-          </section>
-        ) : null}
+            return {
+              match,
+              rank,
+              shopHref: storeAction.href,
+              shopAnalyticsPayload: storeAction.analyticsPayload,
+              commercialPresentation: getCommercialPresentation(
+                match.product.affiliateUrl,
+              ),
+            };
+          })}
+        />
 
         {!isSavedMode ? (
           <section className={styles.emailSection} aria-labelledby="email-title">
