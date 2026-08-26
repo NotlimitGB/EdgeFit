@@ -12,6 +12,7 @@ import { formatRecommendedWeightRange } from "@/lib/weight-range";
 import type { ExactSizeOfferIntelligence } from "@/lib/exact-size-offer";
 import type { StoreDestinationPresentation } from "@/lib/store-redirect";
 import type { BudgetRelation } from "@/lib/purchase-preferences";
+import type { RecommendationDecisionCue } from "./recommendation-decision-cue";
 import type {
   RecommendationMatch,
   RecommendationRole,
@@ -35,6 +36,7 @@ export interface ProductRecommendationCardProps {
   budgetRelation?: BudgetRelation;
   resultMode?: "session" | "saved";
   showReasons?: boolean;
+  decisionCue?: RecommendationDecisionCue;
 }
 
 export const recommendationRoleLabels: Record<RecommendationRole, string> = {
@@ -62,6 +64,7 @@ export function ProductRecommendationCard({
   budgetRelation = "budget_not_set",
   resultMode = "session",
   showReasons = true,
+  decisionCue,
 }: ProductRecommendationCardProps) {
   const reasons = match.reasons.length > 0
     ? match.reasons.slice(0, 3)
@@ -139,6 +142,13 @@ export function ProductRecommendationCard({
           <strong>{match.fitLabel}</strong>
           <span>{match.confidenceLabel}</span>
         </div>
+
+        {decisionCue ? (
+          <div className={styles.recommendationDecisionCue}>
+            <p>{decisionCue.label}</p>
+            <span>{decisionCue.summary}</span>
+          </div>
+        ) : null}
       </header>
 
       {showReasons ? (

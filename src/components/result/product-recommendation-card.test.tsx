@@ -30,6 +30,7 @@ vi.mock("@/components/analytics/tracked-store-link", () => ({
 }));
 
 import { ProductRecommendationCard } from "@/components/result/product-recommendation-card";
+import { getRecommendationDecisionCue } from "@/components/result/recommendation-decision-cue";
 import { buildResultStoreClickAction } from "@/components/result/result-view";
 import { getStoreDestinationPresentation } from "@/lib/store-redirect";
 import { getExactSizeOfferIntelligence } from "@/lib/exact-size-offer";
@@ -131,6 +132,36 @@ function renderCard(
 }
 
 describe("ProductRecommendationCard commercial presentation", () => {
+  it("renders an optional decision cue before reasons and commerce", () => {
+    const markup = renderToStaticMarkup(
+      <ProductRecommendationCard
+        match={match}
+        position={2}
+        variant="recommended"
+        shopHref="/go/jones-mountain-twin?from=result-top"
+        commercialPresentation={getStoreDestinationPresentation(
+          match.product.affiliateUrl,
+        )}
+        offerIntelligence={getExactSizeOfferIntelligence({
+          product: match.product,
+          recommendedSize: match.size,
+        })}
+        decisionCue={getRecommendationDecisionCue(2, "stable")}
+      />,
+    );
+
+    const cueIndex = markup.indexOf("Альтернатива · больше стабильности");
+    const reasonsIndex = markup.indexOf("Почему подходит");
+    const commerceIndex = markup.indexOf("Ориентир цены");
+
+    expect(cueIndex).toBeGreaterThanOrEqual(0);
+    expect(cueIndex).toBeLessThan(reasonsIndex);
+    expect(cueIndex).toBeLessThan(commerceIndex);
+    expect(renderCard(match.product.affiliateUrl)).not.toContain(
+      "Основной выбор · №1",
+    );
+  });
+
   it("keeps reasons by default and can hide the complete reason block", () => {
     const defaultMarkup = renderCard("https://traektoria.ru/product/1_board/");
     const hiddenMarkup = renderCard(

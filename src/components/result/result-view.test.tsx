@@ -254,7 +254,6 @@ describe("result store click provenance", () => {
 
   it.each([
     ["alternative_recommendation", 2],
-    ["decision_guide", 2],
     ["recommendation_comparison", 2],
   ] as const)("preserves rendered rank for %s", (placement, rank) => {
     const action = buildResultStoreClickAction({
@@ -302,6 +301,85 @@ describe("result store click provenance", () => {
     expect(action.analyticsPayload).toBeUndefined();
     expect(action.href).not.toContain("recommendationRank");
     expect(action.offerIntelligence.status).toBe("search_only");
+  });
+});
+
+describe("ResultView decision-oriented Top 3", () => {
+  function buildMatch(
+    id: string,
+    modelName: string,
+    role: RecommendationResult["recommendedBoards"][number]["role"],
+    score: number,
+  ) {
+    const primary = recommendation.recommendedBoards[0];
+
+    return {
+      ...primary,
+      product: {
+        ...primary.product,
+        id,
+        slug: id,
+        modelName,
+      },
+      role,
+      score,
+      reasons: [`REASON_${id}`],
+    };
+  }
+
+  it("keeps the canonical first three in rendered order without promoting a fourth", () => {
+    const matches = [
+      buildMatch("board-a", "Board A", "playful", 61),
+      buildMatch("board-b", "Board B", "stable", 99_991),
+      buildMatch("board-c", "Board C", "width-safe", 20),
+      buildMatch("board-d", "Board D", "best-overall", 100_000),
+    ];
+    const markup = renderToStaticMarkup(
+      <ResultView
+        initialRecommendation={{ ...recommendation, recommendedBoards: matches }}
+        mode="session"
+      />,
+    );
+    const top3Markup = markup.slice(
+      markup.indexOf("С чего начать"),
+      markup.indexOf('aria-label="Сравнение рекомендаций"'),
+    );
+
+    expect(top3Markup.indexOf("Board A")).toBeLessThan(
+      top3Markup.indexOf("Board B"),
+    );
+    expect(top3Markup.indexOf("Board B")).toBeLessThan(
+      top3Markup.indexOf("Board C"),
+    );
+    expect(top3Markup).not.toContain("Board D");
+    expect(markup).toContain("Board D");
+    expect(top3Markup).toContain("Основной выбор · №1");
+    expect(top3Markup).toContain("Альтернатива · больше стабильности");
+    expect(top3Markup).toContain("Альтернатива · больше запаса по ширине");
+    expect(top3Markup.match(/REASON_board-a/g)).toHaveLength(1);
+    expect(top3Markup).toContain("REASON_board-b");
+    expect(top3Markup).toContain("REASON_board-c");
+    expect(markup).not.toContain("Если выбирать по характеру");
+    expect(markup).not.toContain("decision_guide");
+  });
+
+  it.each([1, 2, 3])("renders %s canonical choices without placeholders", (count) => {
+    const matches = [
+      buildMatch("board-a", "Board A", "best-overall", 90),
+      buildMatch("board-b", "Board B", "playful", 80),
+      buildMatch("board-c", "Board C", "stable", 70),
+    ].slice(0, count);
+    const markup = renderToStaticMarkup(
+      <ResultView
+        initialRecommendation={{ ...recommendation, recommendedBoards: matches }}
+        mode="saved"
+      />,
+    );
+
+    expect(markup.match(/Основной выбор · №1/g)).toHaveLength(1);
+    expect(markup.match(/Альтернатива ·/g) ?? []).toHaveLength(count - 1);
+    expect(markup).toContain("Почему именно эта модель");
+    expect(markup).not.toContain("Помогла рекомендация принять решение?");
   });
 });
 

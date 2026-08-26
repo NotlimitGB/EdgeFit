@@ -15,6 +15,7 @@ import {
   recommendationRoleLabels,
 } from "@/components/result/product-recommendation-card";
 import { RecommendationFeedback } from "@/components/result/recommendation-feedback";
+import { getRecommendationDecisionCue } from "@/components/result/recommendation-decision-cue";
 import { RiderProfile } from "@/components/result/rider-profile";
 import { TopMatchExplanation } from "@/components/result/top-match-explanation";
 import { trackEvent } from "@/lib/analytics/client";
@@ -26,7 +27,6 @@ import {
   terrainPriorityLabels,
   widthTypeLabels,
 } from "@/lib/content";
-import { buildRecommendationDecisionGuide } from "@/lib/recommendation/decision-guide";
 import { buildRecommendationPriorityImpact } from "@/lib/recommendation/priority-impact";
 import { buildRecommendationTrustSummary } from "@/lib/recommendation/trust-summary";
 import { getOrCreateSessionId } from "@/lib/session-id";
@@ -75,7 +75,6 @@ const riskClasses: Record<RecommendationResult["bootDragRisk"], string> = {
 type ResultStorePlacement =
   | "primary_recommendation"
   | "alternative_recommendation"
-  | "decision_guide"
   | "recommendation_comparison"
   | "caution_recommendation";
 
@@ -376,7 +375,6 @@ export function ResultView({
 
   const activeRecommendation = recommendation;
   const trustSummary = buildRecommendationTrustSummary(recommendation);
-  const decisionGuideItems = buildRecommendationDecisionGuide(recommendation);
   const priorityImpact = buildRecommendationPriorityImpact(recommendation);
   const compactExplanation = getCompactExplanation(recommendation);
   const topBoards = recommendation.recommendedBoards.slice(0, 3);
@@ -652,8 +650,8 @@ export function ResultView({
         >
           <SectionHeader
             kicker="Персональная подборка"
-            title="Модели, с которых стоит начать"
-            description="Сначала смотри на роль, размер и причины совпадения. Цена и переход в магазин идут после fit-аргументов."
+            title="С чего начать"
+            description="Первый вариант — основной выбор. Остальные — альтернативы, если важнее другой характер доски."
             id="recommendation-title"
           />
 
@@ -687,6 +685,10 @@ export function ResultView({
                       budgetRelation={storeAction.budgetRelation}
                       resultMode={mode}
                       showReasons={index !== 0}
+                      decisionCue={getRecommendationDecisionCue(
+                        rank,
+                        match.role,
+                      )}
                     />
                     {index === 0 ? (
                       <TopMatchExplanation
@@ -731,67 +733,11 @@ export function ResultView({
           )}
         </section>
 
-        {topBoards.length > 0 && decisionGuideItems.length > 0 ? (
-          <section className={styles.decisionSection} aria-labelledby="decision-title">
-            <SectionHeader
-              kicker="Быстрое решение"
-              title="Если выбирать по характеру"
-              description="Сравни сильные варианты по тому, как именно хочется чувствовать доску."
-              id="decision-title"
-            />
-            <div className={styles.decisionGuideGrid}>
-              {decisionGuideItems.map((item, index) => {
-                const recommendationIndex = activeRecommendation.recommendedBoards.findIndex(
-                  (match) => match.product.slug === item.boardSlug,
-                );
-                const match = activeRecommendation.recommendedBoards[recommendationIndex];
-                const storeAction = match
-                  ? buildProductClickAction(
-                      match,
-                      "decision-guide",
-                      "decision_guide",
-                      recommendationIndex + 1,
-                    )
-                  : null;
-
-                return (
-                <article key={item.id} className={styles.decisionGuideItem}>
-                  <span className={styles.decisionNumber} aria-hidden="true">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
-                  <div>
-                    <p className={publicStyles.microLabel}>{item.title}</p>
-                    <p className={styles.decisionGuideSummary}>{item.summary}</p>
-                    <h3>{item.boardTitle}</h3>
-                    <p className={styles.decisionSize}>Размер {item.sizeLabel}</p>
-                    <p className={styles.decisionHighlight}>{item.highlight}</p>
-                    <div className={styles.compactActions}>
-                      <Link
-                        href={`/boards/${item.boardSlug}`}
-                        className={publicStyles.secondaryAction}
-                      >
-                        О модели
-                      </Link>
-                      {storeAction ? (
-                        <TrackedStoreLink
-                          href={storeAction.href}
-                          analyticsPayload={storeAction.analyticsPayload}
-                          className={publicStyles.primaryAction}
-                        >
-                          {
-                            getCommercialPresentation(item.affiliateUrl)
-                              .actionLabel
-                          }
-                        </TrackedStoreLink>
-                      ) : null}
-                    </div>
-                  </div>
-                </article>
-                );
-              })}
-            </div>
-
-            {comparisonBoards.length > 0 ? (
+        {comparisonBoards.length > 0 ? (
+          <section
+            className={styles.decisionSection}
+            aria-label="Сравнение рекомендаций"
+          >
               <div className={styles.comparison}>
                 <div className={styles.comparisonHeader}>
                   <p className={publicStyles.microLabel}>Верхние варианты рядом</p>
@@ -845,7 +791,6 @@ export function ResultView({
                   })}
                 </div>
               </div>
-            ) : null}
           </section>
         ) : null}
 
