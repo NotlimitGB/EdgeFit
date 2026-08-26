@@ -15,6 +15,7 @@ import {
   getCanonicalFlexPresentation,
   getCanonicalNarrativeOfferSlug,
   getCanonicalSizeStoreAction,
+  getCanonicalSizeAvailabilityLabel,
   getRelatedCanonicalBoards,
   isCanonicalSizeCurrentlyAvailable,
 } from "@/lib/canonical-board-detail";
@@ -226,7 +227,9 @@ export default async function BoardPage({ params }: BoardPageProps) {
                         : styles.availabilityReview
                     }
                   >
-                    {hasAvailableSizes ? "Доступно сейчас" : "Нужно уточнение"}
+                    {hasAvailableSizes
+                      ? "Есть отметки в каталоге"
+                      : "Нужно уточнить"}
                   </span>
                 </div>
                 <strong>{availabilityHeadline}</strong>
@@ -286,7 +289,8 @@ export default async function BoardPage({ params }: BoardPageProps) {
             </div>
             <p>
               Таблица показывает всю размерную сетку и отдельно отмечает
-              текущую доступность. Это данные модели, а не персональный подбор.
+              сохранённые отметки доступности. Это данные модели, а не
+              персональный подбор.
             </p>
           </div>
 
@@ -345,7 +349,7 @@ export default async function BoardPage({ params }: BoardPageProps) {
                                   : styles.sizeUnavailable
                               }
                             >
-                              {currentlyAvailable ? "в наличии" : "нет сейчас"}
+                              {getCanonicalSizeAvailabilityLabel(size)}
                             </span>
                           </td>
                           <td>

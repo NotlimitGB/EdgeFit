@@ -195,7 +195,7 @@ export function CanonicalBoardCard({
 
         <div className={boardCardStyles.commercialInfo}>
           <div className={boardCardStyles.availability}>
-            <p className={publicStyles.microLabel}>Наличие</p>
+            <p className={publicStyles.microLabel}>Данные о доступности</p>
             <strong>{availabilityHeadline}</strong>
             <span>{availabilityPreview}</span>
           </div>

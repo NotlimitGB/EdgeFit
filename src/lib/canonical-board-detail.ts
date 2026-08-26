@@ -20,7 +20,7 @@ const FLEX_REVIEW_CAPTION =
   "По этой модели источник не даёт надёжной точной оценки, поэтому не показываем жёсткость как конкретный балл.";
 
 export interface CanonicalPricePresentation {
-  label: "Цена" | "Цена от";
+  label: "Ориентир цены";
   value: string;
 }
 
@@ -105,8 +105,8 @@ export function getCanonicalBoardAvailabilityHeadline(
   const count = getCanonicalCurrentAvailableSizes(board).length;
 
   return count === 0
-    ? "Сейчас нет доступных размеров"
-    : `В наличии ${count} ${pluralizeSize(count)}`;
+    ? "Доступность не подтверждена"
+    : `В данных EdgeFit отмечено: ${count} ${pluralizeSize(count)}`;
 }
 
 export function getCanonicalBoardAvailabilityDescription(
@@ -118,23 +118,31 @@ export function getCanonicalBoardAvailabilityDescription(
     .filter(Boolean);
 
   if (labels.length === 0) {
-    return "Доступные размеры в магазине сейчас не подтверждены.";
+    return "Актуальную доступность проверяй в магазине.";
   }
 
   const preview = labels.slice(0, limit).join(", ");
   const remainder = labels.length - limit;
 
   return remainder > 0
-    ? `Сейчас в наличии: ${preview} + ещё ${remainder}.`
-    : `Сейчас в наличии: ${preview}.`;
+    ? `Отмеченные размеры: ${preview} + ещё ${remainder}. Актуальную доступность проверяй в магазине.`
+    : `Отмеченные размеры: ${preview}. Актуальную доступность проверяй в магазине.`;
+}
+
+export function getCanonicalSizeAvailabilityLabel(
+  size: CanonicalSizeVariant,
+) {
+  return isCanonicalSizeCurrentlyAvailable(size)
+    ? "отмечен доступным"
+    : "доступность не подтверждена";
 }
 
 export function getCanonicalBoardPricePresentation(
   price: number | null,
 ): CanonicalPricePresentation {
   return price != null && Number.isFinite(price) && price > 0
-    ? { label: "Цена от", value: formatMoney(price) }
-    : { label: "Цена", value: "Цена уточняется" };
+    ? { label: "Ориентир цены", value: formatMoney(price) }
+    : { label: "Ориентир цены", value: "нет данных" };
 }
 
 export function getCanonicalBoardLineLabel(

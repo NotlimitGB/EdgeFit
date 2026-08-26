@@ -196,7 +196,9 @@ describe("canonical Catalog UI helpers", () => {
     });
 
     expect(getCanonicalAvailableSizeCount(board)).toBe(1);
-    expect(getCanonicalAvailabilityHeadline(board)).toBe("В наличии 1 размер");
+    expect(getCanonicalAvailabilityHeadline(board)).toBe(
+      "В данных EdgeFit отмечено: 1 размер",
+    );
   });
 
   it("uses display W labels and a compact five-size preview", () => {
@@ -212,7 +214,20 @@ describe("canonical Catalog UI helpers", () => {
     });
 
     expect(getCanonicalAvailabilityPreview(board)).toBe(
-      "Сейчас: 151, 156, 159, 161W, 164W + ещё 1.",
+      "Отмеченные размеры: 151, 156, 159, 161W, 164W + ещё 1.",
+    );
+  });
+
+  it("uses a neutral fallback when availability is not confirmed", () => {
+    const board = makeBoard({
+      sizes: [makeSize("unavailable", { isAvailable: false })],
+    });
+
+    expect(getCanonicalAvailabilityHeadline(board)).toBe(
+      "Доступность не подтверждена",
+    );
+    expect(getCanonicalAvailabilityPreview(board)).toBe(
+      "Проверь наличие в магазине.",
     );
   });
 
@@ -361,14 +376,14 @@ describe("canonical Catalog UI helpers", () => {
 
   it("never formats missing or invalid prices as zero rubles", () => {
     expect(getCanonicalPricePresentation(null)).toEqual({
-      label: "Цена",
-      value: "Цена уточняется",
+      label: "Ориентир цены",
+      value: "нет данных",
     });
     expect(getCanonicalPricePresentation(Number.NaN).value).toBe(
-      "Цена уточняется",
+      "нет данных",
     );
     expect(getCanonicalPricePresentation(36_300)).toEqual({
-      label: "Цена от",
+      label: "Ориентир цены",
       value: "36 300 ₽",
     });
   });

@@ -126,10 +126,10 @@ export function getCanonicalAvailabilityHeadline(
   const sizeCount = getCanonicalAvailableSizeCount(board);
 
   if (sizeCount === 0) {
-    return "Сейчас нет доступных размеров";
+    return "Доступность не подтверждена";
   }
 
-  return `В наличии ${sizeCount} ${pluralizeSize(sizeCount)}`;
+  return `В данных EdgeFit отмечено: ${sizeCount} ${pluralizeSize(sizeCount)}`;
 }
 
 export function getCanonicalAvailabilityPreview(
@@ -141,15 +141,15 @@ export function getCanonicalAvailabilityPreview(
     .filter(Boolean);
 
   if (labels.length === 0) {
-    return "Доступные размеры в магазине сейчас не подтверждены.";
+    return "Проверь наличие в магазине.";
   }
 
   const preview = labels.slice(0, limit).join(", ");
   const remainder = labels.length - limit;
 
   return remainder > 0
-    ? `Сейчас: ${preview} + ещё ${remainder}.`
-    : `Сейчас: ${preview}.`;
+    ? `Отмеченные размеры: ${preview} + ещё ${remainder}.`
+    : `Отмеченные размеры: ${preview}.`;
 }
 
 export function matchesCanonicalCatalogSearch(
@@ -244,6 +244,6 @@ export function compareCanonicalFeatured(
 
 export function getCanonicalPricePresentation(price: number | null) {
   return isKnownCanonicalPrice(price)
-    ? { label: "Цена от", value: formatMoney(price) }
-    : { label: "Цена", value: "Цена уточняется" };
+    ? { label: "Ориентир цены", value: formatMoney(price) }
+    : { label: "Ориентир цены", value: "нет данных" };
 }

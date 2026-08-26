@@ -7,6 +7,7 @@ import {
   getCanonicalCurrentAvailableSizes,
   getCanonicalFlexPresentation,
   getCanonicalNarrativeOfferSlug,
+  getCanonicalSizeAvailabilityLabel,
   getCanonicalSizeStoreAction,
   getRelatedCanonicalBoards,
 } from "@/lib/canonical-board-detail";
@@ -137,31 +138,31 @@ describe("canonical Board Detail helpers", () => {
     });
 
     expect(getCanonicalBoardAvailabilityHeadline(board)).toBe(
-      "Сейчас нет доступных размеров",
+      "Доступность не подтверждена",
     );
   });
 
   it("pluralizes zero available sizes", () => {
     expect(getCanonicalBoardAvailabilityHeadline(boardWithAvailableSizeCount(0))).toBe(
-      "Сейчас нет доступных размеров",
+      "Доступность не подтверждена",
     );
   });
 
   it("pluralizes one available size", () => {
     expect(getCanonicalBoardAvailabilityHeadline(boardWithAvailableSizeCount(1))).toBe(
-      "В наличии 1 размер",
+      "В данных EdgeFit отмечено: 1 размер",
     );
   });
 
   it("pluralizes two available sizes", () => {
     expect(getCanonicalBoardAvailabilityHeadline(boardWithAvailableSizeCount(2))).toBe(
-      "В наличии 2 размера",
+      "В данных EdgeFit отмечено: 2 размера",
     );
   });
 
   it("pluralizes five available sizes", () => {
     expect(getCanonicalBoardAvailabilityHeadline(boardWithAvailableSizeCount(5))).toBe(
-      "В наличии 5 размеров",
+      "В данных EdgeFit отмечено: 5 размеров",
     );
   });
 
@@ -174,33 +175,44 @@ describe("canonical Board Detail helpers", () => {
     });
 
     expect(getCanonicalBoardAvailabilityDescription(board)).toBe(
-      "Сейчас в наличии: 161W, 164W.",
+      "Отмеченные размеры: 161W, 164W. Актуальную доступность проверяй в магазине.",
     );
+  });
+
+  it("uses stored-data labels for size availability", () => {
+    expect(getCanonicalSizeAvailabilityLabel(makeSize("available"))).toBe(
+      "отмечен доступным",
+    );
+    expect(
+      getCanonicalSizeAvailabilityLabel(
+        makeSize("unavailable", { isAvailable: false }),
+      ),
+    ).toBe("доступность не подтверждена");
   });
 
   it("formats a known positive canonical price", () => {
     expect(getCanonicalBoardPricePresentation(36_300)).toEqual({
-      label: "Цена от",
+      label: "Ориентир цены",
       value: "36 300 ₽",
     });
   });
 
   it("does not present a null price as zero", () => {
     expect(getCanonicalBoardPricePresentation(null)).toEqual({
-      label: "Цена",
-      value: "Цена уточняется",
+      label: "Ориентир цены",
+      value: "нет данных",
     });
   });
 
   it("does not present a zero price as money", () => {
     expect(getCanonicalBoardPricePresentation(0).value).toBe(
-      "Цена уточняется",
+      "нет данных",
     );
   });
 
   it("does not present a non-finite price as money", () => {
     expect(getCanonicalBoardPricePresentation(Number.NaN).value).toBe(
-      "Цена уточняется",
+      "нет данных",
     );
   });
 
