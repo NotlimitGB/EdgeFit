@@ -265,8 +265,8 @@ export default async function BoardPage({ params }: BoardPageProps) {
               </Link>
             </div>
             <p className={styles.fitBoundary}>
-              Характеристики модели не определяют персональный fit. Квиз
-              учитывает вес, ботинок, стойку и сценарий катания.
+              Характеристики модели сами по себе не показывают, подходит ли она
+              именно тебе. Квиз учитывает вес, ботинок, стойку и стиль катания.
             </p>
           </section>
         </section>
@@ -386,7 +386,7 @@ export default async function BoardPage({ params }: BoardPageProps) {
               <p className={publicStyles.microLabel}>Не уверен в ростовке?</p>
               <h3>Проверь длину и ширину по своим параметрам</h3>
               <p>
-                EdgeFit учитывает вес, ботинок, стойку и сценарий катания.
+                EdgeFit учитывает вес, ботинок, стойку и стиль катания.
               </p>
             </div>
             <Link
@@ -401,7 +401,7 @@ export default async function BoardPage({ params }: BoardPageProps) {
         {showScenarios ? (
           <section className={`${styles.contentSection} ${styles.scenariosSection}`}>
             <div className={styles.sectionHeading}>
-              <p className={publicStyles.kicker}>Сценарий катания</p>
+              <p className={publicStyles.kicker}>Стиль катания</p>
               <h2>Где модель раскрывается лучше</h2>
             </div>
             <div className={styles.scenarioGrid}>
@@ -417,7 +417,7 @@ export default async function BoardPage({ params }: BoardPageProps) {
               ) : null}
               {notIdealFor.length > 0 ? (
                 <article className={styles.carefulScenario}>
-                  <p className={publicStyles.microLabel}>Не лучший сценарий</p>
+                  <p className={publicStyles.microLabel}>Не лучший выбор для</p>
                   <ul>
                     {notIdealFor.map((scenario) => (
                       <li key={scenario}>{scenario}</li>
@@ -486,8 +486,8 @@ export default async function BoardPage({ params }: BoardPageProps) {
                 <h2>Что ещё стоит сравнить</h2>
               </div>
               <p>
-                Это модели с близким каталоговым сценарием, а не персональные
-                альтернативы.
+                Это модели с похожими характеристиками и стилем катания, а не
+                персональные альтернативы.
               </p>
             </div>
             <div className={styles.relatedGrid}>

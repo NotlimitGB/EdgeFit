@@ -132,7 +132,7 @@ export function ProductRecommendationCard({
         </div>
 
         <p className={styles.recommendationRole}>
-          {variant === "careful" ? "Слабее по текущему fit · " : ""}
+          {variant === "careful" ? "Слабее подходит · " : ""}
           {recommendationRoleLabels[match.role]}
         </p>
         <p className={styles.recommendationBrand}>{match.product.brand}</p>

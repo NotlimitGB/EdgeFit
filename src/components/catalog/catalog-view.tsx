@@ -338,7 +338,7 @@ export function CatalogView({ boards }: CatalogViewProps) {
         <div className={styles.filtersHeader}>
           <div>
             <p className={publicStyles.microLabel}>Фильтры моделей</p>
-            <h2 id="catalog-filters-title">Сузь каталог до нужного сценария</h2>
+            <h2 id="catalog-filters-title">Подбери модели под своё катание</h2>
           </div>
           <p className={styles.activeFilterCount}>
             {activeFilterCount > 0

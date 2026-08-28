@@ -15,11 +15,12 @@ export default function QuizPage() {
       <div className={styles.atmosphere} aria-hidden="true" />
       <div className={styles.quizShell}>
         <header className={styles.pageIntro}>
-          <p className={publicStyles.kicker}>EdgeFit / персональный fit</p>
+          <p className={publicStyles.kicker}>Персональный подбор</p>
           <h1>Подбор сноуборда под твои параметры</h1>
           <p>
-            Три коротких шага — и ты получишь рабочую ростовку, безопасную
-            ширину и модели, которые стоит сравнить в первую очередь.
+            Ответь на несколько вопросов — и мы покажем подходящий диапазон
+            ростовок, рекомендуемую ширину и модели, которые стоит посмотреть
+            в первую очередь.
           </p>
         </header>
         <QuizFlow />

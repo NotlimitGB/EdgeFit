@@ -36,7 +36,7 @@ export function TopMatchExplanation({
 
   const facts = [
     {
-      label: "Твой сценарий",
+      label: "Твоё катание",
       values: [
         skillLevelLabels[input.skillLevel],
         ridingStyleLabels[input.ridingStyle],
@@ -70,7 +70,7 @@ export function TopMatchExplanation({
         <p className={publicStyles.kicker}>Совпадение с профилем</p>
         <h3 id="top-match-explanation-title">Почему именно эта модель</h3>
         <p>
-          Сверили твой сценарий катания с характеристиками модели и конкретной
+          Сверили твой стиль катания с характеристиками модели и конкретной
           рекомендованной ростовкой.
         </p>
       </header>

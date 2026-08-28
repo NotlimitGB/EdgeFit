@@ -25,13 +25,13 @@ export default async function CatalogPage() {
           <div className={styles.heroCopy}>
             <p className={publicStyles.kicker}>EdgeFit / каталог</p>
             <h1 id="catalog-title" className={styles.heroTitle}>
-              Сравни сноуборды по геометрии и сценарию
+              Сравни модели по характеристикам и стилю катания
             </h1>
             <p className={styles.heroLead}>
               Фильтруй модели по стилю, форме и ширине, сравнивай
               характеристики, данные о доступности и ориентир цены. Каталог
-              показывает данные досок, а персональный fit появляется после
-              квиза.
+              показывает данные досок, а персональную рекомендацию можно
+              получить в квизе.
             </p>
             <Link
               href="/quiz"
@@ -42,7 +42,9 @@ export default async function CatalogPage() {
           </div>
 
           <aside className={styles.heroGuide} aria-label="Как читать каталог">
-            <p className={publicStyles.microLabel}>Каталог ≠ персональный fit</p>
+            <p className={publicStyles.microLabel}>
+              Каталог показывает модели, квиз подбирает под тебя
+            </p>
             <dl className={styles.heroGuideList}>
               <div>
                 <dt>Геометрия</dt>
@@ -53,8 +55,8 @@ export default async function CatalogPage() {
                 <dd>Размеры, отмеченные доступными в данных EdgeFit</dd>
               </div>
               <div>
-                <dt>Твой fit</dt>
-                <dd>Рабочая ростовка и ширина — после квиза</dd>
+                <dt>Подбор под тебя</dt>
+                <dd>Подходящая ростовка и ширина — после квиза</dd>
               </div>
             </dl>
           </aside>

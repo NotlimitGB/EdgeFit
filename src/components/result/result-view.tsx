@@ -350,11 +350,11 @@ export function ResultView({
           >
             <p className={publicStyles.kicker}>Нет сохранённого результата</p>
             <h1 id="empty-result-title">
-              Сначала пройди квиз — здесь появится персональный fit
+              Сначала пройди квиз — здесь появится результат подбора
             </h1>
             <p className={styles.emptyResultLead}>
-              После квиза покажем рабочую ростовку, ширину, риск boot drag и
-              модели, с которых разумно начать сравнение.
+              После квиза покажем подходящую ростовку, ширину, риск зацепа
+              ботинком и модели, с которых разумно начать сравнение.
             </p>
             <div className={styles.inlineActions}>
               <Link href="/quiz" className={publicStyles.primaryAction}>
@@ -491,17 +491,17 @@ export function ResultView({
           {isSavedMode ? (
             <div className={styles.savedResultNotice} role="note">
               <p className={publicStyles.microLabel}>Сохранённый результат</p>
-              <strong>Это снимок fit и рекомендаций на момент расчёта.</strong>
+              <strong>Это сохранённый результат подбора на момент расчёта.</strong>
               <p>
                 Наличие, цена и условия внешнего магазина могли измениться —
-                проверьте их перед покупкой.
+                проверь их перед покупкой.
               </p>
             </div>
           ) : null}
           <div className={styles.summaryLayout}>
             <div className={styles.summaryMain}>
-              <p className={publicStyles.kicker}>Персональный snowboard fit</p>
-              <h1 id="result-title">Твой рабочий fit</h1>
+              <p className={publicStyles.kicker}>Персональный подбор</p>
+              <h1 id="result-title">Результат подбора</h1>
               <p className={styles.summaryLead}>
                 Сначала — что искать. Ниже объясняем, почему диапазон и модели
                 подходят именно под твои параметры.
@@ -538,7 +538,7 @@ export function ResultView({
                     riskClasses[recommendation.bootDragRisk]
                   }`}
                 >
-                  <p className={publicStyles.microLabel}>Boot drag</p>
+                  <p className={publicStyles.microLabel}>Риск зацепа ботинком</p>
                   <strong>
                     <span className={styles.riskDot} aria-hidden="true" />
                     {bootDragRiskLabels[recommendation.bootDragRisk]} риск
@@ -593,10 +593,10 @@ export function ResultView({
           >
             <div>
               <p className={publicStyles.kicker}>Сохранить результат</p>
-              <h2 id="save-result-title">Вернитесь к этому расчёту по ссылке</h2>
+              <h2 id="save-result-title">Вернись к этому расчёту по ссылке</h2>
               <p>
-                Ссылка открывает именно этот fit и подборку, даже после закрытия
-                браузера или на другом устройстве.
+                Ссылка открывает именно этот результат и подборку, даже после
+                закрытия браузера или на другом устройстве.
               </p>
             </div>
             <div className={styles.saveResultActions}>
@@ -625,7 +625,7 @@ export function ResultView({
           <section className={styles.reasonSection} aria-labelledby="reason-title">
             <SectionHeader
               kicker="Почему так"
-              title="Почему получился такой fit"
+              title="Почему получился такой результат"
               description="Три короткие причины из расчёта — без скрытых формул и лишней теории."
               id="reason-title"
             />
@@ -705,9 +705,9 @@ export function ResultView({
             </div>
           ) : (
             <div className={styles.emptyRecommendations}>
-              <p className={publicStyles.microLabel}>Fit готов, каталог не совпал</p>
+              <p className={publicStyles.microLabel}>Расчёт готов, каталог не совпал</p>
               <h3>
-                Fit рассчитан, но в текущем каталоге подходящих вариантов не
+                Подходящий диапазон рассчитан, но в текущем каталоге вариантов не
                 нашли
               </h3>
               <p className={styles.emptyRecommendationsCopy}>
@@ -760,7 +760,7 @@ export function ResultView({
                 Сохрани подбор, чтобы вернуться к нему позже
               </h2>
               <p>
-                Отправим этот fit на указанную почту. Без обещаний «идеальной
+                Отправим этот результат на указанную почту. Без обещаний «идеальной
                 доски» — только результат, к которому удобно вернуться.
               </p>
             </div>
@@ -838,7 +838,7 @@ export function ResultView({
                 <span className={publicStyles.microLabel}>Подробности расчёта</span>
                 <strong>Как мы получили этот результат</strong>
                 <small>
-                  Форма, сценарий, полное объяснение и статус данных каталога.
+                  Форма, стиль катания, полное объяснение и статус данных каталога.
                 </small>
               </span>
               <span className={styles.disclosureMark} aria-hidden="true">+</span>
@@ -940,8 +940,8 @@ export function ResultView({
           <section className={styles.carefulSection} aria-labelledby="careful-title">
             <SectionHeader
               kicker="С осторожностью"
-              title="Хорошие доски, но слабее под текущий fit"
-              description="Модель может быть удачной сама по себе — здесь она просто хуже совпадает с твоими параметрами и сценарием."
+              title="Хорошие доски, но слабее подходят под твои параметры"
+              description="Модель может быть удачной сама по себе — здесь она просто хуже совпадает с твоими параметрами и стилем катания."
               id="careful-title"
             />
             <div className={styles.recommendationGrid}>
@@ -979,7 +979,7 @@ export function ResultView({
             <p className={publicStyles.kicker}>Следующий шаг</p>
             <h2 id="final-action-title">Хочешь изменить вводные или посмотреть шире?</h2>
             <p>
-              Пересчитай fit или перейди к каталогу — персональные модели выше
+              Пересчитай подбор или перейди к каталогу — персональные модели выше
               останутся главным ориентиром.
             </p>
           </div>

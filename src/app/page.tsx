@@ -6,11 +6,11 @@ import { getSeoLandingPath, seoLandingPages } from "@/lib/seo-pages";
 const fitFactors = [
   {
     title: "Вес",
-    text: "Задаёт основу рабочего диапазона длины.",
+    text: "Сильнее всего влияет на подходящий диапазон длины.",
   },
   {
     title: "Рост",
-    text: "Уточняет диапазон, не перебивая вес.",
+    text: "Помогает скорректировать диапазон с учётом комплекции райдера.",
   },
   {
     title: "Ботинок",
@@ -18,19 +18,19 @@ const fitFactors = [
   },
   {
     title: "Уровень",
-    text: "Помогает не уйти в слишком требовательный профиль.",
+    text: "Помогает не выбрать слишком требовательную доску.",
   },
   {
     title: "Стиль",
-    text: "Смещает fit к park, all-mountain или freeride.",
+    text: "Помогает подобрать доску под парк, универсальное катание или фрирайд.",
   },
   {
     title: "Приоритет",
-    text: "Учитывает свич, дугу, трассу или мягкий снег.",
+    text: "Учитывает, где и как ты чаще всего катаешься.",
   },
   {
     title: "Стойка",
-    text: "Уточняет запас талии и риск boot drag.",
+    text: "Помогает точнее оценить нужную ширину и риск зацепа ботинком.",
   },
 ];
 
@@ -51,9 +51,9 @@ const comparisonRows = [
     edgeFit: "Ботинок + стойка",
   },
   {
-    label: "Контекст",
+    label: "Катание",
     simple: "Один совет для всех",
-    edgeFit: "Уровень + сценарий",
+    edgeFit: "Уровень + стиль",
   },
   {
     label: "После расчёта",
@@ -70,8 +70,8 @@ const processSteps = [
   },
   {
     number: "02",
-    title: "Получи fit",
-    text: "Диапазон длины, ширина, талия, boot drag и профиль доски.",
+    title: "Посмотри результат",
+    text: "Диапазон ростовок, подходящая ширина и модели для сравнения.",
   },
   {
     number: "03",
@@ -92,19 +92,19 @@ export default function Home() {
       >
         <div className="edgefit-home__hero-copy">
           <p className={`${publicStyles.kicker} edgefit-home__kicker`}>
-            EdgeFit / snowboard fit
+            Подбор сноуборда
           </p>
           <h1 id="home-title" className="edgefit-home__hero-title">
             Подберём сноуборд под рост, вес, ботинок и стиль катания.
           </h1>
           <p className="edgefit-home__hero-lead">
-            Не просто «рост минус 20». Учитываем вес, размер ботинка, стойку,
-            уровень и сценарий катания, чтобы дать понятный рабочий диапазон и
-            модели для сравнения.
+            Учитываем вес, рост, размер ботинка, стойку, уровень и стиль
+            катания. В результате ты получаешь подходящий диапазон ростовок,
+            рекомендацию по ширине и конкретные модели для сравнения.
           </p>
           <p className="edgefit-home__outcomes">
-            Ростовка <span aria-hidden="true">/</span> ширина талии{" "}
-            <span aria-hidden="true">/</span> boot drag{" "}
+            Ростовка <span aria-hidden="true">/</span> ширина{" "}
+            <span aria-hidden="true">/</span> риск зацепа ботинком{" "}
             <span aria-hidden="true">/</span> подходящие модели
           </p>
 
@@ -133,7 +133,7 @@ export default function Home() {
           <header className="edgefit-home__preview-header">
             <div>
               <p className={`${publicStyles.microLabel} edgefit-home__micro-label`}>
-                Демонстрационный fit
+                Пример подбора
               </p>
               <h2 id="result-preview-title">Пример результата</h2>
             </div>
@@ -143,7 +143,7 @@ export default function Home() {
           </header>
 
           <div className="edgefit-home__length-metric">
-            <p>Рабочая ростовка</p>
+            <p>Диапазон ростовок</p>
             <div className="edgefit-home__length-value">
               <strong>154–157</strong>
               <span>см</span>
@@ -157,7 +157,7 @@ export default function Home() {
           <div className="edgefit-home__secondary-metrics">
             <div className="edgefit-home__metric edgefit-home__metric--width">
               <p>Ширина</p>
-              <strong>mid-wide</strong>
+              <strong>средняя (mid-wide)</strong>
             </div>
             <div className="edgefit-home__metric">
               <p>Талия</p>
@@ -166,7 +166,7 @@ export default function Home() {
               </strong>
             </div>
             <div className="edgefit-home__metric edgefit-home__metric--risk">
-              <p>Boot drag</p>
+              <p>Риск зацепа ботинком</p>
               <strong>
                 <span className="edgefit-home__risk-dot" aria-hidden="true" />
                 средний риск
@@ -193,12 +193,12 @@ export default function Home() {
       >
         <div className="edgefit-home__section-intro">
           <p className={`${publicStyles.kicker} edgefit-home__kicker`}>
-            Что влияет на fit
+            Что учитываем при подборе
           </p>
-          <h2 id="fit-factors-title">Смотрим на райдера целиком</h2>
+          <h2 id="fit-factors-title">Учитываем не только рост</h2>
           <p>
-            Длина — только часть выбора. Ширина, сценарий и уровень не менее
-            важны, если хочется купить доску без неприятных сюрпризов.
+            Длина — только часть выбора. Ширина, стиль катания и уровень не
+            менее важны, если хочется купить доску без неприятных сюрпризов.
           </p>
         </div>
 
@@ -221,27 +221,27 @@ export default function Home() {
         <div className="container-shell">
           <div className="edgefit-home__comparison-intro">
             <p className={`${publicStyles.kicker} edgefit-home__kicker`}>
-              Не просто таблица ростовки
+              Как выбрать точнее
             </p>
-            <h2 id="comparison-title">Почему «рост минус 20» недостаточно</h2>
+            <h2 id="comparison-title">Почему нельзя выбирать доску только по росту</h2>
             <p>
-              Простое правило не видит вес, ботинок и то, как ты собираешься
-              кататься. EdgeFit показывает диапазон и объясняет, откуда он
-              взялся.
+              Рост — только один из параметров. Вес влияет на подходящую длину,
+              размер ботинка — на ширину, а стиль катания помогает выбрать
+              между близкими вариантами.
             </p>
           </div>
 
           <dl className="edgefit-home__comparison">
             <div className="edgefit-home__comparison-head" aria-hidden="true">
               <span />
-              <span>Обычная таблица</span>
+              <span>Подбор только по росту</span>
               <span>EdgeFit</span>
             </div>
             {comparisonRows.map((row) => (
               <div className="edgefit-home__comparison-row" key={row.label}>
                 <dt>{row.label}</dt>
                 <dd>
-                  <span>Обычная таблица</span>
+                  <span>Подбор только по росту</span>
                   {row.simple}
                 </dd>
                 <dd>
@@ -278,20 +278,19 @@ export default function Home() {
       >
         <div>
           <p className={`${publicStyles.kicker} edgefit-home__kicker`}>
-            Понятная методика
+            Как формируется рекомендация
           </p>
-          <h2 id="trust-title">Не магическая цифра, а объяснимый ориентир</h2>
+          <h2 id="trust-title">Показываем не только результат, но и причины</h2>
         </div>
 
         <div className="edgefit-home__trust-content">
           <p>
-            EdgeFit последовательно связывает физические параметры райдера с
-            длиной, шириной и сценарием катания. В результате видно не только
-            что смотреть, но и почему.
+            В результате видно не только подходящий диапазон и модели, но и
+            какие параметры повлияли на рекомендацию.
           </p>
           <ul>
             <li>Одинаковые вводные дают предсказуемый результат.</li>
-            <li>Риск boot drag обозначается словами, а не только цветом.</li>
+            <li>Риск зацепа ботинком обозначается словами, а не только цветом.</li>
             <li>Перед покупкой всё равно стоит проверить геометрию нужного размера.</li>
           </ul>
           <p className="edgefit-home__trust-note">
@@ -309,7 +308,7 @@ export default function Home() {
           <p className={`${publicStyles.kicker} edgefit-home__kicker`}>
             Разобраться глубже
           </p>
-          <h2 id="guides-title">Технический индекс выбора</h2>
+          <h2 id="guides-title">Гайды по выбору сноуборда</h2>
           <p>
             Короткие разборы для тех, кто хочет отдельно проверить ростовку,
             ширину или риск зацепа ботинком.

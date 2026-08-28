@@ -105,7 +105,7 @@ describe("ResultView saved mode", () => {
     );
 
     expect(markup).toContain("Сохранённый результат");
-    expect(markup).toContain("снимок fit");
+    expect(markup).toContain("сохранённый результат подбора");
     expect(markup).not.toContain("result-email");
     expect(markup).not.toContain("Скопировать ссылку");
     expect(markup).not.toContain("save-result-title");
@@ -155,9 +155,9 @@ describe("ResultView rider profile placement", () => {
     const markup = renderToStaticMarkup(
       <ResultView initialRecommendation={recommendation} mode="session" />,
     );
-    const fitTitle = markup.indexOf("Твой рабочий fit");
+    const fitTitle = markup.indexOf("Результат подбора");
     const profileTitle = markup.indexOf("Твой профиль");
-    const explanationTitle = markup.indexOf("Почему получился такой fit");
+    const explanationTitle = markup.indexOf("Почему получился такой результат");
 
     expect(markup.match(/Твой профиль/g)).toHaveLength(1);
     expect(markup).not.toContain("Контекст расчёта");
