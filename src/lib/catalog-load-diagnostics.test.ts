@@ -5,9 +5,7 @@ vi.mock("server-only", () => ({}));
 import {
   createCanonicalCatalogDiagnostics,
   type CanonicalCatalogDiagnosticStage,
-  withReservedCanonicalCatalogConnection,
 } from "@/lib/catalog-load-diagnostics";
-import type { Sql } from "postgres";
 
 interface LoggedCatalogEvent {
   scope: string;
@@ -177,133 +175,37 @@ describe("canonical catalog load diagnostics", () => {
   });
 });
 
-describe("reserved canonical catalog connection", () => {
-  it("separates connection acquisition and releases after a successful load", async () => {
-    const harness = makeHarness([0, 1]);
-    const release = vi.fn();
-    const reservedSql = Object.assign(vi.fn(), { release });
-    const reserve = vi.fn(async () => reservedSql);
-    const sql = { reserve } as unknown as Sql;
-
-    await expect(
-      withReservedCanonicalCatalogConnection(
-        () => sql,
-        harness.diagnostics,
-        async (reserved) => {
-          expect(reserved).toBe(reservedSql);
-          return "catalog-result";
-        },
-      ),
-    ).resolves.toBe("catalog-result");
-
-    expect(reserve).toHaveBeenCalledTimes(1);
-    expect(release).toHaveBeenCalledTimes(1);
-    expect(harness.infoEvents().map(({ stage, event }) => [stage, event])).toEqual([
-      ["connection_acquisition", "start"],
-      ["connection_acquisition", "success"],
-    ]);
-  });
-
-  it("releases the reserved connection when a later catalog stage fails", async () => {
-    const harness = makeHarness([0, 1, 2, 3]);
-    const release = vi.fn();
-    const reservedSql = Object.assign(vi.fn(), { release });
-    const sql = {
-      reserve: vi.fn(async () => reservedSql),
-    } as unknown as Sql;
-    const failure = Object.assign(new Error("private details"), {
-      code: "57014",
-    });
-
-    await expect(
-      withReservedCanonicalCatalogConnection(
-        () => sql,
-        harness.diagnostics,
-        (reserved) =>
-          harness.diagnostics.runStage("family_rows", async () => {
-            expect(reserved).toBe(reservedSql);
-            throw failure;
-          }),
-      ),
-    ).rejects.toBe(failure);
-
-    expect(release).toHaveBeenCalledTimes(1);
-    expect(harness.errorEvents()[0]).toMatchObject({
-      stage: "family_rows",
-      errorCode: "57014",
-    });
-  });
-
-  it("identifies acquisition failure without trying to release a connection", async () => {
-    const harness = makeHarness([0, 7]);
-    const failure = Object.assign(new Error("connect secret"), {
-      name: "ConnectionError",
-      code: "ETIMEDOUT",
-    });
-    const sql = {
-      reserve: vi.fn(async () => {
-        throw failure;
-      }),
-    } as unknown as Sql;
-    const operation = vi.fn();
-
-    await expect(
-      withReservedCanonicalCatalogConnection(
-        () => sql,
-        harness.diagnostics,
-        operation,
-      ),
-    ).rejects.toBe(failure);
-
-    expect(operation).not.toHaveBeenCalled();
-    expect(harness.errorEvents()[0]).toMatchObject({
-      stage: "connection_acquisition",
-      errorName: "ConnectionError",
-      errorCode: "ETIMEDOUT",
-    });
-  });
-
-  it("keeps one trace across acquisition, database stages, and build", async () => {
+describe("passive canonical catalog diagnostics", () => {
+  it("keeps one trace across the existing database stages and build", async () => {
     const harness = makeHarness([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
-    const release = vi.fn();
-    const reservedSql = Object.assign(vi.fn(), { release });
-    const sql = {
-      reserve: vi.fn(async () => reservedSql),
-    } as unknown as Sql;
 
     const result = await harness.diagnostics.runStage(
       "canonical_catalog",
-      () =>
-        withReservedCanonicalCatalogConnection(
-          () => sql,
-          harness.diagnostics,
-          async () => {
-            await harness.diagnostics.runStage(
-              "product_column_support",
-              async () => true,
-            );
-            const families = await harness.diagnostics.runStage(
-              "family_rows",
-              async () => ["family"],
-              { branch: "all", rowCount: (rows) => rows.length },
-            );
-            const offers = await harness.diagnostics.runStage(
-              "offer_rows",
-              async () => ["offer"],
-              { branch: "all", rowCount: (rows) => rows.length },
-            );
-            return harness.diagnostics.runStage(
-              "canonical_build",
-              () => [...families, ...offers],
-              { branch: "all", rowCount: (rows) => rows.length },
-            );
-          },
-        ),
+      async () => {
+        await harness.diagnostics.runStage(
+          "product_column_support",
+          async () => true,
+        );
+        const families = await harness.diagnostics.runStage(
+          "family_rows",
+          async () => ["family"],
+          { branch: "all", rowCount: (rows) => rows.length },
+        );
+        const offers = await harness.diagnostics.runStage(
+          "offer_rows",
+          async () => ["offer"],
+          { branch: "all", rowCount: (rows) => rows.length },
+        );
+        return harness.diagnostics.runStage(
+          "canonical_build",
+          () => [...families, ...offers],
+          { branch: "all", rowCount: (rows) => rows.length },
+        );
+      },
       { rowCount: (rows) => rows.length },
     );
 
     expect(result).toEqual(["family", "offer"]);
-    expect(release).toHaveBeenCalledTimes(1);
     expect(
       new Set(
         harness.infoEvents().map(({ traceId }) => traceId),
@@ -311,8 +213,6 @@ describe("reserved canonical catalog connection", () => {
     ).toEqual(new Set(["trace-025p0"]));
     expect(harness.infoEvents().map(({ stage, event }) => [stage, event])).toEqual([
       ["canonical_catalog", "start"],
-      ["connection_acquisition", "start"],
-      ["connection_acquisition", "success"],
       ["product_column_support", "start"],
       ["product_column_support", "success"],
       ["family_rows", "start"],
@@ -332,29 +232,18 @@ describe("reserved canonical catalog connection", () => {
     "canonical_build",
   ])("identifies a %s failure and then marks the outer load as failed", async (stage) => {
     const harness = makeHarness([0, 1, 2, 3, 4, 5]);
-    const release = vi.fn();
-    const reservedSql = Object.assign(vi.fn(), { release });
-    const sql = {
-      reserve: vi.fn(async () => reservedSql),
-    } as unknown as Sql;
     const failure = Object.assign(new Error("private stage details"), {
       code: "XX000",
     });
 
     await expect(
       harness.diagnostics.runStage("canonical_catalog", () =>
-        withReservedCanonicalCatalogConnection(
-          () => sql,
-          harness.diagnostics,
-          () =>
-            harness.diagnostics.runStage(stage, () => {
-              throw failure;
-            }),
-        ),
+        harness.diagnostics.runStage(stage, () => {
+          throw failure;
+        }),
       ),
     ).rejects.toBe(failure);
 
-    expect(release).toHaveBeenCalledTimes(1);
     expect(harness.errorEvents().map((event) => event.stage)).toEqual([
       stage,
       "canonical_catalog",

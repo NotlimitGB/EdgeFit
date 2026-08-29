@@ -130,8 +130,7 @@ interface LoggedCatalogEvent {
   traceId: string;
 }
 
-function createFakePool(options: FakeSqlOptions) {
-  const release = vi.fn();
+function createFakeSql(options: FakeSqlOptions) {
   const query = vi.fn(
     async (strings: TemplateStringsArray, ...values: unknown[]) => {
       const source = strings.join(" ");
@@ -147,14 +146,15 @@ function createFakePool(options: FakeSqlOptions) {
       throw new Error("Unexpected fake catalog query");
     },
   );
-  const reservedSql = Object.assign(query, {
-    unsafe: vi.fn((value: string) => value),
-    release,
+  const reserve = vi.fn(() => {
+    throw new Error("Passive diagnostics must not reserve a connection");
   });
-  const reserve = vi.fn(async () => reservedSql);
-  const pool = { reserve } as unknown as Sql;
+  const sql = Object.assign(query, {
+    unsafe: vi.fn((value: string) => value),
+    reserve,
+  }) as unknown as Sql;
 
-  return { pool, query, reserve, release };
+  return { sql, query, reserve };
 }
 
 function capturedEvents(info: { mock: { calls: unknown[][] } }) {
@@ -170,27 +170,26 @@ beforeEach(() => {
 });
 
 describe("canonical catalog diagnostic orchestration", () => {
-  it("loads the full catalog in the measured support → family → offer → build order", async () => {
+  it("PASSIVE_DIAGNOSTICS_DO_NOT_RESERVE_CONNECTION: loads through the regular shared Sql client", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const fake = createFakePool({
+    const fake = createFakeSql({
       familyRows: () => [family],
       offerRows: () => [offer],
     });
-    databaseMocks.getClient.mockReturnValue(fake.pool);
+    databaseMocks.getClient.mockReturnValue(fake.sql);
 
     const result = await getAllCanonicalCatalogItems();
 
     expect(result).toEqual(buildCanonicalCatalogItems([family], [offer]));
-    expect(fake.reserve).toHaveBeenCalledTimes(1);
-    expect(fake.release).toHaveBeenCalledTimes(1);
+    expect(fake.reserve).not.toHaveBeenCalled();
+    expect(fake.query).toHaveBeenCalledTimes(2);
     expect(
       capturedEvents(info)
         .filter(({ event }) => event === "start")
         .map(({ stage }) => stage),
     ).toEqual([
       "canonical_catalog",
-      "connection_acquisition",
       "product_column_support",
       "family_rows",
       "offer_rows",
@@ -206,11 +205,11 @@ describe("canonical catalog diagnostic orchestration", () => {
   it("marks the family offer branch for a canonical family slug", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const fake = createFakePool({
+    const fake = createFakeSql({
       familyRows: () => [family],
       offerRows: () => [offer],
     });
-    databaseMocks.getClient.mockReturnValue(fake.pool);
+    databaseMocks.getClient.mockReturnValue(fake.sql);
 
     await expect(getCanonicalCatalogItemBySlug(family.slug)).resolves.toEqual(
       buildCanonicalCatalogItems([family], [offer])[0],
@@ -223,7 +222,7 @@ describe("canonical catalog diagnostic orchestration", () => {
     ).toEqual([
       expect.objectContaining({ branch: "family" }),
     ]);
-    expect(fake.release).toHaveBeenCalledTimes(1);
+    expect(fake.reserve).not.toHaveBeenCalled();
   });
 
   it("marks the singleton branch when no family row exists", async () => {
@@ -237,11 +236,11 @@ describe("canonical catalog diagnostic orchestration", () => {
       familyMatchMethod: null,
       familyMatchConfidence: null,
     };
-    const fake = createFakePool({
+    const fake = createFakeSql({
       familyRows: () => [],
       offerRows: () => [singletonOffer],
     });
-    databaseMocks.getClient.mockReturnValue(fake.pool);
+    databaseMocks.getClient.mockReturnValue(fake.sql);
 
     await expect(
       getCanonicalCatalogItemBySlug(singletonOffer.slug),
@@ -254,13 +253,13 @@ describe("canonical catalog diagnostic orchestration", () => {
     ).toEqual([
       expect.objectContaining({ branch: "singleton" }),
     ]);
-    expect(fake.release).toHaveBeenCalledTimes(1);
+    expect(fake.reserve).not.toHaveBeenCalled();
   });
 
-  it("measures the alias lookup separately and releases every reserved connection", async () => {
+  it("measures the alias lookup separately while every loader uses the regular client", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const fake = createFakePool({
+    const fake = createFakeSql({
       familyRows: (values) =>
         values.includes(family.slug) ? [family] : [],
       offerRows: (values) =>
@@ -273,7 +272,7 @@ describe("canonical catalog diagnostic orchestration", () => {
         },
       ],
     });
-    databaseMocks.getClient.mockReturnValue(fake.pool);
+    databaseMocks.getClient.mockReturnValue(fake.sql);
 
     await expect(
       resolveCanonicalBoardRouteBySlug("legacy-store-offer"),
@@ -296,7 +295,7 @@ describe("canonical catalog diagnostic orchestration", () => {
           .map(({ traceId }) => traceId),
       ).size,
     ).toBe(1);
-    expect(fake.reserve).toHaveBeenCalledTimes(3);
-    expect(fake.release).toHaveBeenCalledTimes(3);
+    expect(fake.reserve).not.toHaveBeenCalled();
+    expect(databaseMocks.getClient).toHaveBeenCalledTimes(3);
   });
 });

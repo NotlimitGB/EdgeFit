@@ -1,13 +1,11 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import type { Sql } from "postgres";
 
 export type CanonicalCatalogLoadKind = "all" | "slug" | "alias";
 
 export type CanonicalCatalogDiagnosticStage =
   | "canonical_catalog"
-  | "connection_acquisition"
   | "product_column_support"
   | "family_rows"
   | "offer_rows"
@@ -35,8 +33,6 @@ interface CatalogDiagnosticStageOptions<T> {
   branch?: CanonicalCatalogDiagnosticBranch;
   rowCount?: (value: T) => number;
 }
-
-type ReservedCatalogSql = Awaited<ReturnType<Sql["reserve"]>>;
 
 const defaultLogger: CatalogDiagnosticLogger = {
   info(message) {
@@ -157,21 +153,4 @@ export function createCanonicalCatalogDiagnostics(
       }
     },
   };
-}
-
-export async function withReservedCanonicalCatalogConnection<T>(
-  getSql: () => Sql,
-  diagnostics: CanonicalCatalogDiagnostics,
-  operation: (reservedSql: ReservedCatalogSql) => T | Promise<T>,
-) {
-  const reservedSql = await diagnostics.runStage(
-    "connection_acquisition",
-    () => getSql().reserve(),
-  );
-
-  try {
-    return await operation(reservedSql);
-  } finally {
-    reservedSql.release();
-  }
 }

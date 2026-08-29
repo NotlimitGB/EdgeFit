@@ -6,10 +6,7 @@ import {
   type CanonicalFamilySource,
   type CanonicalOfferSource,
 } from "@/lib/canonical-catalog-model";
-import {
-  createCanonicalCatalogDiagnostics,
-  withReservedCanonicalCatalogConnection,
-} from "@/lib/catalog-load-diagnostics";
+import { createCanonicalCatalogDiagnostics } from "@/lib/catalog-load-diagnostics";
 import { получитьКлиентБазы } from "@/lib/database/client";
 import { базаНастроена } from "@/lib/database/config";
 import { getProductColumnSupport } from "@/lib/database/product-column-support";
@@ -242,139 +239,125 @@ async function loadOfferRows(
 }
 
 const loadAllCanonicalCatalogItemsFromDatabase = cache(async () => {
+  const sql = получитьКлиентБазы();
   const diagnostics = createCanonicalCatalogDiagnostics("all");
 
   return diagnostics.runStage(
     "canonical_catalog",
-    () =>
-      withReservedCanonicalCatalogConnection(
-        получитьКлиентБазы,
-        diagnostics,
-        async (sql) => {
-          await diagnostics.runStage("product_column_support", () =>
-            assertCanonicalCatalogSupport(sql),
-          );
-          const families = await diagnostics.runStage(
-            "family_rows",
-            () => loadFamilyRows(sql),
-            { branch: "all", rowCount: (rows) => rows.length },
-          );
-          const offers = await diagnostics.runStage(
-            "offer_rows",
-            () => loadOfferRows(sql, { kind: "all" }),
-            { branch: "all", rowCount: (rows) => rows.length },
-          );
-          return diagnostics.runStage(
-            "canonical_build",
-            () => buildCanonicalCatalogItems(families, offers),
-            { branch: "all", rowCount: (items) => items.length },
-          );
-        },
-      ),
+    async () => {
+      await diagnostics.runStage("product_column_support", () =>
+        assertCanonicalCatalogSupport(sql),
+      );
+      const families = await diagnostics.runStage(
+        "family_rows",
+        () => loadFamilyRows(sql),
+        { branch: "all", rowCount: (rows) => rows.length },
+      );
+      const offers = await diagnostics.runStage(
+        "offer_rows",
+        () => loadOfferRows(sql, { kind: "all" }),
+        { branch: "all", rowCount: (rows) => rows.length },
+      );
+      return diagnostics.runStage(
+        "canonical_build",
+        () => buildCanonicalCatalogItems(families, offers),
+        { branch: "all", rowCount: (items) => items.length },
+      );
+    },
     { rowCount: (items) => items.length },
   );
 });
 
 const loadCanonicalCatalogItemBySlugFromDatabase = cache(
   async (slug: string) => {
+    const sql = получитьКлиентБазы();
     const diagnostics = createCanonicalCatalogDiagnostics("slug");
 
-    return diagnostics.runStage("canonical_catalog", () =>
-      withReservedCanonicalCatalogConnection(
-        получитьКлиентБазы,
-        diagnostics,
-        async (sql) => {
-          await diagnostics.runStage("product_column_support", () =>
-            assertCanonicalCatalogSupport(sql),
-          );
-          const [family] = await diagnostics.runStage(
-            "family_rows",
-            () => loadFamilyRows(sql, slug),
-            { branch: "slug", rowCount: (rows) => rows.length },
-          );
+    return diagnostics.runStage("canonical_catalog", async () => {
+      await diagnostics.runStage("product_column_support", () =>
+        assertCanonicalCatalogSupport(sql),
+      );
+      const [family] = await diagnostics.runStage(
+        "family_rows",
+        () => loadFamilyRows(sql, slug),
+        { branch: "slug", rowCount: (rows) => rows.length },
+      );
 
-          if (family) {
-            const familyOffers = await diagnostics.runStage(
-              "offer_rows",
-              () =>
-                loadOfferRows(sql, {
-                  kind: "family",
-                  familyId: family.id,
-                }),
-              { branch: "family", rowCount: (rows) => rows.length },
-            );
-            const [familyItem] = await diagnostics.runStage(
-              "canonical_build",
-              () => buildCanonicalCatalogItems([family], familyOffers),
-              { branch: "family", rowCount: (items) => items.length },
-            );
-            if (familyItem) {
-              return familyItem;
-            }
-          }
+      if (family) {
+        const familyOffers = await diagnostics.runStage(
+          "offer_rows",
+          () =>
+            loadOfferRows(sql, {
+              kind: "family",
+              familyId: family.id,
+            }),
+          { branch: "family", rowCount: (rows) => rows.length },
+        );
+        const [familyItem] = await diagnostics.runStage(
+          "canonical_build",
+          () => buildCanonicalCatalogItems([family], familyOffers),
+          { branch: "family", rowCount: (items) => items.length },
+        );
+        if (familyItem) {
+          return familyItem;
+        }
+      }
 
-          const singletonOffers = await diagnostics.runStage(
-            "offer_rows",
-            () =>
-              loadOfferRows(sql, {
-                kind: "singleton",
-                slug,
-              }),
-            { branch: "singleton", rowCount: (rows) => rows.length },
-          );
-          const [singletonItem] = await diagnostics.runStage(
-            "canonical_build",
-            () => buildCanonicalCatalogItems([], singletonOffers),
-            { branch: "singleton", rowCount: (items) => items.length },
-          );
-          return singletonItem;
-        },
-      ),
-    );
+      const singletonOffers = await diagnostics.runStage(
+        "offer_rows",
+        () =>
+          loadOfferRows(sql, {
+            kind: "singleton",
+            slug,
+          }),
+        { branch: "singleton", rowCount: (rows) => rows.length },
+      );
+      const [singletonItem] = await diagnostics.runStage(
+        "canonical_build",
+        () => buildCanonicalCatalogItems([], singletonOffers),
+        { branch: "singleton", rowCount: (items) => items.length },
+      );
+      return singletonItem;
+    });
   },
 );
 
 const loadCanonicalBoardAliasBySlugFromDatabase = cache(
   async (slug: string): Promise<CanonicalBoardAliasRow | undefined> => {
+    const sql = получитьКлиентБазы();
     const diagnostics = createCanonicalCatalogDiagnostics("alias");
 
-    return diagnostics.runStage("canonical_catalog", () =>
-      withReservedCanonicalCatalogConnection(
-        получитьКлиентБазы,
-        diagnostics,
-        async (sql) => {
-          await diagnostics.runStage("product_column_support", () =>
-            assertCanonicalCatalogSupport(sql),
-          );
+    return diagnostics.runStage("canonical_catalog", async () => {
+      await diagnostics.runStage("product_column_support", () =>
+        assertCanonicalCatalogSupport(sql),
+      );
 
-          return diagnostics.runStage(
-            "alias_rows",
-            async () => {
-              const [alias] = await sql<CanonicalBoardAliasRow[]>`
-                select
-                  p.slug as "offerSlug",
-                  p.family_id::text as "familyId",
-                  mf.slug as "familySlug"
-                from products p
-                left join model_families mf on mf.id = p.family_id
-                where p.slug = ${slug}
-                  and p.family_id is not null
-                limit 1
-              `;
+      return diagnostics.runStage(
+        "alias_rows",
+        async () => {
+          const [alias] = await sql<CanonicalBoardAliasRow[]>`
+            select
+              p.slug as "offerSlug",
+              p.family_id::text as "familyId",
+              mf.slug as "familySlug"
+            from products p
+            left join model_families mf on mf.id = p.family_id
+            where p.slug = ${slug}
+              and p.family_id is not null
+            limit 1
+          `;
 
-              if (alias && alias.familySlug == null) {
-                throw new Error(
-                  `Canonical board alias ${alias.offerSlug} references missing family ${alias.familyId}.`,
-                );
-              }
+          if (alias && alias.familySlug == null) {
+            throw new Error(
+              `Canonical board alias ${alias.offerSlug} references missing family ${alias.familyId}.`,
+            );
+          }
 
-              return alias;
-            },
-            { rowCount: (alias) => (alias ? 1 : 0) },
-          );
+          return alias;
         },
-      ),
-    );
+        { rowCount: (alias) => (alias ? 1 : 0) },
+      );
+    });
   },
 );
 
