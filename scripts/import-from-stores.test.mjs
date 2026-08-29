@@ -333,6 +333,33 @@ describe("safe managed-store stale decisions", () => {
     expect(decision.trialProductsRequiringRevalidation).toEqual([]);
   });
 
+  it("preserves an available Trial Product quarantined for attribute truth", () => {
+    const existing = makeProduct({
+      slug: "trial-attribute-quarantine",
+      sourceProductId: "1010",
+    });
+
+    const decision = buildStaleProductDecision({
+      existingProducts: [existing],
+      resolvedProducts: [],
+      sourceFilter: "trial-sport",
+      trialSourceObservations: [
+        {
+          storeCode: "trial-sport",
+          sourceProductId: "1010",
+          availability: "available",
+          status: "safe_unimportable",
+          reason: "attribute_truth_unresolved",
+          unresolvedAttributes: ["flex", "skill_level"],
+        },
+      ],
+    });
+
+    expect(decision.preservedProducts).toEqual([existing]);
+    expect(decision.staleProducts).toEqual([]);
+    expect(decision.trialProductsRequiringRevalidation).toEqual([]);
+  });
+
   it("does not let malformed observations bypass direct revalidation", () => {
     const existing = makeProduct({
       slug: "malformed-observation",
@@ -434,6 +461,62 @@ describe("safe managed-store stale decisions", () => {
 
     expect(decision.staleProducts).toEqual([existing]);
     expect(decision.traektoriaProductsRequiringRevalidation).toEqual([]);
+  });
+
+  it.each([
+    ["available", "preservedProducts"],
+    ["unavailable", "staleProducts"],
+  ])("uses %s Traektoria attribute truth evidence safely", (availability, bucket) => {
+    const existing = makeProduct({
+      slug: `traektoria-attribute-${availability}`,
+      sourceProductId: "2008",
+      storeCode: "traektoria",
+    });
+
+    const decision = buildStaleProductDecision({
+      existingProducts: [existing],
+      resolvedProducts: [],
+      sourceFilter: "traektoria",
+      traektoriaSourceObservations: [
+        {
+          storeCode: "traektoria",
+          sourceProductId: "2008",
+          availability,
+          status: "safe_unimportable",
+          reason: "attribute_truth_unresolved",
+          unresolvedAttributes: ["riding_style"],
+        },
+      ],
+    });
+
+    expect(decision[bucket]).toEqual([existing]);
+    expect(decision.traektoriaProductsRequiringRevalidation).toEqual([]);
+  });
+
+  it("does not trust an unknown Traektoria safe-observation reason", () => {
+    const existing = makeProduct({
+      slug: "traektoria-malformed-observation",
+      sourceProductId: "2009",
+      storeCode: "traektoria",
+    });
+
+    const decision = buildStaleProductDecision({
+      existingProducts: [existing],
+      resolvedProducts: [],
+      sourceFilter: "traektoria",
+      traektoriaSourceObservations: [
+        {
+          storeCode: "traektoria",
+          sourceProductId: "2009",
+          availability: "available",
+          status: "safe_unimportable",
+          reason: "unknown",
+        },
+      ],
+    });
+
+    expect(decision.preservedProducts).toEqual([]);
+    expect(decision.traektoriaProductsRequiringRevalidation).toEqual([existing]);
   });
 
   it("applies Traektoria direct revalidation outcomes fail-closed", () => {

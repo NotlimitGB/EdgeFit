@@ -28,6 +28,7 @@ function buildListing(...ids) {
 
 function buildProductPage({
   availability = "available",
+  boardLineEvidence = "Мужская модель",
   brand = "TEST",
   entries,
   id = "1001",
@@ -52,6 +53,8 @@ function buildProductPage({
   return `
     <a href="/gds.php?brand=test"><span>${brand}</span></a>
     <h1>Сноуборд ${brand} ${modelName} 2025</h1>
+    Сноуборд ${brand} ${modelName} - ${boardLineEvidence || "Модель"} для тестового каталога с достаточно длинным описанием, которое подтверждает линейку товара и позволяет проверить безопасную обработку исходных данных без скрытых значений по умолчанию.
+    <a href="javascript:void(0)" onclick="showBrand();">Brand</a>
     ${availabilityScript}
     <a href="/svdownload.php?svid=7">Specs</a>
     <script>window.productId = ${id};</script>
@@ -59,7 +62,10 @@ function buildProductPage({
 }
 
 function buildSpecWorkbook({
+  flex = "5",
   modelName = "Model",
+  purpose = "All Mountain",
+  shape = "Directional",
   sizes = [{ sizeLabel: "156", waistWidthCm: "25.0" }],
 } = {}) {
   const sizeRows = sizes
@@ -77,9 +83,9 @@ function buildSpecWorkbook({
         <row r="1"><c r="A1"><v>Header</v></c></row>
         <row r="2">
           <c r="A2"><v>${modelName}</v></c>
-          <c r="B2"><v>Directional</v></c>
-          <c r="C2"><v>All Mountain</v></c>
-          <c r="K2"><v>5</v></c>
+          <c r="B2"><v>${shape}</v></c>
+          <c r="C2"><v>${purpose}</v></c>
+          <c r="K2"><v>${flex}</v></c>
         </row>
         ${sizeRows}
       </sheetData>
@@ -233,6 +239,7 @@ describe("Trial Sport source diagnostics", () => {
         listingIds: ["3132335"],
         productPageTransform: () =>
           buildProductPage({
+            boardLineEvidence: "",
             brand: "Nitro",
             entries: [makeTrialEntry(157, true), makeTrialEntry(165, false)],
             id: "3132335",
@@ -241,7 +248,7 @@ describe("Trial Sport source diagnostics", () => {
       }),
       fetchArrayBuffer: vi.fn(async () =>
         buildSpecWorkbook({
-          modelName: "Team",
+          modelName: "Team Wide",
           sizes: [
             { sizeLabel: "157", waistWidthCm: "25.2" },
             { sizeLabel: "159", waistWidthCm: "25.4" },
@@ -278,8 +285,8 @@ describe("Trial Sport source diagnostics", () => {
       ],
       importMeta: {
         sourceProductId: "3132335",
-        trialSpecMatchKind: "none",
-        trialSpecMatchedModelName: null,
+        trialSpecMatchKind: "exact",
+        trialSpecMatchedModelName: "Team Wide",
         trialSizeMetadataCorrectionApplied: true,
         variantMarker: "wide",
       },
@@ -329,6 +336,119 @@ describe("Trial Sport source diagnostics", () => {
       sourceProductId: "3131513",
       trialSpecMatchKind: "exact",
       trialSizeMetadataCorrectionApplied: false,
+    });
+  });
+
+  it("keeps only page sizes with exact specification geometry", async () => {
+    const result = await importTrialSportProducts({
+      fetchText: createFetchText({
+        productPageTransform: () =>
+          buildProductPage({
+            entries: [makeTrialEntry(156, true), makeTrialEntry(157, true)],
+          }),
+      }),
+      fetchArrayBuffer: vi.fn(async () =>
+        buildSpecWorkbook({
+          sizes: [{ sizeLabel: "156", waistWidthCm: "25.0" }],
+        }),
+      ),
+      checkedAt: "2026-08-20",
+      logger: silentLogger,
+    });
+
+    expect(result.products).toHaveLength(1);
+    expect(result.products[0].sizes).toHaveLength(1);
+    expect(result.products[0].sizes[0]).toMatchObject({
+      sizeLabel: "156",
+      waistWidthMm: 250,
+      isAvailable: true,
+    });
+  });
+
+  it.each([
+    ["nearest different size", "157", "156"],
+    ["regular and wide variants", "155W", "155"],
+  ])("rejects untrusted waist geometry for %s", async (_case, pageSize, specSize) => {
+    const result = await importTrialSportProducts({
+      fetchText: createFetchText({
+        productPageTransform: () =>
+          buildProductPage({ entries: [makeTrialEntry(pageSize, true)] }),
+      }),
+      fetchArrayBuffer: vi.fn(async () =>
+        buildSpecWorkbook({
+          sizes: [{ sizeLabel: specSize, waistWidthCm: "25.0" }],
+        }),
+      ),
+      checkedAt: "2026-08-20",
+      logger: silentLogger,
+    });
+
+    expect(result.products).toEqual([]);
+    expect(result.sourceObservations).toEqual([
+      {
+        storeCode: "trial-sport",
+        sourceProductId: "1001",
+        availability: "available",
+        status: "safe_unimportable",
+        reason: "attribute_truth_unresolved",
+        unresolvedAttributes: ["waist_width"],
+      },
+    ]);
+    expect(result.diagnostics).toMatchObject({
+      safeUnimportableCount: 1,
+      unsafeFailureCount: 0,
+      staleSafe: true,
+    });
+  });
+
+  it.each([
+    ["missing riding style", { purpose: "" }, ["riding_style"]],
+    [
+      "ambiguous riding style",
+      { purpose: "All Mountain Freeride" },
+      ["riding_style"],
+    ],
+    ["missing flex and derived skill", { flex: "" }, ["flex", "skill_level"]],
+    [
+      "ambiguous flex and derived skill",
+      { flex: "мягкая средняя" },
+      ["flex", "skill_level"],
+    ],
+  ])("quarantines %s", async (_case, workbookOptions, unresolvedAttributes) => {
+    const result = await importTrialSportProducts({
+      fetchText: createFetchText(),
+      fetchArrayBuffer: vi.fn(async () => buildSpecWorkbook(workbookOptions)),
+      checkedAt: "2026-08-20",
+      logger: silentLogger,
+    });
+
+    expect(result.products).toEqual([]);
+    expect(result.sourceObservations[0]).toMatchObject({
+      reason: "attribute_truth_unresolved",
+      unresolvedAttributes,
+    });
+    expect(result.diagnostics).toMatchObject({
+      safeUnimportableCount: 1,
+      unsafeFailureCount: 0,
+      staleSafe: true,
+    });
+  });
+
+  it("quarantines a missing board-line observation", async () => {
+    const result = await importTrialSportProducts({
+      fetchText: createFetchText({
+        productPageTransform: (page) =>
+          page.replace("Мужская модель", "Модель"),
+      }),
+      fetchArrayBuffer: vi.fn(async () => buildSpecWorkbook()),
+      checkedAt: "2026-08-20",
+      logger: silentLogger,
+    });
+
+    expect(result.products).toEqual([]);
+    expect(result.sourceObservations[0]).toMatchObject({
+      reason: "attribute_truth_unresolved",
+      unresolvedAttributes: ["board_line"],
     });
   });
 
@@ -434,7 +554,10 @@ describe("Trial Sport source diagnostics", () => {
       fetchText: createFetchText({
         listingIds: ["3131268"],
         productPageTransform: (page) =>
-          page.replaceAll("TEST", "Bataleon").replace("Model", "Evil Twin"),
+          page
+            .replaceAll("TEST", "Bataleon")
+            .replace("Model", "Evil Twin")
+            .replace("Мужская модель", "Модель"),
       }),
       fetchArrayBuffer: vi.fn(async () =>
         buildSpecWorkbook({ modelName: "Evil Twin" }),
@@ -459,7 +582,10 @@ describe("Trial Sport source diagnostics", () => {
       fetchText: createFetchText({
         listingIds: ["3132335"],
         productPageTransform: (page) =>
-          page.replaceAll("TEST", "Nitro").replace("Model", "Team Wide"),
+          page
+            .replaceAll("TEST", "Nitro")
+            .replace("Model", "Team Wide")
+            .replace("Мужская модель", "Модель"),
       }),
       fetchArrayBuffer: vi.fn(async () =>
         buildSpecWorkbook({ modelName: "Team Wide" }),
@@ -492,6 +618,13 @@ describe("Trial Sport source diagnostics", () => {
     });
 
     expect(result.products).toHaveLength(1);
+    expect(result.products[0]).toMatchObject({
+      ridingStyle: "all-mountain",
+      boardLine: "men",
+      flex: 5,
+      skillLevel: "intermediate",
+      sizes: [{ sizeLabel: "156", waistWidthMm: 250 }],
+    });
     expect(result.sourceObservations).toEqual([]);
     expect(result.diagnostics).toMatchObject({
       discoveredCount: 1,

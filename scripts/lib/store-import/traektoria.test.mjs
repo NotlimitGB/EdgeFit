@@ -148,6 +148,12 @@ const ROW_TABLE = `
 
 function makeProductPayload({
   brand = "Test",
+  descriptions = {},
+  filterOptions = [
+    { code: "RIDING_STYLE", value: "All Mountain" },
+    { code: "FLEX", value: "Средняя" },
+    { code: "LEVEL", value: "Продвинутый" },
+  ],
   modelName = "Test Board",
   table = COLUMN_TABLE,
   thingType = "сноуборд",
@@ -179,8 +185,8 @@ function makeProductPayload({
                 },
               ] : skuList,
           },
-          filter_options: [],
-          descriptions: {},
+          filter_options: filterOptions,
+          descriptions,
           selected_sku: {},
           grid_size_html: table,
         },
@@ -336,6 +342,12 @@ describe("Traektoria size-table parsing", () => {
     });
 
     expect(result.products).toHaveLength(2);
+    expect(result.products[0]).toMatchObject({
+      ridingStyle: "all-mountain",
+      boardLine: "unisex",
+      flex: 5,
+      skillLevel: "intermediate",
+    });
     expect(result.products[0].sizes.map((size) => [size.sizeCm, size.waistWidthMm]))
       .toEqual([
         [154, 252],
@@ -396,6 +408,94 @@ describe("Traektoria size-table parsing", () => {
       unsafeFailureCount: 1,
       importComplete: false,
       staleSafe: false,
+    });
+  });
+});
+
+describe("Traektoria attribute truth quarantine", () => {
+  it.each([
+    [
+      "riding style",
+      {
+        filterOptions: [
+          { code: "FLEX", value: "Средняя" },
+          { code: "LEVEL", value: "Продвинутый" },
+        ],
+      },
+      ["riding_style"],
+    ],
+    [
+      "board line",
+      { gender: "" },
+      ["board_line"],
+    ],
+    [
+      "flex and skill",
+      {
+        filterOptions: [
+          { code: "RIDING_STYLE", value: "All Mountain" },
+        ],
+      },
+      ["flex", "skill_level"],
+    ],
+  ])("does not emit a Product with unresolved %s", async (_case, overrides, unresolvedAttributes) => {
+    const sourceProductId = "2001";
+    const result = await importExtras(
+      {
+        [EXTRA_IDS[0]]: makeProductPayload(),
+        [EXTRA_IDS[1]]: makeProductPayload(),
+        [sourceProductId]: makeProductPayload(overrides),
+      },
+      { listingIds: [sourceProductId] },
+    );
+    const observation = result.sourceObservations.find(
+      (item) => item.sourceProductId === sourceProductId,
+    );
+
+    expect(
+      result.products.some(
+        (product) => product.importMeta.sourceProductId === sourceProductId,
+      ),
+    ).toBe(false);
+    expect(observation).toEqual({
+      storeCode: "traektoria",
+      sourceProductId,
+      availability: "available",
+      status: "safe_unimportable",
+      reason: "attribute_truth_unresolved",
+      unresolvedAttributes,
+    });
+    expect(result.diagnostics).toMatchObject({
+      safeUnimportableCount: 1,
+      unsafeFailureCount: 0,
+      safeUnimportableByReason: { attributeTruthUnresolved: 1 },
+      importComplete: false,
+      staleSafe: true,
+    });
+  });
+
+  it("keeps observed unavailable status on an attribute quarantine", async () => {
+    const sourceProductId = "2002";
+    const result = await importExtras(
+      {
+        [EXTRA_IDS[0]]: makeProductPayload(),
+        [EXTRA_IDS[1]]: makeProductPayload(),
+        [sourceProductId]: makeProductPayload({
+          filterOptions: [],
+          skuList: [{ sizes: [{ size_title: "154", is_available: false }] }],
+        }),
+      },
+      { listingIds: [sourceProductId] },
+    );
+
+    expect(
+      result.sourceObservations.find(
+        (item) => item.sourceProductId === sourceProductId,
+      ),
+    ).toMatchObject({
+      availability: "unavailable",
+      reason: "attribute_truth_unresolved",
+      unresolvedAttributes: ["riding_style", "flex", "skill_level"],
     });
   });
 });

@@ -478,7 +478,11 @@ export function buildStaleProductDecision({
           observation?.storeCode === "trial-sport" &&
           observation?.availability === "available" &&
           observation?.status === "safe_unimportable" &&
-          ["spec_missing", "spec_group_missing"].includes(observation?.reason),
+          [
+            "spec_missing",
+            "spec_group_missing",
+            "attribute_truth_unresolved",
+          ].includes(observation?.reason),
       )
       .map((observation) => String(observation.sourceProductId ?? "").trim())
       .filter(Boolean),
@@ -489,7 +493,9 @@ export function buildStaleProductDecision({
         (observation) =>
           observation?.storeCode === "traektoria" &&
           observation?.status === "safe_unimportable" &&
-          observation?.reason === "size_table_missing" &&
+          ["size_table_missing", "attribute_truth_unresolved"].includes(
+            observation?.reason,
+          ) &&
           ["available", "unavailable"].includes(observation?.availability),
       )
       .map((observation) => [

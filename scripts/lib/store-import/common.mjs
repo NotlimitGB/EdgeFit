@@ -286,6 +286,35 @@ export function parseFlexNumber(value) {
   return 5;
 }
 
+export function resolveFlex(value) {
+  const normalized = normalizeWhitespace(value).toLowerCase();
+  if (!normalized) {
+    return { value: null, evidence: "missing" };
+  }
+
+  if (/^[+-]?\d+(?:[.,]\d+)?$/u.test(normalized)) {
+    const numericValue = Number.parseFloat(normalized.replace(",", "."));
+    return numericValue >= 1 && numericValue <= 10
+      ? { value: Math.round(numericValue), evidence: "known" }
+      : { value: null, evidence: "unrecognized" };
+  }
+
+  const textualValues = [
+    normalized.includes("мяг") ? 3 : null,
+    normalized.includes("сред") ? 5 : null,
+    normalized.includes("жест") ? 8 : null,
+  ].filter((candidate) => candidate != null);
+
+  if (textualValues.length === 1) {
+    return { value: textualValues[0], evidence: "known" };
+  }
+
+  return {
+    value: null,
+    evidence: textualValues.length > 1 ? "ambiguous" : "unrecognized",
+  };
+}
+
 export function classifyWidthType(waistWidthMm) {
   if (waistWidthMm >= widthThresholds.wide) {
     return "wide";
@@ -383,6 +412,44 @@ export function mapRidingStyle(value) {
   return "all-mountain";
 }
 
+export function resolveRidingStyle(value) {
+  const normalized = normalizeWhitespace(value).toLowerCase();
+  if (!normalized) {
+    return { value: null, evidence: "missing" };
+  }
+
+  const matches = [
+    {
+      value: "freeride",
+      matched:
+        normalized.includes("freeride") || normalized.includes("фрирайд"),
+    },
+    {
+      value: "park",
+      matched:
+        normalized.includes("park") ||
+        normalized.includes("фристайл") ||
+        normalized.includes("freestyle"),
+    },
+    {
+      value: "all-mountain",
+      matched:
+        normalized.includes("all mountain") ||
+        normalized.includes("all-mountain") ||
+        normalized.includes("универс"),
+    },
+  ].filter((candidate) => candidate.matched);
+
+  if (matches.length === 1) {
+    return { value: matches[0].value, evidence: "known" };
+  }
+
+  return {
+    value: null,
+    evidence: matches.length > 1 ? "ambiguous" : "unrecognized",
+  };
+}
+
 export function mapSkillLevel({ levelText, flex }) {
   const normalized = normalizeWhitespace(levelText).toLowerCase();
 
@@ -407,6 +474,66 @@ export function mapSkillLevel({ levelText, flex }) {
   }
 
   return "intermediate";
+}
+
+export function resolveSkillLevel({ levelText, flexResolution }) {
+  const normalized = normalizeWhitespace(levelText).toLowerCase();
+  const matches = [
+    { value: "beginner", matched: normalized.includes("начина") },
+    { value: "advanced", matched: normalized.includes("эксперт") },
+    { value: "intermediate", matched: normalized.includes("продвин") },
+  ].filter((candidate) => candidate.matched);
+
+  if (matches.length === 1) {
+    return { value: matches[0].value, evidence: "known" };
+  }
+
+  if (matches.length > 1) {
+    return { value: null, evidence: "ambiguous" };
+  }
+
+  if (
+    flexResolution?.evidence === "known" &&
+    Number.isFinite(flexResolution.value)
+  ) {
+    const flex = flexResolution.value;
+    return {
+      value: flex >= 8 ? "advanced" : flex <= 4 ? "beginner" : "intermediate",
+      evidence: "derived_from_known_flex",
+    };
+  }
+
+  return {
+    value: null,
+    evidence: normalized ? "unrecognized" : "missing",
+  };
+}
+
+const unresolvedAttributeOrder = [
+  "riding_style",
+  "board_line",
+  "flex",
+  "skill_level",
+  "waist_width",
+];
+
+export function createAttributeTruthObservation({
+  storeCode,
+  sourceProductId,
+  availability,
+  unresolvedAttributes,
+}) {
+  const unresolvedSet = new Set(unresolvedAttributes);
+  return {
+    storeCode,
+    sourceProductId,
+    availability,
+    status: "safe_unimportable",
+    reason: "attribute_truth_unresolved",
+    unresolvedAttributes: unresolvedAttributeOrder.filter((attribute) =>
+      unresolvedSet.has(attribute),
+    ),
+  };
 }
 
 export function parseWeightRange(value) {

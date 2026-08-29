@@ -3,16 +3,17 @@ import {
   buildNotIdealFor,
   buildScenarios,
   classifyWidthType,
+  createAttributeTruthObservation,
   isPlausibleWaistWidthMm,
-  mapRidingStyle,
   mapShapeType,
-  mapSkillLevel,
   normalizeWaistWidthMm,
   normalizeWhitespace,
-  parseFlexNumber,
   parseSeasonLabel,
   parseSizeCm,
   parseWeightRange,
+  resolveFlex,
+  resolveRidingStyle,
+  resolveSkillLevel,
   slugifyBoard,
   stripHtml,
   toAbsoluteUrl,
@@ -283,16 +284,16 @@ function getTraektoriaFilterMap(filterOptions) {
   );
 }
 
-function getFlexFromTraektoriaProduct(model, descriptions, filterMap) {
+function resolveFlexFromTraektoriaProduct(descriptions, filterMap) {
   const numericFlexMatch = String(descriptions?.features ?? "").match(
     /Жесткость:\s*([0-9]+(?:[.,][0-9]+)?)\s*из\s*10/iu,
   );
 
   if (numericFlexMatch) {
-    return parseFlexNumber(numericFlexMatch[1]);
+    return resolveFlex(numericFlexMatch[1]);
   }
 
-  return parseFlexNumber(filterMap.get("FLEX"));
+  return resolveFlex(filterMap.get("FLEX"));
 }
 
 function extractTraektoriaImageUrls(model) {
@@ -400,15 +401,32 @@ function buildTraektoriaProduct(
   const slug = slugifyBoard(`${brand} ${modelName}`);
   const shapeType =
     sourceMetadata.shapeType ?? mapShapeType(filterMap.get("SHAPE"));
-  const flex =
-    sourceMetadata.flex ??
-    getFlexFromTraektoriaProduct(model, content.descriptions, filterMap);
-  const ridingStyle = mapRidingStyle(filterMap.get("RIDING_STYLE"));
-  const boardLine = sourceMetadata.boardLine;
-  const skillLevel = mapSkillLevel({
+  const flexResolution =
+    sourceMetadata.flex == null
+      ? resolveFlexFromTraektoriaProduct(content.descriptions, filterMap)
+      : { value: sourceMetadata.flex, evidence: "known" };
+  const ridingStyleResolution = resolveRidingStyle(
+    filterMap.get("RIDING_STYLE"),
+  );
+  const skillLevelResolution = resolveSkillLevel({
     levelText: filterMap.get("LEVEL"),
-    flex,
+    flexResolution,
   });
+  const unresolvedAttributes = [
+    ridingStyleResolution.value == null ? "riding_style" : null,
+    sourceMetadata.evidence !== "known" ? "board_line" : null,
+    flexResolution.value == null ? "flex" : null,
+    skillLevelResolution.value == null ? "skill_level" : null,
+  ].filter(Boolean);
+
+  if (unresolvedAttributes.length > 0) {
+    return { status: "safe_unimportable", unresolvedAttributes };
+  }
+
+  const flex = flexResolution.value;
+  const ridingStyle = ridingStyleResolution.value;
+  const boardLine = sourceMetadata.boardLine;
+  const skillLevel = skillLevelResolution.value;
   const selectedSku = content.selected_sku ?? {};
   const skuPrices = availableSkus
     .map((sku) => sku.retail_price || sku.base_price)
@@ -461,11 +479,14 @@ function buildTraektoriaProduct(
   const descriptions = buildDescriptions(product);
 
   return {
-    ...product,
-    descriptionShort: descriptions.descriptionShort,
-    descriptionFull: descriptions.descriptionFull,
-    scenarios: buildScenarios(product),
-    notIdealFor: buildNotIdealFor(product),
+    status: "resolved",
+    product: {
+      ...product,
+      descriptionShort: descriptions.descriptionShort,
+      descriptionFull: descriptions.descriptionFull,
+      scenarios: buildScenarios(product),
+      notIdealFor: buildNotIdealFor(product),
+    },
   };
 }
 
@@ -573,18 +594,32 @@ function buildTraektoriaProductOutcome(productUrl, productPayload, checkedAt) {
   }
 
   try {
-    const product = buildTraektoriaProduct(
+    const productOutcome = buildTraektoriaProduct(
       productUrl,
       productPayload,
       checkedAt,
       sourceMetadata,
     );
-    return product
-      ? { status: "resolved", product }
-      : {
-          status: "unsafe_failure",
-          category: TRAEKTORIA_FAILURE_CATEGORIES.other,
-        };
+    if (!productOutcome) {
+      return {
+        status: "unsafe_failure",
+        category: TRAEKTORIA_FAILURE_CATEGORIES.other,
+      };
+    }
+
+    if (productOutcome.status === "safe_unimportable") {
+      return {
+        status: "safe_unimportable",
+        observation: createAttributeTruthObservation({
+          storeCode: "traektoria",
+          sourceProductId,
+          availability: availability.status,
+          unresolvedAttributes: productOutcome.unresolvedAttributes,
+        }),
+      };
+    }
+
+    return productOutcome;
   } catch {
     return {
       status: "unsafe_failure",
@@ -773,7 +808,7 @@ export async function importTraektoriaProducts({
 
     if (outcome.status === "safe_unimportable") {
       sourceObservations.push(outcome.observation);
-      warnings.push("Traektoria: safe_unimportable_size_table_missing");
+      warnings.push(`Traektoria: safe_unimportable_${outcome.observation.reason}`);
       return;
     }
 
@@ -836,6 +871,9 @@ export async function importTraektoriaProducts({
     safeUnimportableByReason: {
       sizeTableMissing: sourceObservations.filter(
         (observation) => observation.reason === "size_table_missing",
+      ).length,
+      attributeTruthUnresolved: sourceObservations.filter(
+        (observation) => observation.reason === "attribute_truth_unresolved",
       ).length,
     },
     failuresByCategory,

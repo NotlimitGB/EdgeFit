@@ -4,18 +4,19 @@ import {
   buildNotIdealFor,
   buildScenarios,
   classifyWidthType,
+  createAttributeTruthObservation,
   decodeHtml,
   isPlausibleWaistWidthMm,
-  mapRidingStyle,
   mapShapeType,
-  mapSkillLevel,
   normalizeBoardKey,
   normalizeSizeKey,
   normalizeWaistWidthMm,
   normalizeWhitespace,
-  parseFlexNumber,
   parseSeasonLabel,
   parseSizeCm,
+  resolveFlex,
+  resolveRidingStyle,
+  resolveSkillLevel,
   slugifyBoard,
   stripHtml,
   toAbsoluteUrl,
@@ -152,14 +153,6 @@ function isReliableTrialSize(sizeCm, waistWidthMm) {
   return isPlausibleWaistWidthMm(sizeCm, waistWidthMm);
 }
 
-function isWideTrialModel(modelName) {
-  return /\bwide\b|\bw\b/iu.test(String(modelName ?? ""));
-}
-
-function isMidWideTrialModel(modelName) {
-  return /mid[-\s]?wide/iu.test(String(modelName ?? ""));
-}
-
 function isKidsTrialModel(modelName) {
   return /kids?|junior|mini|youth|yuniorsk|yunior/iu.test(String(modelName ?? ""));
 }
@@ -174,30 +167,6 @@ function isReliableTrialPageSize(sizeCm, modelName) {
   }
 
   return isKidsTrialModel(modelName) && sizeCm >= 70;
-}
-
-function estimateTrialWaistWidthMm(sizeCm, specSizes, modelName) {
-  const exactSpecSize = specSizes.find((size) => size.sizeCm === sizeCm);
-  if (exactSpecSize?.waistWidthMm) {
-    return exactSpecSize.waistWidthMm;
-  }
-
-  const closestSpecSize = specSizes
-    .filter((size) => Number.isFinite(size.sizeCm) && Number.isFinite(size.waistWidthMm))
-    .sort(
-      (left, right) =>
-        Math.abs(left.sizeCm - sizeCm) - Math.abs(right.sizeCm - sizeCm),
-    )[0];
-
-  if (isWideTrialModel(modelName)) {
-    return Math.max(264, closestSpecSize?.waistWidthMm ?? 264);
-  }
-
-  if (isMidWideTrialModel(modelName)) {
-    return Math.max(257, closestSpecSize?.waistWidthMm ?? 257);
-  }
-
-  return closestSpecSize?.waistWidthMm ?? 250;
 }
 
 function decodeXml(value) {
@@ -271,11 +240,13 @@ export function buildTrialSpecMap(workbookBytes) {
     const purpose = normalizeWhitespace(row.C);
 
     if (modelName && (shape || purpose || normalizeWhitespace(row.K))) {
+      const flexResolution = resolveFlex(row.K);
       currentGroup = {
         modelName,
         shape,
         purpose,
-        flex: parseFlexNumber(row.K),
+        flex: flexResolution.value,
+        flexResolution,
         sizes: [],
       };
 
@@ -561,7 +532,7 @@ function isTrialEntryAvailable(entry) {
   return false;
 }
 
-function buildTrialPageSizes(specGroup, icspEntries, modelName) {
+function buildTrialPageSizes(specGroup, icspEntries, modelName, correction) {
   const availableEntries = icspEntries.filter(isTrialEntryAvailable);
   const normalizedAvailableSizeKeys = new Set(
     availableEntries
@@ -574,6 +545,7 @@ function buildTrialPageSizes(specGroup, icspEntries, modelName) {
     specSizes.map((size) => [normalizeSizeKey(size.sizeLabel), size]),
   );
   const pageSizeByKey = new Map();
+  let correctionApplied = false;
 
   for (const entry of icspEntries) {
     const sizeLabel = normalizeWhitespace(entry.size || entry.sizecolor || "");
@@ -585,8 +557,18 @@ function buildTrialPageSizes(specGroup, icspEntries, modelName) {
 
     const key = normalizeSizeKey(sizeLabel);
     const specSize = specSizeByKey.get(key);
-    const waistWidthMm =
-      specSize?.waistWidthMm ?? estimateTrialWaistWidthMm(sizeCm, specSizes, modelName);
+    const correctedWaistWidthMm =
+      correction?.waistWidthMmBySizeCm?.[String(sizeCm)] ?? null;
+    const hasCorrection = Number.isFinite(correctedWaistWidthMm);
+    const waistWidthMm = hasCorrection
+      ? correctedWaistWidthMm
+      : specSize?.waistWidthMm ?? null;
+
+    if (!Number.isFinite(waistWidthMm)) {
+      continue;
+    }
+
+    correctionApplied ||= hasCorrection;
 
     pageSizeByKey.set(key, {
       ...specSize,
@@ -600,45 +582,19 @@ function buildTrialPageSizes(specGroup, icspEntries, modelName) {
     });
   }
 
-  return Array.from(pageSizeByKey.values()).sort(
-    (left, right) => left.sizeCm - right.sizeCm,
-  );
-}
-
-function applyTrialSizeMetadataCorrection(sizes, correction) {
-  let applied = false;
-  const correctedSizes = sizes.map((size) => {
-    const correctedWaistWidthMm =
-      correction?.waistWidthMmBySizeCm?.[String(size.sizeCm)] ?? null;
-    if (!Number.isFinite(correctedWaistWidthMm)) {
-      return size;
-    }
-
-    applied = true;
-    return {
-      ...size,
-      waistWidthMm: correctedWaistWidthMm,
-      widthType: classifyWidthType(correctedWaistWidthMm),
-    };
-  });
-
-  return { sizes: correctedSizes, applied };
+  return {
+    sizes: Array.from(pageSizeByKey.values()).sort(
+      (left, right) => left.sizeCm - right.sizeCm,
+    ),
+    applied: correctionApplied,
+  };
 }
 
 function mergeTrialSizes(specGroup, icspEntries, modelName, correction) {
-  const pageSizes = buildTrialPageSizes(specGroup, icspEntries, modelName);
-
-  if (pageSizes.length > 0) {
-    return applyTrialSizeMetadataCorrection(pageSizes, correction);
-  }
-
-  return applyTrialSizeMetadataCorrection(
-    (specGroup?.sizes ?? [])
-      .map((size) => ({
-        ...size,
-        isAvailable: true,
-      }))
-      .sort((left, right) => left.sizeCm - right.sizeCm),
+  return buildTrialPageSizes(
+    specGroup,
+    icspEntries,
+    modelName,
     correction,
   );
 }
@@ -708,19 +664,19 @@ function buildTrialProduct(
   );
   const sizes = sizeResult.sizes;
 
-  if (sizes.length === 0 || availableEntries.length === 0) {
+  if (availableEntries.length === 0) {
     return { status: "unsafe_failure", reason: "product_parse_failure" };
   }
 
-  const flex = specGroup?.flex || 5;
-  const ridingStyle = mapRidingStyle(specGroup?.purpose);
+  const flexResolution = specGroup?.flexResolution ?? resolveFlex(specGroup?.flex);
+  const ridingStyleResolution = resolveRidingStyle(specGroup?.purpose);
   const shapeType = mapShapeType(specGroup?.shape);
   const descriptionText = extractTrialDescription(htmlText, brand);
   const imageUrls = extractTrialImageUrls(htmlText);
   const seasonLabel = extractTrialSeasonLabel(htmlText);
   const boardLineIdentity = resolveTrialSportBoardLineMetadata(
     sourceProductId,
-    descriptionText,
+    normalizeWhitespace(`${modelName} ${descriptionText}`),
     { brand, modelName },
   );
   if (boardLineIdentity.status === "conflict") {
@@ -730,11 +686,34 @@ function buildTrialProduct(
       reason: "source_metadata_conflict",
     };
   }
-  const boardLine = boardLineIdentity.boardLine;
-  const skillLevel = mapSkillLevel({
+  const skillLevelResolution = resolveSkillLevel({
     levelText: "",
-    flex,
+    flexResolution,
   });
+  const unresolvedAttributes = [
+    ridingStyleResolution.value == null ? "riding_style" : null,
+    boardLineIdentity.evidence !== "known" ? "board_line" : null,
+    flexResolution.value == null ? "flex" : null,
+    skillLevelResolution.value == null ? "skill_level" : null,
+    sizes.length === 0 ? "waist_width" : null,
+  ].filter(Boolean);
+
+  if (unresolvedAttributes.length > 0) {
+    return {
+      status: "safe_unimportable",
+      observation: createAttributeTruthObservation({
+        storeCode: "trial-sport",
+        sourceProductId,
+        availability: "available",
+        unresolvedAttributes,
+      }),
+    };
+  }
+
+  const flex = flexResolution.value;
+  const ridingStyle = ridingStyleResolution.value;
+  const boardLine = boardLineIdentity.boardLine;
+  const skillLevel = skillLevelResolution.value;
   const product = {
     slug: slugifyBoard(`${brand} ${modelName}`),
     brand,
@@ -794,6 +773,8 @@ export const TRIAL_SPORT_FAILURE_CATEGORIES = Object.freeze({
   productFetch: "product_fetch_failure",
   safeUnimportableSpecMissing: "safe_unimportable_spec_missing",
   safeUnimportableSpecGroupMissing: "safe_unimportable_spec_group_missing",
+  safeUnimportableAttributeTruth:
+    "safe_unimportable_attribute_truth_unresolved",
   specFetch: "spec_fetch_failure",
   specParse: "spec_parse_failure",
   productParse: "product_parse_failure",
@@ -811,6 +792,7 @@ function createTrialFailureCounts() {
 const SAFE_UNIMPORTABLE_FAILURE_CATEGORIES = new Set([
   TRIAL_SPORT_FAILURE_CATEGORIES.safeUnimportableSpecMissing,
   TRIAL_SPORT_FAILURE_CATEGORIES.safeUnimportableSpecGroupMissing,
+  TRIAL_SPORT_FAILURE_CATEGORIES.safeUnimportableAttributeTruth,
 ]);
 
 function getSafeUnimportableBreakdown(failuresByCategory) {
@@ -822,6 +804,10 @@ function getSafeUnimportableBreakdown(failuresByCategory) {
     specGroupMissing:
       failuresByCategory[
         TRIAL_SPORT_FAILURE_CATEGORIES.safeUnimportableSpecGroupMissing
+      ] ?? 0,
+    attributeTruthUnresolved:
+      failuresByCategory[
+        TRIAL_SPORT_FAILURE_CATEGORIES.safeUnimportableAttributeTruth
       ] ?? 0,
   };
 }
@@ -960,7 +946,11 @@ export async function importTrialSportProducts({
     failedCount: 0,
     safeUnimportableCount: 0,
     unsafeFailureCount: 0,
-    safeUnimportableByReason: { specMissing: 0, specGroupMissing: 0 },
+    safeUnimportableByReason: {
+      specMissing: 0,
+      specGroupMissing: 0,
+      attributeTruthUnresolved: 0,
+    },
     skippedCount: 0,
     remainingCount: 0,
     failuresByCategory: createTrialFailureCounts(),
@@ -986,7 +976,11 @@ export async function importTrialSportProducts({
       failedCount: 0,
       safeUnimportableCount: 0,
       unsafeFailureCount: 0,
-      safeUnimportableByReason: { specMissing: 0, specGroupMissing: 0 },
+      safeUnimportableByReason: {
+        specMissing: 0,
+        specGroupMissing: 0,
+        attributeTruthUnresolved: 0,
+      },
       skippedCount: 0,
       remainingCount: 0,
       failuresByCategory: createTrialFailureCounts(),
@@ -1073,7 +1067,9 @@ export async function importTrialSportProducts({
       const category =
         outcome.observation.reason === "spec_missing"
           ? TRIAL_SPORT_FAILURE_CATEGORIES.safeUnimportableSpecMissing
-          : TRIAL_SPORT_FAILURE_CATEGORIES.safeUnimportableSpecGroupMissing;
+          : outcome.observation.reason === "spec_group_missing"
+            ? TRIAL_SPORT_FAILURE_CATEGORIES.safeUnimportableSpecGroupMissing
+            : TRIAL_SPORT_FAILURE_CATEGORIES.safeUnimportableAttributeTruth;
       recordFailure(
         category,
         `Trial Sport: safely observed but not importable (${outcome.observation.reason}) ${productUrl}`,
@@ -1194,19 +1190,7 @@ export async function importTrialSportProducts({
             availability.entries,
             checkedAt,
           );
-          if (outcome.status === "resolved") {
-            results.push(outcome.product);
-          } else {
-            if (outcome.status === "safe_unimportable") {
-              sourceObservations.push(outcome.observation);
-            }
-            recordFailure(
-              outcome.status === "safe_unimportable"
-                ? TRIAL_SPORT_FAILURE_CATEGORIES.safeUnimportableSpecGroupMissing
-                : outcome.category ?? TRIAL_SPORT_FAILURE_CATEGORIES.productParse,
-              `Триал-Спорт: не удалось собрать карточку для ${productUrl}`,
-            );
-          }
+          recordProductOutcome(outcome, productUrl);
         } catch {
           recordFailure(
             TRIAL_SPORT_FAILURE_CATEGORIES.other,
