@@ -7,7 +7,7 @@ import type {
   WidthType,
 } from "@/types/domain";
 
-export type AttributeTruthState = "known" | "missing" | "ambiguous";
+export type AttributeTruthState = "known" | "unknown" | "ambiguous";
 
 export type AttributeProvenance =
   | "manual"

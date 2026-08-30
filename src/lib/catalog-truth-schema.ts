@@ -33,7 +33,7 @@ const boundedNullableText = z.string().trim().min(1).max(200).nullable();
 
 export const attributeEvidenceSchema: z.ZodType<AttributeEvidence> = z
   .object({
-    state: z.enum(["known", "missing", "ambiguous"]),
+    state: z.enum(["known", "unknown", "ambiguous"]),
     provenance: z.enum(["manual", "official", "merchant", "legacy"]),
     method: z
       .enum([
