@@ -28,11 +28,11 @@ function evidence(
   };
 }
 
-function missingEvidence(
+function unknownEvidence(
   overrides: Partial<AttributeEvidence> = {},
 ): AttributeEvidence {
   return evidence({
-    state: "missing",
+    state: "unknown",
     method: null,
     sourceField: null,
     ...overrides,
@@ -70,10 +70,10 @@ function sizeTruth(
     attributeEvidence: {
       waistWidthMm: known
         ? evidence({ sourceField: "waist" })
-        : missingEvidence(),
+        : unknownEvidence(),
       widthType: known
         ? evidence({ method: "derived", sourceField: "waist" })
-        : missingEvidence(),
+        : unknownEvidence(),
     },
   };
 }
@@ -110,10 +110,10 @@ describe("catalog truth v2 product validation", () => {
     expect(productTruthV2Schema.safeParse(empty).success).toBe(false);
   });
 
-  it("represents unknown riding styles as null with missing evidence", () => {
+  it("represents unknown riding styles as null with unknown evidence", () => {
     const truth = productTruth();
     truth.ridingStyles = null;
-    truth.attributeEvidence.ridingStyles = missingEvidence();
+    truth.attributeEvidence.ridingStyles = unknownEvidence();
     expect(productTruthV2Schema.safeParse(truth).success).toBe(true);
   });
 
@@ -140,7 +140,7 @@ describe("catalog truth v2 product validation", () => {
 
     const notApplicable = productTruth();
     notApplicable.skillApplicability = null;
-    notApplicable.attributeEvidence.skillApplicability = missingEvidence();
+    notApplicable.attributeEvidence.skillApplicability = unknownEvidence();
     expect(productTruthV2Schema.safeParse(notApplicable).success).toBe(true);
   });
 
@@ -159,14 +159,14 @@ describe("catalog truth v2 product validation", () => {
 
     const missing = productTruth();
     missing.flex = null;
-    missing.attributeEvidence.flex = missingEvidence();
+    missing.attributeEvidence.flex = unknownEvidence();
     expect(productTruthV2Schema.safeParse(missing).success).toBe(true);
   });
 
   it("enforces normalized value and evidence coherence", () => {
     const valueWithoutEvidence = productTruth();
     valueWithoutEvidence.boardLine = "men";
-    valueWithoutEvidence.attributeEvidence.boardLine = missingEvidence();
+    valueWithoutEvidence.attributeEvidence.boardLine = unknownEvidence();
     expect(productTruthV2Schema.safeParse(valueWithoutEvidence).success).toBe(
       false,
     );
@@ -180,22 +180,57 @@ describe("catalog truth v2 product validation", () => {
     expect(
       attributeEvidenceSchema.safeParse(evidence({ method: null })).success,
     ).toBe(false);
-    expect(attributeEvidenceSchema.safeParse(missingEvidence()).success).toBe(
+    expect(attributeEvidenceSchema.safeParse(unknownEvidence()).success).toBe(
       true,
     );
     expect(
       attributeEvidenceSchema.safeParse(
-        missingEvidence({
+        unknownEvidence({
           provenance: "legacy",
           method: "legacy-unverified",
         }),
       ).success,
     ).toBe(true);
     expect(
+      attributeEvidenceSchema.safeParse({
+        ...unknownEvidence(),
+        state: "missing",
+      }).success,
+    ).toBe(false);
+    expect(
       attributeEvidenceSchema.safeParse(
         evidence({ provenance: "manual", method: "manual-override" }),
       ).success,
     ).toBe(true);
+  });
+
+  it.each(["missing source information", "unrecognized source information"])(
+    "persists %s as unknown without adding an importer reason",
+    () => {
+      const truth = productTruth();
+      truth.camberProfile = null;
+      truth.attributeEvidence.camberProfile = unknownEvidence();
+
+      const parsed = productTruthV2Schema.parse(truth);
+      expect(parsed.attributeEvidence.camberProfile).toMatchObject({
+        state: "unknown",
+        method: null,
+      });
+      expect(parsed.attributeEvidence.camberProfile).not.toHaveProperty(
+        "reason",
+      );
+    },
+  );
+
+  it("accepts null with ambiguous evidence", () => {
+    const truth = productTruth();
+    truth.shapeType = null;
+    truth.attributeEvidence.shapeType = evidence({
+      state: "ambiguous",
+      method: null,
+    });
+
+    expect(productTruthV2Schema.safeParse(truth).success).toBe(true);
   });
 
   it("serializes only the strict bounded truth contract", () => {
@@ -232,7 +267,7 @@ describe("catalog truth v2 size validation", () => {
     );
   });
 
-  it("accepts wholly missing geometry with missing evidence", () => {
+  it("accepts wholly unknown geometry with unknown evidence", () => {
     expect(productSizeTruthV2Schema.safeParse(sizeTruth(null)).success).toBe(
       true,
     );
@@ -245,7 +280,7 @@ describe("catalog truth v2 size validation", () => {
         widthType: null,
         attributeEvidence: {
           waistWidthMm: evidence(),
-          widthType: missingEvidence(),
+          widthType: unknownEvidence(),
         },
       }).success,
     ).toBe(false);
