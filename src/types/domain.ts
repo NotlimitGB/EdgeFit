@@ -12,6 +12,8 @@ export type BootDragRisk = "low" | "medium" | "high";
 
 export type BoardLinePreference = "men" | "women" | "any";
 
+export type BoardLine = "men" | "women" | "unisex";
+
 export type BoardShape =
   | "twin"
   | "asym-twin"
@@ -80,7 +82,7 @@ export interface Product {
   galleryImages?: string[];
   affiliateUrl: string;
   isActive: boolean;
-  boardLine: "men" | "women" | "unisex";
+  boardLine: BoardLine;
   shapeType: BoardShape | null;
   camberProfile?: CamberProfile | null;
   dataStatus: ProductDataStatus;
