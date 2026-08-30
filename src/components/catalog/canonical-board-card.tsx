@@ -130,6 +130,7 @@ export function CanonicalBoardCard({
     <article className={boardCardStyles.catalogCard}>
       <Link
         href={modelHref}
+        prefetch={false}
         className={boardCardStyles.imageLink}
         aria-label={`Открыть модель ${board.brand} ${board.modelName}`}
       >
@@ -170,7 +171,9 @@ export function CanonicalBoardCard({
           <div className={boardCardStyles.identity}>
             <p>{board.brand}</p>
             <h3>
-              <Link href={modelHref}>{board.modelName}</Link>
+              <Link href={modelHref} prefetch={false}>
+                {board.modelName}
+              </Link>
             </h3>
             {board.seasonLabel ? <span>{board.seasonLabel}</span> : null}
           </div>
@@ -208,6 +211,7 @@ export function CanonicalBoardCard({
         <div className={boardCardStyles.actions}>
           <Link
             href={modelHref}
+            prefetch={false}
             className={`${publicStyles.secondaryAction} ${boardCardStyles.cardAction} ${
               shopHref ? "" : catalogStyles.singleCardAction
             }`}

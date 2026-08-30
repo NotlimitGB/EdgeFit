@@ -3,7 +3,6 @@ import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import { TrackedStoreLink } from "@/components/analytics/tracked-store-link";
 import { BoardGallery } from "@/components/boards/board-gallery";
-import { CanonicalBoardCard } from "@/components/catalog/canonical-board-card";
 import publicStyles from "@/components/public/public-ui.module.css";
 import {
   getCanonicalBoardAvailabilityDescription,
@@ -16,14 +15,13 @@ import {
   getCanonicalNarrativeOfferSlug,
   getCanonicalSizeStoreAction,
   getCanonicalSizeAvailabilityLabel,
-  getRelatedCanonicalBoards,
   isCanonicalSizeCurrentlyAvailable,
 } from "@/lib/canonical-board-detail";
 import {
   getAllCanonicalBoardSlugs,
-  getAllCanonicalCatalogItems,
   resolveCanonicalBoardRouteBySlug,
 } from "@/lib/canonical-catalog";
+import { createBoardPageDiagnostics } from "@/lib/board-page-load-diagnostics";
 import {
   boardShapeLabels,
   camberProfileLabels,
@@ -93,11 +91,12 @@ export default async function BoardPage({ params }: BoardPageProps) {
 
   const board = resolution.item;
   const narrativeOfferSlug = getCanonicalNarrativeOfferSlug(board);
-  const allBoards = await getAllCanonicalCatalogItems();
+  const diagnostics = createBoardPageDiagnostics();
   const narrativeProduct = narrativeOfferSlug
-    ? await getProductBySlug(narrativeOfferSlug)
+    ? await diagnostics.runStage("narrative_product_lookup", () =>
+        getProductBySlug(narrativeOfferSlug),
+      )
     : undefined;
-  const relatedBoards = getRelatedCanonicalBoards(board, allBoards);
   const specs = board.canonicalSpecs;
   const trustDetails = getCanonicalBoardTrustDetails(specs);
   const flexPresentation = getCanonicalFlexPresentation(specs);
@@ -478,30 +477,6 @@ export default async function BoardPage({ params }: BoardPageProps) {
           </div>
         </section>
 
-        {relatedBoards.length > 0 ? (
-          <section className={`${styles.contentSection} ${styles.relatedSection}`}>
-            <div className={styles.sectionHeadingRow}>
-              <div className={styles.sectionHeading}>
-                <p className={publicStyles.kicker}>Похожие модели</p>
-                <h2>Что ещё стоит сравнить</h2>
-              </div>
-              <p>
-                Это модели с похожими характеристиками и стилем катания, а не
-                персональные альтернативы.
-              </p>
-            </div>
-            <div className={styles.relatedGrid}>
-              {relatedBoards.map((relatedBoard) => (
-                <CanonicalBoardCard
-                  key={relatedBoard.slug}
-                  board={relatedBoard}
-                  storeFrom="board-related"
-                  storePlacement="board-related"
-                />
-              ))}
-            </div>
-          </section>
-        ) : null}
       </div>
     </div>
   );
