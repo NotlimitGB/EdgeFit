@@ -1,3 +1,5 @@
+import { mergeProductTruthV2 } from "./attribute-truth.mjs";
+
 const cyrillicMap = {
   а: "a",
   б: "b",
@@ -714,6 +716,9 @@ export function mergeImportedProducts(left, right) {
 
   return {
     ...base,
+    ...(base.truthV2 || secondary.truthV2
+      ? { truthV2: mergeProductTruthV2(base.truthV2, secondary.truthV2) }
+      : {}),
     seasonLabel: base.seasonLabel?.trim() || secondary.seasonLabel?.trim() || null,
     sizes: Array.isArray(commerceOwner.sizes) ? commerceOwner.sizes : [],
     priceFrom: commerceOwner.priceFrom,

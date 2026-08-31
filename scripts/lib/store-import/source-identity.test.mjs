@@ -5,6 +5,14 @@ import {
 } from "../official-specs.mjs";
 import { mergeImportedProducts } from "./common.mjs";
 import {
+  buildProductTruthV2,
+  knownTruth,
+  resolveBoardLineTruth,
+  resolveCamberTruth,
+  resolveShapeTruth,
+  resolveSkillApplicabilityTruth,
+} from "./attribute-truth.mjs";
+import {
   buildSourceIdentityPlan,
   getBoardLineEvidence,
   getSourceOfferCompatibility,
@@ -81,6 +89,18 @@ function makeProduct({
       variantMarker,
     },
   };
+}
+
+function makeTruth(style, sourceName) {
+  const context = { sourceName, sourceUrl: null, observedAt: null, sourceField: "fixture" };
+  return buildProductTruthV2({
+    ridingStyles: knownTruth([style], context),
+    skillApplicability: resolveSkillApplicabilityTruth("", context),
+    boardLine: resolveBoardLineTruth("men", context),
+    flex: knownTruth(6, context),
+    shapeType: resolveShapeTruth("directional twin", context),
+    camberProfile: resolveCamberTruth("", context),
+  });
 }
 
 describe("source offer identity", () => {
@@ -309,11 +329,18 @@ describe("source offer identity", () => {
       sizes: [151, 154],
       priceFrom: 40_000,
     });
+    expensive.truthV2 = makeTruth("all-mountain", "expensive");
+    cheaper.truthV2 = makeTruth("freeride", "cheaper");
+    expensive.sizes.forEach((size) => { size.truthV2 = { owner: "expensive" }; });
+    cheaper.sizes.forEach((size) => { size.truthV2 = { owner: "cheaper" }; });
     const merged = mergeImportedProducts(expensive, cheaper);
 
     expect(merged.sizes.map((size) => size.sizeCm)).toEqual([151, 154]);
     expect(merged.affiliateUrl).toBe(cheaper.affiliateUrl);
     expect(merged.priceFrom).toBe(40_000);
+    expect(merged.truthV2.ridingStyles).toBeNull();
+    expect(merged.truthV2.attributeEvidence.ridingStyles.state).toBe("ambiguous");
+    expect(merged.sizes.every((size) => size.truthV2.owner === "cheaper")).toBe(true);
   });
 
   it("throws before creating a Frankenstein merge for incompatible offers", () => {

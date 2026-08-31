@@ -60,6 +60,9 @@ function buildProductPage({
 
 function buildSpecWorkbook({
   modelName = "Model",
+  shape = "Directional",
+  purpose = "All Mountain",
+  flex = "5",
   sizes = [{ sizeLabel: "156", waistWidthCm: "25.0" }],
 } = {}) {
   const sizeRows = sizes
@@ -77,9 +80,9 @@ function buildSpecWorkbook({
         <row r="1"><c r="A1"><v>Header</v></c></row>
         <row r="2">
           <c r="A2"><v>${modelName}</v></c>
-          <c r="B2"><v>Directional</v></c>
-          <c r="C2"><v>All Mountain</v></c>
-          <c r="K2"><v>5</v></c>
+          <c r="B2"><v>${shape}</v></c>
+          <c r="C2"><v>${purpose}</v></c>
+          <c r="K2"><v>${flex}</v></c>
         </row>
         ${sizeRows}
       </sheetData>
@@ -330,6 +333,48 @@ describe("Trial Sport source diagnostics", () => {
       trialSpecMatchKind: "exact",
       trialSizeMetadataCorrectionApplied: false,
     });
+    expect(result.products[0].sizes.every((size) => size.truthV2.waistWidthMm === size.waistWidthMm)).toBe(true);
+  });
+
+  it("does not promote nearest or generic legacy waist estimates into truth-v2", async () => {
+    const result = await importTrialSportProducts({
+      fetchText: createFetchText({
+        productPageTransform: () => buildProductPage({ entries: [makeTrialEntry(159, true)] }),
+      }),
+      fetchArrayBuffer: vi.fn(async () => buildSpecWorkbook({
+        sizes: [{ sizeLabel: "156", waistWidthCm: "25.0" }],
+      })),
+      checkedAt: "2026-08-20",
+      logger: silentLogger,
+    });
+
+    expect(result.products[0].sizes[0]).toMatchObject({
+      sizeCm: 159,
+      waistWidthMm: 250,
+      truthV2: { waistWidthMm: null, widthType: null },
+    });
+  });
+
+  it("adds decimal and multi-style truth without changing legacy normalization", async () => {
+    const result = await importTrialSportProducts({
+      fetchText: createFetchText(),
+      fetchArrayBuffer: vi.fn(async () => buildSpecWorkbook({
+        purpose: "All Mountain / Freestyle",
+        flex: "7.6",
+      })),
+      checkedAt: "2026-08-20",
+      logger: silentLogger,
+    });
+    expect(result.products[0]).toMatchObject({
+      ridingStyle: "all-mountain",
+      flex: 8,
+      skillLevel: "advanced",
+      truthV2: {
+        ridingStyles: ["all-mountain", "park"],
+        flex: 7.6,
+        skillApplicability: null,
+      },
+    });
   });
 
   it("normalizes merchant winter-season evidence without changing default year parsing", () => {
@@ -492,6 +537,19 @@ describe("Trial Sport source diagnostics", () => {
     });
 
     expect(result.products).toHaveLength(1);
+    expect(result.products[0]).toMatchObject({
+      ridingStyle: "all-mountain",
+      skillLevel: "intermediate",
+      flex: 5,
+      boardLine: "unisex",
+      truthV2: {
+        ridingStyles: ["all-mountain"],
+        skillApplicability: null,
+        flex: 5,
+        boardLine: null,
+        shapeType: "directional",
+      },
+    });
     expect(result.sourceObservations).toEqual([]);
     expect(result.diagnostics).toMatchObject({
       discoveredCount: 1,

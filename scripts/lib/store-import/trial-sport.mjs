@@ -26,6 +26,18 @@ import {
   getStoreIdentityFromUrl,
   normalizeSourceIdentityText,
 } from "./source-identity.mjs";
+import {
+  buildProductTruthV2,
+  buildSizeTruthV2,
+  knownTruth,
+  resolveBoardLineTruth,
+  resolveCamberTruth,
+  resolveFlexTruth,
+  resolveRidingStylesTruth,
+  resolveShapeTruth,
+  resolveSkillApplicabilityTruth,
+  unknownTruth,
+} from "./attribute-truth.mjs";
 
 const TRIAL_BASE_URL = "https://trial-sport.ru";
 const TRIAL_SECTION_URL =
@@ -275,6 +287,7 @@ export function buildTrialSpecMap(workbookBytes) {
         modelName,
         shape,
         purpose,
+        flexSource: normalizeWhitespace(row.K),
         flex: parseFlexNumber(row.K),
         sizes: [],
       };
@@ -706,7 +719,46 @@ function buildTrialProduct(
     modelName,
     sizeCorrectionResult.correction,
   );
-  const sizes = sizeResult.sizes;
+  const truthContext = {
+    sourceName: "Триал-Спорт",
+    sourceUrl: productUrl,
+    observedAt: checkedAt,
+  };
+  const exactSpecSizes = new Map(
+    (specGroup?.sizes ?? []).map((size) => [normalizeSizeKey(size.sizeLabel), size]),
+  );
+  const sizeCorrection = sizeCorrectionResult.correction;
+  const sizes = sizeResult.sizes.map((size) => {
+    const correctedWaist =
+      sizeCorrection?.waistWidthMmBySizeCm?.[String(size.sizeCm)] ?? null;
+    const exactSpec = exactSpecSizes.get(normalizeSizeKey(size.sizeLabel));
+    const waistResolution = Number.isFinite(correctedWaist)
+      ? knownTruth(
+          correctedWaist,
+          {
+            ...truthContext,
+            sourceName: sizeCorrection.authoritativeSource,
+            sourceField: `waistWidthMmBySizeCm.${size.sizeCm}`,
+          },
+          { provenance: "manual", method: "manual-override" },
+        )
+      : Number.isFinite(exactSpec?.waistWidthMm)
+        ? knownTruth(exactSpec.waistWidthMm, {
+            ...truthContext,
+            sourceField: "workbook.waist_width",
+          })
+        : unknownTruth(
+            { ...truthContext, sourceField: "workbook.waist_width" },
+            "no_exact_geometry",
+          );
+    return {
+      ...size,
+      truthV2: buildSizeTruthV2(waistResolution, {
+        ...truthContext,
+        sourceField: "derived.width_type",
+      }),
+    };
+  });
 
   if (sizes.length === 0 || availableEntries.length === 0) {
     return { status: "unsafe_failure", reason: "product_parse_failure" };
@@ -735,6 +787,39 @@ function buildTrialProduct(
     levelText: "",
     flex,
   });
+  const boardLineTruth = boardLineIdentity.correctionApplied
+    ? knownTruth(
+        boardLine,
+        { ...truthContext, sourceField: "authorized_board_line_correction" },
+        { provenance: "manual", method: "manual-override" },
+      )
+    : resolveBoardLineTruth(descriptionText, {
+        ...truthContext,
+        sourceField: "product_description.audience",
+      });
+  const truthV2 = buildProductTruthV2({
+    ridingStyles: resolveRidingStylesTruth(specGroup?.purpose, {
+      ...truthContext,
+      sourceField: "workbook.purpose",
+    }),
+    skillApplicability: resolveSkillApplicabilityTruth("", {
+      ...truthContext,
+      sourceField: "workbook.skill_level",
+    }),
+    boardLine: boardLineTruth,
+    flex: resolveFlexTruth(specGroup?.flexSource, {
+      ...truthContext,
+      sourceField: "workbook.flex",
+    }),
+    shapeType: resolveShapeTruth(specGroup?.shape, {
+      ...truthContext,
+      sourceField: "workbook.shape",
+    }),
+    camberProfile: resolveCamberTruth("", {
+      ...truthContext,
+      sourceField: "workbook.camber_profile",
+    }),
+  });
   const product = {
     slug: slugifyBoard(`${brand} ${modelName}`),
     brand,
@@ -759,6 +844,7 @@ function buildTrialProduct(
     scenarios: [],
     notIdealFor: [],
     sizes,
+    truthV2,
     importMeta: {
       storeCode: "trial-sport",
       sourceProductId,

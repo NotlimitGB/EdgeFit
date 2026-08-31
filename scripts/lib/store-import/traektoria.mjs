@@ -23,6 +23,17 @@ import {
   getStoreIdentityFromUrl,
   normalizeSourceIdentityText,
 } from "./source-identity.mjs";
+import {
+  buildProductTruthV2,
+  buildSizeTruthV2,
+  knownTruth,
+  resolveBoardLineTruth,
+  resolveCamberTruth,
+  resolveFlexTruth,
+  resolveRidingStylesTruth,
+  resolveShapeTruth,
+  resolveSkillApplicabilityTruth,
+} from "./attribute-truth.mjs";
 
 const TRAEKTORIA_BASE_URL = "https://www.traektoria.ru";
 const TRAEKTORIA_SECTION_API_URL =
@@ -295,6 +306,13 @@ function getFlexFromTraektoriaProduct(model, descriptions, filterMap) {
   return parseFlexNumber(filterMap.get("FLEX"));
 }
 
+function getTraektoriaFlexTruthSource(descriptions, filterMap) {
+  const numericFlexMatch = String(descriptions?.features ?? "").match(
+    /Жесткость:\s*([0-9]+(?:[.,][0-9]+)?)\s*из\s*10/iu,
+  );
+  return numericFlexMatch?.[1] ?? filterMap.get("FLEX") ?? "";
+}
+
 function extractTraektoriaImageUrls(model) {
   const urls = Array.from(
     new Set(
@@ -382,12 +400,12 @@ function buildTraektoriaProduct(
   const availability = getTraektoriaAvailability(model);
   const availableSkus = availability.availableSkus;
   const sizeTable = parseTraektoriaSizeTable(content.grid_size_html);
-  const sizes = mapTraektoriaSizesAvailability(
+  const parsedSizes = mapTraektoriaSizesAvailability(
     sizeTable.sizes,
     availableSkus,
   );
 
-  if (sizes.length === 0) {
+  if (parsedSizes.length === 0) {
     return null;
   }
 
@@ -398,6 +416,21 @@ function buildTraektoriaProduct(
     parseSeasonLabel(props.model_name, { asWinterSeason: true }) ??
     null;
   const slug = slugifyBoard(`${brand} ${modelName}`);
+  const truthContext = {
+    sourceName: "Траектория",
+    sourceUrl: productUrl,
+    observedAt: checkedAt,
+  };
+  const sizes = parsedSizes.map((size) => ({
+    ...size,
+    truthV2: buildSizeTruthV2(
+      knownTruth(size.waistWidthMm, {
+        ...truthContext,
+        sourceField: `size_table.${size.sizeLabel}.waist_width`,
+      }),
+      { ...truthContext, sourceField: "derived.width_type" },
+    ),
+  }));
   const shapeType =
     sourceMetadata.shapeType ?? mapShapeType(filterMap.get("SHAPE"));
   const flex =
@@ -408,6 +441,50 @@ function buildTraektoriaProduct(
   const skillLevel = mapSkillLevel({
     levelText: filterMap.get("LEVEL"),
     flex,
+  });
+  const correctedEvidence = {
+    provenance: "manual",
+    method: "manual-override",
+  };
+  const truthV2 = buildProductTruthV2({
+    ridingStyles: resolveRidingStylesTruth(filterMap.get("RIDING_STYLE"), {
+      ...truthContext,
+      sourceField: "filter.RIDING_STYLE",
+    }),
+    skillApplicability: resolveSkillApplicabilityTruth(filterMap.get("LEVEL"), {
+      ...truthContext,
+      sourceField: "filter.LEVEL",
+    }),
+    boardLine: sourceMetadata.correctionApplied
+      ? knownTruth(
+          sourceMetadata.boardLine,
+          { ...truthContext, sourceField: "authorized_board_line_correction" },
+          correctedEvidence,
+        )
+      : resolveBoardLineTruth(props.gender, {
+          ...truthContext,
+          sourceField: "props.gender",
+        }),
+    flex: sourceMetadata.flex != null
+      ? knownTruth(
+          sourceMetadata.flex,
+          { ...truthContext, sourceField: "authorized_flex_correction" },
+          correctedEvidence,
+        )
+      : resolveFlexTruth(
+          getTraektoriaFlexTruthSource(content.descriptions, filterMap),
+          { ...truthContext, sourceField: "features_or_filter.FLEX" },
+        ),
+    shapeType: resolveShapeTruth(
+      filterMap.get("SHAPE"),
+      { ...truthContext, sourceField: "filter.SHAPE" },
+      sourceMetadata.shapeType,
+    ),
+    camberProfile: resolveCamberTruth(
+      "",
+      { ...truthContext, sourceField: "authorized_camber_correction" },
+      sourceMetadata.camberProfile,
+    ),
   });
   const selectedSku = content.selected_sku ?? {};
   const skuPrices = availableSkus
@@ -448,6 +525,7 @@ function buildTraektoriaProduct(
     scenarios: [],
     notIdealFor: [],
     sizes,
+    truthV2,
     importMeta: {
       storeCode: "traektoria",
       sourceProductId: extractProductId(productUrl),

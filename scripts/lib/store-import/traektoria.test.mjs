@@ -153,6 +153,8 @@ function makeProductPayload({
   thingType = "сноуборд",
   gender = "унисекс",
   skuList,
+  filterOptions = [],
+  descriptions = {},
 } = {}) {
   return {
     data: {
@@ -179,8 +181,8 @@ function makeProductPayload({
                 },
               ] : skuList,
           },
-          filter_options: [],
-          descriptions: {},
+          filter_options: filterOptions,
+          descriptions,
           selected_sku: {},
           grid_size_html: table,
         },
@@ -268,6 +270,12 @@ describe("Traektoria corrected Product identity", () => {
         sourceProductId: "1890649",
         boardLineEvidence: "known",
       },
+      truthV2: {
+        boardLine: "men",
+        flex: 5,
+        shapeType: "directional",
+        camberProfile: "hybrid-camber",
+      },
     });
     expect(result.diagnostics).toMatchObject({
       unsafeFailureCount: 0,
@@ -346,11 +354,38 @@ describe("Traektoria size-table parsing", () => {
         [164, 269],
         [168, 272],
       ]);
+    expect(result.products.flatMap((product) => product.sizes).every(
+      (size) => size.truthV2.waistWidthMm === size.waistWidthMm,
+    )).toBe(true);
     expect(result.diagnostics).toMatchObject({
       resolvedCount: 2,
       importComplete: true,
       staleSafe: true,
       complete: true,
+    });
+  });
+
+  it("attaches multi-value style, direct skill and normalized flex truth", async () => {
+    const result = await importExtras({
+      [EXTRA_IDS[0]]: makeProductPayload({
+        modelName: "Truth Board",
+        gender: "Девочки",
+        filterOptions: [
+          { code: "RIDING_STYLE", value: "All Mountain / Freestyle" },
+          { code: "LEVEL", value: "Продвинутый Эксперт" },
+          { code: "FLEX", value: "Жёсткие" },
+          { code: "SHAPE", value: "Directional Twin" },
+        ],
+      }),
+      [EXTRA_IDS[1]]: makeProductPayload(),
+    });
+    const product = result.products.find((item) => item.modelName === "Truth Board");
+    expect(product.truthV2).toMatchObject({
+      ridingStyles: ["all-mountain", "park"],
+      skillApplicability: { min: "intermediate", max: "advanced" },
+      flex: 8,
+      boardLine: "women",
+      shapeType: "directional-twin",
     });
   });
 
