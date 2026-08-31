@@ -91,6 +91,7 @@ export function SeoLandingPageView({ page }: { page: SeoLandingPage }) {
               </Link>
               <Link
                 href="/catalog"
+                prefetch={false}
                 className="inline-flex items-center justify-center rounded-full border border-[var(--color-border)] bg-white px-6 py-4 text-sm font-bold text-[var(--color-pine)] hover:border-[var(--color-sky)]"
               >
                 Посмотреть модели
@@ -265,6 +266,7 @@ export function SeoLandingPageView({ page }: { page: SeoLandingPage }) {
             </Link>
               <Link
                 href="/catalog"
+                prefetch={false}
                 className="inline-flex items-center justify-center rounded-full border border-[var(--color-border)] bg-white px-6 py-4 text-sm font-bold text-[var(--color-pine)] hover:border-[var(--color-sky)]"
               >
                 Открыть каталог

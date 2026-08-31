@@ -20,8 +20,13 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("next/link", () => ({
-  default: ({ children, href, ...props }: React.ComponentProps<"a">) => (
-    <a href={String(href)} {...props}>
+  default: ({
+    children,
+    href,
+    prefetch,
+    ...props
+  }: React.ComponentProps<"a"> & { prefetch?: boolean }) => (
+    <a href={String(href)} data-prefetch={String(prefetch)} {...props}>
       {children}
     </a>
   ),
@@ -121,6 +126,9 @@ describe("canonical board page loading", () => {
     expect(mocks.getAllItems).not.toHaveBeenCalled();
     expect(markup).toContain("Brand");
     expect(markup).toContain("Model");
+    expect(markup).toMatch(
+      /<a\b[^>]*href="\/catalog"[^>]*data-prefetch="false"[^>]*>/,
+    );
     expect(markup).not.toContain("Похожие модели");
     expect(markup).not.toContain("Что ещё стоит сравнить");
   });

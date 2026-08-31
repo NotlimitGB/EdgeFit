@@ -360,7 +360,11 @@ export function ResultView({
               <Link href="/quiz" className={publicStyles.primaryAction}>
                 Пройти квиз <span aria-hidden="true">→</span>
               </Link>
-              <Link href="/catalog" className={publicStyles.secondaryAction}>
+              <Link
+                href="/catalog"
+                prefetch={false}
+                className={publicStyles.secondaryAction}
+              >
                 Открыть каталог
               </Link>
             </div>
@@ -722,7 +726,11 @@ export function ResultView({
                 >
                   Пересчитать подбор
                 </Link>
-                <Link href="/catalog" className={styles.textAction}>
+                <Link
+                  href="/catalog"
+                  prefetch={false}
+                  className={styles.textAction}
+                >
                   Смотреть каталог <span aria-hidden="true">→</span>
                 </Link>
               </div>
@@ -991,7 +999,11 @@ export function ResultView({
             >
               Пересчитать подбор
             </Link>
-            <Link href="/catalog" className={styles.textAction}>
+            <Link
+              href="/catalog"
+              prefetch={false}
+              className={styles.textAction}
+            >
               Смотреть весь каталог <span aria-hidden="true">→</span>
             </Link>
           </div>

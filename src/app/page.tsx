@@ -118,6 +118,7 @@ export default function Home() {
             </Link>
             <Link
               href="/catalog"
+              prefetch={false}
               className={`${publicStyles.secondaryAction} edgefit-home__cta-secondary`}
             >
               Смотреть каталог

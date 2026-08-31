@@ -3,8 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 import type { RecommendationResult } from "@/types/domain";
 
 vi.mock("next/link", () => ({
-  default: ({ children, href, ...props }: React.ComponentProps<"a">) => (
-    <a href={String(href)} {...props}>
+  default: ({
+    children,
+    href,
+    prefetch,
+    ...props
+  }: React.ComponentProps<"a"> & { prefetch?: boolean }) => (
+    <a href={String(href)} data-prefetch={String(prefetch)} {...props}>
       {children}
     </a>
   ),
@@ -97,6 +102,48 @@ const recommendation: RecommendationResult = {
   ],
   avoidBoards: [],
 };
+
+function expectCatalogLinksWithoutPrefetch(markup: string, count: number) {
+  const links = Array.from(
+    markup.matchAll(/<a\b[^>]*href="\/catalog"[^>]*>/g),
+    ([link]) => link,
+  );
+
+  expect(links).toHaveLength(count);
+  expect(links.every((link) => link.includes('data-prefetch="false"'))).toBe(
+    true,
+  );
+}
+
+describe("ResultView catalog prefetch", () => {
+  it("disables prefetch in the missing-result action", () => {
+    expectCatalogLinksWithoutPrefetch(
+      renderToStaticMarkup(<ResultView mode="saved" />),
+      1,
+    );
+  });
+
+  it("disables prefetch in the empty-recommendations action", () => {
+    expectCatalogLinksWithoutPrefetch(
+      renderToStaticMarkup(
+        <ResultView
+          initialRecommendation={{ ...recommendation, recommendedBoards: [] }}
+          mode="saved"
+        />,
+      ),
+      2,
+    );
+  });
+
+  it("disables prefetch in the final catalog action", () => {
+    expectCatalogLinksWithoutPrefetch(
+      renderToStaticMarkup(
+        <ResultView initialRecommendation={recommendation} mode="saved" />,
+      ),
+      1,
+    );
+  });
+});
 
 describe("ResultView saved mode", () => {
   it("renders the immutable snapshot notice without email or copy controls", () => {

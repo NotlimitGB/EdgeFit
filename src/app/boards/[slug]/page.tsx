@@ -162,7 +162,9 @@ export default async function BoardPage({ params }: BoardPageProps) {
 
       <div className={`container-shell ${styles.boardDetailShell}`}>
         <nav className={styles.breadcrumb} aria-label="Навигация по каталогу">
-          <Link href="/catalog">← Вернуться в каталог</Link>
+          <Link href="/catalog" prefetch={false}>
+            ← Вернуться в каталог
+          </Link>
           <span aria-hidden="true">/</span>
           <span>{board.brand} {board.modelName}</span>
         </nav>

@@ -31,6 +31,7 @@ export function SiteHeader() {
             <Link
               key={link.href}
               href={link.href}
+              prefetch={link.href === "/catalog" ? false : undefined}
               className="text-sm font-semibold text-[var(--color-muted)] hover:text-[var(--color-sky-deep)]"
             >
               {link.label}
