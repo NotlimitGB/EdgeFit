@@ -29,6 +29,7 @@ function buildListing(...ids) {
 function buildProductPage({
   availability = "available",
   brand = "TEST",
+  description = "",
   entries,
   id = "1001",
   modelName = "Model",
@@ -48,10 +49,14 @@ function buildProductPage({
     availability === "malformed"
       ? "<script>const icspJS = notJson;</script>"
       : `<script>const icspJS = ${JSON.stringify(pageEntries)};</script>`;
+  const descriptionMarkup = description
+    ? `Сноуборд ${brand} ${modelName} - ${`${description} `.repeat(8)}<a href="javascript:void(0)" onclick="showBrand();">Brand</a>`
+    : "";
 
   return `
     <a href="/gds.php?brand=test"><span>${brand}</span></a>
     <h1>Сноуборд ${brand} ${modelName} 2025</h1>
+    ${descriptionMarkup}
     ${availabilityScript}
     <a href="/svdownload.php?svid=7">Specs</a>
     <script>window.productId = ${id};</script>
@@ -373,6 +378,79 @@ describe("Trial Sport source diagnostics", () => {
         ridingStyles: ["all-mountain", "park"],
         flex: 7.6,
         skillApplicability: null,
+      },
+    });
+  });
+
+  it.each([
+    ["женская команда бренда", "women"],
+    ["мужской стиль катания", "men"],
+    ["подходит мужчинам и женщинам", "women"],
+  ])(
+    "does not promote Trial marketing prose %j into board-line truth",
+    async (description, legacyBoardLine) => {
+      const result = await importTrialSportProducts({
+        fetchText: createFetchText({
+          productPageTransform: () => buildProductPage({ description }),
+        }),
+        fetchArrayBuffer: vi.fn(async () => buildSpecWorkbook()),
+        checkedAt: "2026-08-20",
+        logger: silentLogger,
+      });
+
+      expect(result.products[0]).toMatchObject({
+        boardLine: legacyBoardLine,
+        importMeta: { boardLineEvidence: "known" },
+        truthV2: {
+          boardLine: null,
+          attributeEvidence: {
+            boardLine: {
+              state: "unknown",
+              provenance: "merchant",
+              method: null,
+              sourceField: null,
+            },
+          },
+        },
+      });
+      expect(result.products[0].truthV2.attributeEvidence.boardLine).not.toHaveProperty("reason");
+    },
+  );
+
+  it("uses an authorized correction for truth even when legacy evidence already matches", async () => {
+    const result = await importTrialSportProducts({
+      fetchText: createFetchText({
+        listingIds: ["3131268"],
+        productPageTransform: () =>
+          buildProductPage({
+            brand: "Bataleon",
+            description: "мужская модель",
+            id: "3131268",
+            modelName: "Evil Twin",
+          }),
+      }),
+      fetchArrayBuffer: vi.fn(async () =>
+        buildSpecWorkbook({ modelName: "Evil Twin" })),
+      checkedAt: "2026-08-20",
+      logger: silentLogger,
+    });
+
+    expect(result.products[0]).toMatchObject({
+      boardLine: "men",
+      importMeta: {
+        boardLineEvidence: "known",
+        sourceMetadataCorrectionApplied: false,
+      },
+      truthV2: {
+        boardLine: "men",
+        attributeEvidence: {
+          boardLine: {
+            state: "known",
+            provenance: "manual",
+            method: "manual-override",
+            sourceField: "authorized_board_line_correction",
+          },
+        },
       },
     });
   });

@@ -68,17 +68,47 @@ describe("attribute truth resolvers", () => {
   });
 
   it.each([
-    ["", null],
     ["men", "men"],
+    ["male", "men"],
+    ["мужской", "men"],
+    ["для мужчин", "men"],
+    ["women", "women"],
+    ["female", "women"],
     ["женская", "women"],
+    ["для женщин", "women"],
     ["Девочки", "women"],
+    ["unisex", "unisex"],
     ["унисекс", "unisex"],
-    ["kids", null],
-    ["junior", null],
-    ["youth", null],
-  ])("keeps board-line unknown distinct from unisex for %j", (source, value) => {
-    expect(resolveBoardLineTruth(source, context).value).toBe(value);
+  ])("resolves explicit board-line evidence from %j", (source, value) => {
+    expect(resolveBoardLineTruth(source, context)).toMatchObject({
+      value,
+      evidence: { state: "known" },
+    });
   });
+
+  it.each([
+    "мужчины и женщины",
+    "мужская женская",
+    "men women",
+    "male female",
+    "unisex men",
+    "унисекс женская",
+  ])("keeps conflicting board-line evidence ambiguous for %j", (source) => {
+    expect(resolveBoardLineTruth(source, context)).toMatchObject({
+      value: null,
+      evidence: { state: "ambiguous" },
+    });
+  });
+
+  it.each(["", "kids", "junior", "youth", "детская", "для детей"])(
+    "keeps unsupported board-line evidence unknown for %j",
+    (source) => {
+      expect(resolveBoardLineTruth(source, context)).toMatchObject({
+        value: null,
+        evidence: { state: "unknown" },
+      });
+    },
+  );
 
   it("keeps shape/camber evidence explicit and bounded", () => {
     expect(resolveShapeTruth("Directional Twin", context)).toMatchObject({ value: "directional-twin" });

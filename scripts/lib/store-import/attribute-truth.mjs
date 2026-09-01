@@ -210,12 +210,27 @@ export function resolveFlexTruth(value, context = {}) {
 export function resolveBoardLineTruth(value, context = {}) {
   const text = normalizeText(value);
   if (!text) return unknown(context, "missing");
-  if (/^(?:unisex|унисекс)$/u.test(text)) return knownTruth("unisex", context);
-  if (/\b(?:women|womens|female)\b/u.test(text) || /женск|девоч/u.test(text)) {
-    return knownTruth("women", context, { method: "normalized", normalizationRule: "board-line-v1" });
+
+  const candidates = [
+    /\b(?:men|mens|male)\b/u.test(text) || /мужск|мужчин/u.test(text)
+      ? "men"
+      : null,
+    /\b(?:women|womens|female)\b/u.test(text) || /женск|женщин|девоч/u.test(text)
+      ? "women"
+      : null,
+    /\bunisex\b/u.test(text) || /унисекс/u.test(text) ? "unisex" : null,
+  ].filter(Boolean);
+
+  if (candidates.length > 1) {
+    return ambiguous(context, candidates, "conflicting_values");
   }
-  if (/\b(?:men|mens|male)\b/u.test(text) || /мужск/u.test(text)) {
-    return knownTruth("men", context, { method: "normalized", normalizationRule: "board-line-v1" });
+  if (candidates.length === 1) {
+    const boardLine = candidates[0];
+    const explicitCanonical = text === boardLine;
+    return knownTruth(boardLine, context, {
+      method: explicitCanonical ? "explicit" : "normalized",
+      normalizationRule: explicitCanonical ? null : "board-line-v1",
+    });
   }
   return unknown(context, /kids?|junior|youth|детск|юниор/u.test(text) ? "unsupported_audience" : "unrecognized");
 }

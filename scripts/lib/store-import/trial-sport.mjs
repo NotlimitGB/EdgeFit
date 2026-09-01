@@ -30,7 +30,6 @@ import {
   buildProductTruthV2,
   buildSizeTruthV2,
   knownTruth,
-  resolveBoardLineTruth,
   resolveCamberTruth,
   resolveFlexTruth,
   resolveRidingStylesTruth,
@@ -100,6 +99,7 @@ export function resolveTrialSportBoardLineMetadata(
       boardLine: raw.boardLine,
       evidence: raw.evidence,
       correctionApplied: false,
+      correctionAuthorized: false,
       reason: null,
     };
   }
@@ -112,6 +112,7 @@ export function resolveTrialSportBoardLineMetadata(
       status: "conflict",
       category: "source_metadata_conflict",
       correctionApplied: false,
+      correctionAuthorized: false,
       reason: correction.reason,
     };
   }
@@ -121,6 +122,7 @@ export function resolveTrialSportBoardLineMetadata(
       status: "conflict",
       category: "source_metadata_conflict",
       correctionApplied: false,
+      correctionAuthorized: false,
       reason: correction.reason,
     };
   }
@@ -130,6 +132,7 @@ export function resolveTrialSportBoardLineMetadata(
     boardLine: correction.correctedBoardLine,
     evidence: "known",
     correctionApplied: raw.evidence !== "known",
+    correctionAuthorized: true,
     reason: correction.reason,
   };
 }
@@ -787,16 +790,16 @@ function buildTrialProduct(
     levelText: "",
     flex,
   });
-  const boardLineTruth = boardLineIdentity.correctionApplied
+  const boardLineTruth = boardLineIdentity.correctionAuthorized
     ? knownTruth(
         boardLine,
         { ...truthContext, sourceField: "authorized_board_line_correction" },
         { provenance: "manual", method: "manual-override" },
       )
-    : resolveBoardLineTruth(descriptionText, {
-        ...truthContext,
-        sourceField: "product_description.audience",
-      });
+    : unknownTruth(
+        { ...truthContext, sourceField: null },
+        "no_explicit_audience_field",
+      );
   const truthV2 = buildProductTruthV2({
     ridingStyles: resolveRidingStylesTruth(specGroup?.purpose, {
       ...truthContext,
