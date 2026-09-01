@@ -685,8 +685,8 @@ function MultiSelectField<T extends string>({
 
         if (
           isOpen &&
-          (!(nextFocus instanceof Node) ||
-            !event.currentTarget.contains(nextFocus))
+          nextFocus instanceof Node &&
+          !event.currentTarget.contains(nextFocus)
         ) {
           onOpenChange(false);
         }
