@@ -252,9 +252,10 @@ describe("canonical Board Detail helpers", () => {
       },
     }).canonicalSpecs;
 
-    expect(getCanonicalFlexPresentation(specs).value).toBe(
-      "Требует перепроверки",
-    );
+    expect(getCanonicalFlexPresentation(specs)).toEqual({
+      value: "Уточняется",
+      caption: "Пока нет подтверждённых данных о жёсткости этой модели.",
+    });
   });
 
   it("shows an unknown state for missing flex", () => {
@@ -270,10 +271,9 @@ describe("canonical Board Detail helpers", () => {
     const trust = getCanonicalBoardTrustDetails(makeBoard().canonicalSpecs);
 
     expect(trust.isReady).toBe(true);
-    expect(trust.badgeLabel).toBe("Проверено");
-    expect(trust.badgeDescription).toContain(
-      "Характеристики модели отмечены как проверенные",
-    );
+    expect(trust.badgeLabel).toBe("Основные характеристики указаны");
+    expect(trust.badgeDescription).toContain("Основные характеристики указаны.");
+    expect(trust.badgeDescription).toContain("Данные обновлены");
   });
 
   it("reports a missing canonical source", () => {
@@ -283,9 +283,8 @@ describe("canonical Board Detail helpers", () => {
     const trust = getCanonicalBoardTrustDetails(specs);
 
     expect(trust.isReady).toBe(false);
-    expect(trust.issueLabel).toBe(
-      "Не указан источник характеристик.",
-    );
+    expect(trust.badgeLabel).toBe("Некоторые характеристики уточняются");
+    expect(trust.issueLabel).toBe("Источник характеристик пока не указан.");
   });
 
   it("keeps canonical trust independent from availability", () => {

@@ -432,8 +432,12 @@ export default async function BoardPage({ params }: BoardPageProps) {
 
         <section className={`${styles.contentSection} ${styles.trustSection}`}>
           <div className={styles.trustSummary}>
-            <p className={publicStyles.kicker}>Проверка характеристик</p>
-            <h2>Доверие к данным</h2>
+            <p className={publicStyles.kicker}>Перед покупкой</p>
+            <h2>
+              {trustDetails.isReady
+                ? "Основные характеристики"
+                : "Что стоит уточнить"}
+            </h2>
             <span
               className={
                 trustDetails.isReady
@@ -453,12 +457,14 @@ export default async function BoardPage({ params }: BoardPageProps) {
           <div className={styles.sourceSummary}>
             {trustDetails.sourceLabel && trustDetails.sourceUrl ? (
               <>
-                <p className={publicStyles.microLabel}>Источник</p>
+                <p className={publicStyles.microLabel}>
+                  Источник характеристик
+                </p>
                 <h3>{trustDetails.sourceLabel}</h3>
                 {trustDetails.checkedAtLabel ? (
-                  <p>Последняя проверка: {trustDetails.checkedAtLabel}</p>
+                  <p>Данные обновлены: {trustDetails.checkedAtLabel}.</p>
                 ) : (
-                  <p>Дата последней проверки не указана.</p>
+                  <p>Дата обновления не указана.</p>
                 )}
                 <a
                   href={trustDetails.sourceUrl}
@@ -471,9 +477,14 @@ export default async function BoardPage({ params }: BoardPageProps) {
               </>
             ) : (
               <>
-                <p className={publicStyles.microLabel}>Источник</p>
-                <h3>Источник не указан</h3>
-                <p>{trustDetails.badgeDescription}</p>
+                <p className={publicStyles.microLabel}>
+                  Источник характеристик
+                </p>
+                <h3>Пока не указан</h3>
+                <p>
+                  Перед покупкой сверь характеристики на сайте производителя
+                  или магазина.
+                </p>
               </>
             )}
           </div>

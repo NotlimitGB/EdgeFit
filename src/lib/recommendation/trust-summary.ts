@@ -39,17 +39,17 @@ export function buildRecommendationTrustSummary(
 
   const headline =
     readyCount === totalCount
-      ? `Все ${totalCount} модели в этой подборке уже проверены.`
-      : `${readyCount} из ${totalCount} рекомендованных моделей уже проверены по источникам.`;
+      ? "Основные характеристики указаны для всех моделей в подборке."
+      : "Для части моделей некоторые характеристики пока уточняются.";
 
   const description = latestCheckedAt
-    ? `Последняя сверка данных в этой подборке: ${formatTrustDate(latestCheckedAt)}.`
-    : "Для части карточек ещё нет даты ручной сверки.";
+    ? `Последняя дата обновления данных в подборке: ${formatTrustDate(latestCheckedAt)}.`
+    : "Для части моделей дата обновления данных не указана.";
 
   const reviewMessage =
     needsReviewCount === 0
-      ? "Сейчас в выдаче нет карточек, которые требуют ручной перепроверки."
-      : `${needsReviewCount} карточк${needsReviewCount === 1 ? "а ещё требует" : needsReviewCount < 5 ? "и ещё требуют" : " ещё требуют"} ручной перепроверки перед жёстким выбором.`;
+      ? "Перед покупкой сверь характеристики выбранной ростовки в магазине."
+      : "Некоторые характеристики стоит уточнить перед покупкой.";
 
   return {
     totalCount,
@@ -62,4 +62,3 @@ export function buildRecommendationTrustSummary(
     reviewMessage,
   };
 }
-

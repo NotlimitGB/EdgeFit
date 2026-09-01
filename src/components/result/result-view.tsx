@@ -878,7 +878,7 @@ export function ResultView({
               {trustSummary.totalCount > 0 ? (
                 <div className={styles.trustSummary}>
                   <div>
-                    <p className={publicStyles.microLabel}>Что известно о данных</p>
+                    <p className={publicStyles.microLabel}>Что известно о моделях</p>
                     <h3>{trustSummary.headline}</h3>
                     <p className={styles.trustSummaryDescription}>
                       {trustSummary.description}
@@ -891,11 +891,11 @@ export function ResultView({
                       <dd>{trustSummary.totalCount}</dd>
                     </div>
                     <div>
-                      <dt>Сверены</dt>
+                      <dt>Основные данные</dt>
                       <dd>{trustSummary.readyCount}</dd>
                     </div>
                     <div>
-                      <dt>Перепроверить</dt>
+                      <dt>Нужно уточнить</dt>
                       <dd>{trustSummary.needsReviewCount}</dd>
                     </div>
                   </dl>

@@ -92,6 +92,9 @@ describe("Quiz v2 rendered fields", () => {
       /name="boardLinePreference" checked="" value="any"/u,
     );
     expect(markup).toContain("«Без привязки» — нейтральный вариант.");
+    expect(markup).toContain(
+      "Не даём линейке дополнительный приоритет и смотрим прежде всего на твои параметры и стиль катания.",
+    );
     expect(markup).not.toContain("Это фильтр каталога");
     expect(markup).toContain("Максимальный бюджет");
     expect(markup).toContain("Бюджет не меняет подбор и порядок моделей.");

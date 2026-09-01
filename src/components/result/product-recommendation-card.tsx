@@ -85,8 +85,8 @@ export function ProductRecommendationCard({
       : null,
   ].filter((fact): fact is { label: string; value: string } => Boolean(fact));
   const readinessLabel = match.isCatalogReady
-    ? "Данные сверены"
-    : "Характеристики перепроверить";
+    ? "Основные характеристики указаны"
+    : "Некоторые характеристики уточняются";
   const merchantLocationLabel =
     offerIntelligence.storeCode === "traektoria"
       ? "Траектории"

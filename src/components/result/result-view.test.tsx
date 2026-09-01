@@ -163,6 +163,12 @@ describe("ResultView saved mode", () => {
     expect(markup).toContain("Твой профиль");
     expect(markup).toContain("Бюджет");
     expect(markup).toContain("не указан");
+    expect(markup).toContain("Что известно о моделях");
+    expect(markup).toContain("Основные данные");
+    expect(markup).toContain("Нужно уточнить");
+    expect(markup).not.toContain("Что известно о данных");
+    expect(markup).not.toContain("Сверены");
+    expect(markup).not.toContain("Перепроверить");
   });
 
   it("keeps an over-budget Top 1 ahead of a lower-price alternative", () => {

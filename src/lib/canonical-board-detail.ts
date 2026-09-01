@@ -17,7 +17,7 @@ const ROLE_ORDER: Record<CanonicalFamilyMemberRole, number> = {
 };
 
 const FLEX_REVIEW_CAPTION =
-  "По этой модели источник не даёт надёжной точной оценки, поэтому не показываем жёсткость как конкретный балл.";
+  "Пока нет подтверждённых данных о жёсткости этой модели.";
 
 export interface CanonicalPricePresentation {
   label: "Ориентир цены";
@@ -31,7 +31,9 @@ export interface CanonicalFlexPresentation {
 
 export interface CanonicalBoardTrustDetails {
   isReady: boolean;
-  badgeLabel: "Проверено" | "Нужно перепроверить";
+  badgeLabel:
+    | "Основные характеристики указаны"
+    | "Некоторые характеристики уточняются";
   badgeDescription: string;
   sourceLabel: string | null;
   sourceUrl: string | null;
@@ -182,7 +184,7 @@ export function getCanonicalFlexPresentation(
   }
 
   return {
-    value: "Требует перепроверки",
+    value: "Уточняется",
     caption: FLEX_REVIEW_CAPTION,
   };
 }
@@ -196,16 +198,16 @@ export function getCanonicalBoardTrustDetails(
   const issues: string[] = [];
 
   if (specs.dataStatus !== "verified") {
-    issues.push("Характеристики модели ещё не отмечены как проверенные.");
+    issues.push("Некоторые характеристики пока уточняются.");
   }
   if (!sourceName || !sourceUrl) {
-    issues.push("Не указан источник характеристик.");
+    issues.push("Источник характеристик пока не указан.");
   }
   if (!specs.shapeType) {
-    issues.push("Не указана форма / направленность доски.");
+    issues.push("Форма доски пока не указана.");
   }
   if (!specs.camberProfile) {
-    issues.push("Не указан прогиб доски.");
+    issues.push("Прогиб пока не указан.");
   }
 
   const isReady = issues.length === 0;
@@ -213,12 +215,14 @@ export function getCanonicalBoardTrustDetails(
 
   return {
     isReady,
-    badgeLabel: isReady ? "Проверено" : "Нужно перепроверить",
+    badgeLabel: isReady
+      ? "Основные характеристики указаны"
+      : "Некоторые характеристики уточняются",
     badgeDescription: isReady
       ? checkedAtLabel
-        ? `Характеристики модели отмечены как проверенные, последняя проверка ${checkedAtLabel}.`
-        : "Характеристики модели отмечены как проверенные."
-      : issueLabel ?? "Характеристики модели требуют ручной перепроверки.",
+        ? `Основные характеристики указаны. Данные обновлены ${checkedAtLabel}.`
+        : "Основные характеристики указаны."
+      : issueLabel ?? "Некоторые характеристики пока уточняются.",
     sourceLabel: sourceName && sourceUrl ? sourceName : null,
     sourceUrl: sourceName && sourceUrl ? sourceUrl : null,
     checkedAtLabel,

@@ -126,6 +126,11 @@ describe("canonical board page loading", () => {
     expect(mocks.getAllItems).not.toHaveBeenCalled();
     expect(markup).toContain("Brand");
     expect(markup).toContain("Model");
+    expect(markup).toContain("Перед покупкой");
+    expect(markup).toContain("Основные характеристики");
+    expect(markup).toContain("Источник характеристик");
+    expect(markup).toContain("Данные обновлены:");
+    expect(markup).not.toContain("Доверие к данным");
     expect(markup).toMatch(
       /<a\b[^>]*href="\/catalog"[^>]*data-prefetch="false"[^>]*>/,
     );

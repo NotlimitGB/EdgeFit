@@ -44,7 +44,7 @@ const stepDetails = [
     eyebrow: "Твои параметры",
     title: "Начнём с того, что реально влияет на размер",
     description:
-      "Рост и вес помогают определить длину, а размер ботинка и стойка — безопасную ширину доски.",
+      "Рост и вес помогают определить длину, а размер ботинка и стойка — подходящую ширину доски.",
     context: "Эти ответы задают физическую основу подбора.",
   },
   {
@@ -65,7 +65,7 @@ const stepDetails = [
     description:
       "Характер катания и линейка уточняют выдачу, а необязательный бюджет добавляет только ценовой ориентир.",
     context:
-      "Эти ответы добавляют предпочтения поверх уже рассчитанного физического fit.",
+      "Эти ответы дополняют уже рассчитанные ростовку и ширину.",
   },
 ] as const;
 
@@ -86,13 +86,13 @@ const boardLineOptions = [
     value: "women",
     title: "Женская",
     description:
-      "Выше ставим модели из женской линейки. Физический fit остаётся персональным.",
+      "Выше ставим модели из женской линейки. Ростовку и ширину всё равно считаем по твоим параметрам.",
   },
   {
     value: "any",
     title: "Без привязки",
     description:
-      "Не даём линейке дополнительный приоритет и смотрим прежде всего на fit.",
+      "Не даём линейке дополнительный приоритет и смотрим прежде всего на твои параметры и стиль катания.",
   },
 ] as const satisfies readonly ChoiceOption<
   QuizSubmission["boardLinePreference"]
@@ -615,10 +615,12 @@ export function QuizFlow() {
 
       <aside className={styles.contextRail} aria-labelledby="quiz-output-title">
         <div className={styles.contextCoordinate} aria-hidden="true">
-          EF / FIT 0{step + 1}
+          EF / ШАГ 0{step + 1}
         </div>
         <p className={publicStyles.microLabel}>Что получится на выходе</p>
-        <h2 id="quiz-output-title">Понятный fit, а не одна случайная цифра</h2>
+        <h2 id="quiz-output-title">
+          Понятный результат, а не одна случайная цифра
+        </h2>
         <dl className={styles.outputList}>
           {resultOutputs.map(([number, term, description]) => (
             <div key={term}>
@@ -636,7 +638,7 @@ export function QuizFlow() {
         </div>
         <p className={styles.contextDisclaimer}>
           Предварительные цифры не показываем: сначала нужны все ответы, затем
-          считаем реальный fit.
+          подбираем подходящую ростовку и ширину.
         </p>
       </aside>
 

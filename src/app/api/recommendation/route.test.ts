@@ -4,14 +4,13 @@ import type { RecommendationResult } from "@/types/domain";
 const mocks = vi.hoisted(() => ({
   save: vi.fn(),
   getRecommendation: vi.fn(),
+  getRecommendationCatalog: vi.fn(),
   recommendation: null as RecommendationResult | null,
 }));
 
 vi.mock("@/lib/products", () => ({
-  getRecommendationCatalog: async () => ({
-    products: [{ id: "product-1" }],
-    familyKeyByProductId: { "product-1": "family:family-1" },
-  }),
+  getRecommendationCatalog: (...parameters: unknown[]) =>
+    mocks.getRecommendationCatalog(...parameters),
 }));
 vi.mock("@/lib/recommendation/engine", () => ({
   getRecommendation: (...parameters: unknown[]) =>
@@ -60,6 +59,31 @@ describe("recommendation API saved-result transport", () => {
     vi.clearAllMocks();
     mocks.recommendation = recommendation;
     mocks.getRecommendation.mockReturnValue(recommendation);
+    mocks.getRecommendationCatalog.mockResolvedValue({
+      products: [{ id: "product-1" }],
+      familyKeyByProductId: { "product-1": "family:family-1" },
+    });
+  });
+
+  it("returns the buyer-facing 503 message when the catalog is empty", async () => {
+    mocks.getRecommendationCatalog.mockResolvedValue({
+      products: [],
+      familyKeyByProductId: {},
+    });
+    const response = await POST(
+      new Request("http://localhost/api/recommendation", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(recommendation.input),
+      }),
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      message: "Не удалось загрузить каталог. Попробуй ещё раз немного позже.",
+    });
+    expect(mocks.getRecommendation).not.toHaveBeenCalled();
+    expect(mocks.save).not.toHaveBeenCalled();
   });
 
   it("keeps the response body exact and omits saved headers without a token", async () => {

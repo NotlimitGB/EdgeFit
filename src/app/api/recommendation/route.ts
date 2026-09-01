@@ -15,8 +15,7 @@ export async function POST(request: Request) {
     if (products.length === 0) {
       return NextResponse.json(
         {
-          message:
-            "Каталог сейчас недоступен. Проверьте подключение к базе данных и наличие товаров.",
+          message: "Не удалось загрузить каталог. Попробуй ещё раз немного позже.",
         },
         { status: 503 },
       );

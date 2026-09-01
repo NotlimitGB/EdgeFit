@@ -132,6 +132,12 @@ function renderCard(
 }
 
 describe("ProductRecommendationCard commercial presentation", () => {
+  it("uses a buyer-facing catalog readiness badge", () => {
+    expect(renderCard(match.product.affiliateUrl)).toContain(
+      "Основные характеристики указаны",
+    );
+  });
+
   it("renders an optional decision cue before reasons and commerce", () => {
     const markup = renderToStaticMarkup(
       <ProductRecommendationCard
