@@ -4,11 +4,33 @@ import {
   revalidateTraektoriaProducts,
   resolveTraektoriaBoardLineMetadata,
   resolveTraektoriaSourceMetadata,
+  TRAEKTORIA_SOURCE_METADATA_CORRECTIONS,
 } from "./traektoria.mjs";
+import { normalizeSourceIdentityText } from "./source-identity.mjs";
 
 const EXTRA_IDS = ["1890639", "1890653"];
+const GUARDED_MEN_SOURCES = [
+  ["1890654", "Stratos"],
+  ["1890652", "Tweaker"],
+];
 
 describe("Traektoria trusted board-line corrections", () => {
+  it.each(["1890654", "1890652"])(
+    "rejects wrong identity for correction source %s",
+    (sourceProductId) => {
+      expect(resolveTraektoriaSourceMetadata({
+        sourceProductId,
+        brand: "Wrong",
+        modelName: "Wrong",
+        rawGender: "unisex",
+      })).toMatchObject({
+        status: "conflict",
+        category: "source_metadata_conflict",
+        correctionApplied: false,
+      });
+    },
+  );
+
   it.each([
     ["other-women", "women", "women"],
     ["other-men", "men", "men"],
@@ -22,18 +44,22 @@ describe("Traektoria trusted board-line corrections", () => {
     });
   });
 
-  it.each(["1890654", "1890652"])(
+  it.each(GUARDED_MEN_SOURCES)(
     "corrects trusted men source %s while the merchant reports unisex",
-    (sourceId) => {
+    (sourceProductId, modelName) => {
       expect(
-        resolveTraektoriaBoardLineMetadata(sourceId, "unisex"),
+        resolveTraektoriaSourceMetadata({
+          sourceProductId, brand: "Jones", modelName, rawGender: "unisex",
+        }),
       ).toMatchObject({
         status: "resolved",
         boardLine: "men",
         evidence: "known",
         correctionApplied: true,
       });
-      expect(resolveTraektoriaBoardLineMetadata(sourceId, "men")).toMatchObject({
+      expect(resolveTraektoriaSourceMetadata({
+        sourceProductId, brand: "Jones", modelName, rawGender: "men",
+      })).toMatchObject({
         status: "resolved",
         boardLine: "men",
         evidence: "known",
@@ -42,17 +68,70 @@ describe("Traektoria trusted board-line corrections", () => {
     },
   );
 
-  it.each(["1890654", "1890652"])(
-    "fails closed when trusted source %s reports women or ambiguous metadata",
-    (sourceId) => {
-      expect(resolveTraektoriaBoardLineMetadata(sourceId, "women")).toMatchObject({
+  describe.each(GUARDED_MEN_SOURCES)("identity guard for %s / %s", (sourceProductId, modelName) => {
+    it.each([
+      ["wrong brand", { brand: "Wrong" }],
+      ["wrong model", { modelName: "Wrong" }],
+      ["missing brand", { brand: undefined }],
+      ["missing model", { modelName: undefined }],
+      ["missing identity", { brand: undefined, modelName: undefined }],
+      ["empty brand", { brand: " " }],
+      ["empty model", { modelName: " " }],
+      ["empty identity", { brand: "", modelName: "" }],
+    ])("fails closed for %s", (_case, identity) => {
+      expect(resolveTraektoriaSourceMetadata({
+        sourceProductId, brand: "Jones", modelName, rawGender: "unisex", ...identity,
+      })).toMatchObject({
         status: "conflict",
         category: "source_metadata_conflict",
+        correctionApplied: false,
       });
-      expect(resolveTraektoriaBoardLineMetadata(sourceId, "")).toMatchObject({
-        status: "conflict",
-        category: "source_metadata_conflict",
-      });
+    });
+
+    it.each(["women", "", undefined, "unknown", "youth"])(
+      "rejects incompatible merchant audience %j with correct identity",
+      (rawGender) => {
+        expect(resolveTraektoriaSourceMetadata({
+          sourceProductId, brand: "Jones", modelName, rawGender,
+        })).toMatchObject({
+          status: "conflict",
+          category: "source_metadata_conflict",
+          correctionApplied: false,
+        });
+      },
+    );
+
+    it("uses the existing identity normalization", () => {
+      expect(resolveTraektoriaSourceMetadata({
+        sourceProductId,
+        brand: "  JONES  ",
+        modelName: ` ${modelName.toUpperCase()} `,
+        rawGender: "унисекс",
+      })).toMatchObject({ status: "resolved", boardLine: "men", correctionApplied: true });
+    });
+  });
+
+  it.each(Object.keys(TRAEKTORIA_SOURCE_METADATA_CORRECTIONS))(
+    "refuses identity-sensitive correction %s through the identity-free wrapper",
+    (sourceProductId) => {
+      for (const rawGender of ["unisex", "men", "", "unknown"]) {
+        expect(resolveTraektoriaBoardLineMetadata(sourceProductId, rawGender)).toMatchObject({
+          status: "conflict",
+          category: "source_metadata_conflict",
+          correctionApplied: false,
+        });
+      }
+    },
+  );
+
+  it.each(Object.entries(TRAEKTORIA_SOURCE_METADATA_CORRECTIONS))(
+    "requires a complete normalized correction identity for %s",
+    (_sourceProductId, correction) => {
+      for (const field of ["expectedBrand", "expectedModel"]) {
+        expect(correction[field]).toEqual(expect.any(String));
+        expect(correction[field].trim().length).toBeGreaterThan(0);
+        expect(correction[field]).toBe(normalizeSourceIdentityText(correction[field]));
+      }
     },
   );
 
@@ -283,24 +362,34 @@ describe("Traektoria corrected Product identity", () => {
     });
   });
 
-  it("emits corrected board-line metadata consistently for Jones Stratos men", async () => {
+  it.each(GUARDED_MEN_SOURCES.flatMap(([sourceProductId, modelName]) =>
+    ["unisex", "men"].map((gender) => [sourceProductId, modelName, gender]),
+  ))("emits guarded %s / Jones %s truth for merchant line %s", async (sourceProductId, modelName, gender) => {
     const result = await importExtras(
       {
         [EXTRA_IDS[0]]: makeProductPayload(),
         [EXTRA_IDS[1]]: makeProductPayload(),
-        "1890654": makeProductPayload({ modelName: "Jones Stratos" }),
+        [sourceProductId]: makeProductPayload({ brand: "Jones", modelName, gender }),
       },
-      { listingIds: ["1890654"] },
+      { listingIds: [sourceProductId] },
     );
     const corrected = result.products.find(
-      (product) => product.importMeta.sourceProductId === "1890654",
+      (product) => product.importMeta.sourceProductId === sourceProductId,
     );
 
     expect(corrected).toMatchObject({
       boardLine: "men",
       importMeta: {
-        sourceProductId: "1890654",
+        sourceProductId,
         boardLineEvidence: "known",
+      },
+      truthV2: {
+        boardLine: "men",
+        attributeEvidence: {
+          boardLine: gender === "unisex"
+            ? { provenance: "manual", method: "manual-override" }
+            : { provenance: "merchant", method: "explicit" },
+        },
       },
     });
     expect(result.diagnostics).toMatchObject({
@@ -315,7 +404,8 @@ describe("Traektoria corrected Product identity", () => {
         [EXTRA_IDS[0]]: makeProductPayload(),
         [EXTRA_IDS[1]]: makeProductPayload(),
         "1890652": makeProductPayload({
-          modelName: "Jones Tweaker",
+          brand: "Jones",
+          modelName: "Tweaker",
           gender: "women",
         }),
       },

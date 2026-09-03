@@ -45,12 +45,16 @@ const EXTRA_PRODUCT_URLS = [
 
 export const TRAEKTORIA_SOURCE_METADATA_CORRECTIONS = Object.freeze({
   "1890654": Object.freeze({
+    expectedBrand: "jones",
+    expectedModel: "stratos",
     expectedBoardLine: "unisex",
     correctedBoardLine: "men",
     reason:
       "Verified Jones Stratos men identity; merchant labels this source as unisex.",
   }),
   "1890652": Object.freeze({
+    expectedBrand: "jones",
+    expectedModel: "tweaker",
     expectedBoardLine: "unisex",
     correctedBoardLine: "men",
     reason:
@@ -95,10 +99,12 @@ export function resolveTraektoriaSourceMetadata({
   }
 
   const identityMatches =
-    (!correction.expectedBrand ||
-      normalizeSourceIdentityText(brand) === correction.expectedBrand) &&
-    (!correction.expectedModel ||
-      normalizeSourceIdentityText(modelName) === correction.expectedModel);
+    typeof correction.expectedBrand === "string" &&
+    correction.expectedBrand.trim().length > 0 &&
+    typeof correction.expectedModel === "string" &&
+    correction.expectedModel.trim().length > 0 &&
+    normalizeSourceIdentityText(brand) === correction.expectedBrand &&
+    normalizeSourceIdentityText(modelName) === correction.expectedModel;
   const acceptedBoardLines = correction.acceptedBoardLines ?? [
     correction.expectedBoardLine,
     correction.correctedBoardLine,
