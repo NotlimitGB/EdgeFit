@@ -98,6 +98,16 @@ export function resolveTraektoriaSourceMetadata({
     };
   }
 
+  const strictAudience = resolveBoardLineTruth(rawGender);
+  if (strictAudience.evidence.state === "ambiguous") {
+    return {
+      status: "conflict",
+      category: "source_metadata_conflict",
+      correctionApplied: false,
+      reason: correction.reason,
+    };
+  }
+
   const identityMatches =
     typeof correction.expectedBrand === "string" &&
     correction.expectedBrand.trim().length > 0 &&

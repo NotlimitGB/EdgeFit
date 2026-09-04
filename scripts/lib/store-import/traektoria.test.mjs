@@ -7,6 +7,7 @@ import {
   TRAEKTORIA_SOURCE_METADATA_CORRECTIONS,
 } from "./traektoria.mjs";
 import { normalizeSourceIdentityText } from "./source-identity.mjs";
+import { resolveBoardLineTruth } from "./attribute-truth.mjs";
 
 const EXTRA_IDS = ["1890639", "1890653"];
 const GUARDED_MEN_SOURCES = [
@@ -15,6 +16,40 @@ const GUARDED_MEN_SOURCES = [
 ];
 
 describe("Traektoria trusted board-line corrections", () => {
+  it.each(Object.entries(TRAEKTORIA_SOURCE_METADATA_CORRECTIONS).flatMap(
+    ([sourceProductId, correction]) => ["men unisex", "male unisex", "women unisex", "men women"]
+      .map((rawGender) => [sourceProductId, correction, rawGender]),
+  ))("rejects ambiguous audience for %s with %j / %s", (sourceProductId, correction, rawGender) => {
+    expect(resolveBoardLineTruth(rawGender)).toMatchObject({
+      value: null, evidence: { state: "ambiguous" },
+    });
+    expect(resolveTraektoriaSourceMetadata({
+      sourceProductId,
+      brand: correction.expectedBrand,
+      modelName: correction.expectedModel,
+      rawGender,
+    })).toEqual({
+      status: "conflict",
+      category: "source_metadata_conflict",
+      correctionApplied: false,
+      reason: correction.reason,
+    });
+  });
+
+  it("preserves non-correction compatibility metadata for ambiguous audience", () => {
+    expect(resolveBoardLineTruth("men unisex")).toMatchObject({
+      value: null, evidence: { state: "ambiguous" },
+    });
+    expect(resolveTraektoriaSourceMetadata({
+      sourceProductId: "1890653", brand: "Jones", modelName: "Mountain Twin",
+      rawGender: "men unisex",
+    })).toEqual({
+      status: "resolved", boardLine: "men", evidence: "known",
+      correctionApplied: false, camberProfile: null, flex: null, shapeType: null,
+      reason: null,
+    });
+  });
+
   it.each(["1890654", "1890652"])(
     "rejects wrong identity for correction source %s",
     (sourceProductId) => {
@@ -320,6 +355,23 @@ function makeExistingProduct(sourceProductId, slug = `board-${sourceProductId}`)
 }
 
 describe("Traektoria corrected Product identity", () => {
+  it("rejects ambiguous audience Frontier without emitting correction metadata", async () => {
+    const result = await importExtras({
+      [EXTRA_IDS[0]]: makeProductPayload(),
+      [EXTRA_IDS[1]]: makeProductPayload(),
+      "1890649": makeProductPayload({
+        brand: "Jones", modelName: "Frontier 2.0", gender: "men unisex",
+      }),
+    }, { listingIds: ["1890649"] });
+
+    expect(result.products.map((product) => product.importMeta.sourceProductId).sort())
+      .toEqual([...EXTRA_IDS].sort());
+    expect(result.diagnostics).toMatchObject({
+      failuresByCategory: { source_metadata_conflict: 1 },
+      unsafeFailureCount: 1, staleSafe: false, importComplete: false,
+    });
+  });
+
   it("emits the complete guarded Jones Frontier 2.0 metadata target", async () => {
     const result = await importExtras(
       {
