@@ -512,25 +512,74 @@ function trialDescriptionBlocks(htmlText) {
   );
 }
 
-function extractTrialStructuredAudience(blocks) {
+function extractTrialStructuredCharacteristicValues(blocks, label) {
   const values = [];
   for (const block of blocks) {
+    const excludedSections = label === "Жесткость"
+      ? trialHtmlElements(block.html, "div").filter(({ tag }) =>
+          trialHtmlAttribute(tag, "data-block") === "block4" ||
+          trialHtmlAttribute(tag, "class").split(/\s+/u).some(name =>
+            name.startsWith("video_") || name === "video-mobile",
+          ),
+        )
+      : [];
     for (const table of trialHtmlElements(block.html, "table")) {
+      if (excludedSections.some(section =>
+        table.start >= section.contentStart &&
+        table.start < section.contentStart + section.html.length,
+      )) continue;
       const rows = trialHtmlElements(table.html, "tr").map(row => ({
         html: row.html,
         cells: trialHtmlElements(row.html, "td").map(cell => stripHtml(cell.html)),
       }));
       // The product characteristic table has the brand/showBrand row. Header
-      // filters and unrelated tables must never supply audience evidence.
+      // filters and unrelated tables must never supply characteristic evidence.
       if (!rows.some(row => row.cells[0] === "Бренд:" && /onclick\s*=\s*["']showBrand\(\);?["']/u.test(row.html))) continue;
       for (const row of rows) {
-        if (row.cells[0]?.replace(/:$/u, "").trim() === "Пол" && row.cells.length === 2) {
+        const field = row.cells[0]?.replace(/:$/u, "").trim();
+        const normalizedField = label === "Жесткость" ? field?.replaceAll("ё", "е") : field;
+        if (normalizedField === label && row.cells.length === 2) {
           values.push(row.cells[1]);
         }
       }
     }
   }
   return values;
+}
+
+function ambiguousTrialFlex(context) {
+  return {
+    value: null,
+    evidence: {
+      ...unknownTruth(context).evidence,
+      state: "ambiguous",
+      sourceScaleMax: null,
+    },
+  };
+}
+
+function resolveTrialFlexTruth(workbookValue, cardValues, context) {
+  const workbookContext = { ...context, sourceField: "workbook.flex" };
+  const cardContext = { ...context, sourceField: "card-info__block[block1].table.Жесткость" };
+  const workbook = resolveFlexTruth(workbookValue, workbookContext);
+  const cards = cardValues.map(value => resolveFlexTruth(value, cardContext));
+  const first = cards[0] ?? unknownTruth(cardContext);
+  const card = cards.some(item => item.evidence.state === "ambiguous") ||
+    cards.some(item => item.value !== first.value || item.evidence.state !== first.evidence.state)
+    ? ambiguousTrialFlex(cardContext)
+    : first;
+
+  if (workbook.evidence.state === "ambiguous" || card.evidence.state === "ambiguous" ||
+      (workbook.evidence.state === "known" && card.evidence.state === "known" && workbook.value !== card.value)) {
+    const participating = [workbook, card].filter(item => item.evidence.state !== "unknown");
+    return ambiguousTrialFlex({
+      ...context,
+      sourceField: participating.map(item => item.evidence.sourceField).join("|"),
+    });
+  }
+  // Equal known values retain workbook attribution; unknown is not a default.
+  if (workbook.evidence.state === "known") return workbook;
+  return card.evidence.state === "known" ? card : workbook;
 }
 
 function resolveTrialStructuredAudience(values, context) {
@@ -857,7 +906,7 @@ function buildTrialProduct(
   const seasonLabel = extractTrialSeasonLabel(htmlText);
   const boardLineIdentity = resolveTrialSportBoardLineMetadata(
     sourceProductId,
-    extractTrialStructuredAudience(descriptionBlocks),
+    extractTrialStructuredCharacteristicValues(descriptionBlocks, "Пол"),
     { brand, modelName, truthContext },
   );
   if (boardLineIdentity.status === "conflict") {
@@ -883,10 +932,11 @@ function buildTrialProduct(
       sourceField: "workbook.skill_level",
     }),
     boardLine: boardLineTruth,
-    flex: resolveFlexTruth(specGroup?.flexSource, {
-      ...truthContext,
-      sourceField: "workbook.flex",
-    }),
+    flex: resolveTrialFlexTruth(
+      specGroup?.flexSource,
+      extractTrialStructuredCharacteristicValues(descriptionBlocks, "Жесткость"),
+      truthContext,
+    ),
     shapeType: resolveShapeTruth(specGroup?.shape, {
       ...truthContext,
       sourceField: "workbook.shape",

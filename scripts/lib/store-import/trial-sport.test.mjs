@@ -198,7 +198,135 @@ async function importStructuredPage(options = {}) {
   });
 }
 
+const cardFlexField = "card-info__block[block1].table.Жесткость";
+
+async function importFlexPage({ workbook = "", cards = [], label = "Жесткость:", transform = page => page } = {}) {
+  let cardIndex = 0;
+  const page = buildStructuredProductPage().replaceAll("<td>Пол:</td>", () => {
+    const value = cards[cardIndex++];
+    return value == null ? "<td>Пол:</td>"
+      : `<td>${label}</td><td>${value}</td></tr><tr><td>Пол:</td>`;
+  });
+  return importTrialSportProducts({
+    fetchText: createFetchText({ productPageTransform: () => transform(page) }),
+    fetchArrayBuffer: async () => buildSpecWorkbook({ flex: workbook }),
+    checkedAt: "2026-09-04T06:42:15.849Z", concurrency: 1, logger: silentLogger,
+  });
+}
+
+describe("Trial structured flex fusion", () => {
+  it.each([
+    ["", ["4"], 4, "known", cardFlexField],
+    ["5", [], 5, "known", "workbook.flex"],
+    ["4", ["4"], 4, "known", "workbook.flex"],
+    ["5", ["4"], null, "ambiguous", `workbook.flex|${cardFlexField}`],
+    ["", ["4-5"], null, "ambiguous", cardFlexField],
+    ["5", ["4-5"], null, "ambiguous", `workbook.flex|${cardFlexField}`],
+    ["4-5", [], null, "ambiguous", "workbook.flex"],
+    ["4-5", ["4"], null, "ambiguous", `workbook.flex|${cardFlexField}`],
+    ["4-5", ["5-6"], null, "ambiguous", `workbook.flex|${cardFlexField}`],
+    ["не указано", ["4-5"], null, "ambiguous", cardFlexField],
+    ["4-5", ["не указано"], null, "ambiguous", "workbook.flex"],
+    ["", ["не указано"], null, "unknown", "workbook.flex"],
+    ["", [""], null, "unknown", "workbook.flex"],
+    ["", [], null, "unknown", "workbook.flex"],
+    ["nonsense", ["не указано"], null, "unknown", "workbook.flex"],
+    ["5", ["не указано"], 5, "known", "workbook.flex"],
+    ["nonsense", ["4"], 4, "known", cardFlexField],
+    ["", ["4", "4"], 4, "known", cardFlexField],
+    ["", ["4", "5"], null, "ambiguous", cardFlexField],
+    ["", ["4", "не указано"], null, "ambiguous", cardFlexField],
+    ["", ["4", ""], null, "ambiguous", cardFlexField],
+    ["", [null, "4"], 4, "known", cardFlexField],
+    ["", ["", "не указано"], null, "unknown", "workbook.flex"],
+    ["4", ["4", "5"], null, "ambiguous", `workbook.flex|${cardFlexField}`],
+  ])("combines workbook %j and responsive card %j", async (workbook, cards, value, state, sourceField) => {
+    const result = await importFlexPage({ workbook, cards });
+    expect(result.products).toHaveLength(1);
+    expect(result.diagnostics.unsafeFailureCount).toBe(0);
+    expect(result.products[0].truthV2.flex).toBe(value);
+    expect(result.products[0].truthV2.attributeEvidence.flex).toEqual({
+      state, provenance: "merchant", method: state === "known" ? "explicit" : null,
+      sourceName: "Триал-Спорт", sourceUrl: productUrl,
+      observedAt: "2026-09-04T06:42:15.849Z", sourceField,
+      sourceScaleMax: state === "known" ? 10 : null, normalizationRule: null,
+    });
+  });
+
+  it.each([
+    ["средняя", "5", "normalized", "flex-text-v1"],
+    ["5", "средняя", "explicit", null],
+  ])("retains first equal card evidence for %s / %s", async (first, second, method, normalizationRule) => {
+    const result = await importFlexPage({ cards: [first, second] });
+    expect(result.products[0].truthV2.flex).toBe(5);
+    expect(result.products[0].truthV2.attributeEvidence.flex).toMatchObject({ method, normalizationRule, sourceScaleMax: 10 });
+  });
+
+  it.each(["Жесткость", "Жесткость:", "Жёсткость:", "  Жесткость :  ", "<span>Жёсткость</span>:"])(
+    "accepts orthographic label %s and inline decimal evidence", async label => {
+      const result = await importFlexPage({ cards: ["<span>7,6</span>"], label });
+      expect(result.products[0].truthV2.flex).toBe(7.6);
+      expect(result.products[0].truthV2.attributeEvidence.flex).toMatchObject({ sourceField: cardFlexField, method: "explicit", sourceScaleMax: 10 });
+    },
+  );
+
+  it("does not accept semantic label aliases", async () => {
+    const result = await importFlexPage({ cards: ["4"], label: "Flex:" });
+    expect(result.products[0].truthV2.flex).toBeNull();
+  });
+
+  it("ignores flex in prose, global tables, filters, brand, video, scripts and comments", async () => {
+    const row = "<tr><td>Жесткость:</td><td>9</td></tr>";
+    const table = `<table><tr><td>Бренд:</td><td><a onclick="showBrand();">Brand</a></td></tr>${row}</table>`;
+    const block = `<div class="card-info__block" data-block="block1">${table}</div>`;
+    const result = await importFlexPage({
+      cards: ["4"],
+      transform: page => `<nav>${table}</nav><title>Жесткость: 9</title><script>const fake='${block}';</script><!-- ${block} -->${page}`
+        .replaceAll("VIDEO_EXCLUDED", table)
+        .replaceAll("BRAND_EXCLUDED", table)
+        .replaceAll("LIVE_DESCRIPTION_MARKER", "LIVE_DESCRIPTION_MARKER Жесткость: 9")
+        .replaceAll("</h1>", `</h1><table>${row}</table>`),
+    });
+    expect(result.products[0].truthV2.flex).toBe(4);
+  });
+
+  it("requires the brand/showBrand anchor and exactly two cells", async () => {
+    const result = await importFlexPage({ cards: ["4"], transform: page => page
+      .replaceAll('onclick="showBrand();"', 'onclick="other();"') });
+    expect(result.products[0].truthV2.flex).toBeNull();
+    const malformed = await importFlexPage({ cards: ["4</td><td>5"] });
+    expect(malformed.products[0].truthV2.flex).toBeNull();
+  });
+});
+
 describe("Trial live structure regression", () => {
+  it("recovers HYPE structured flex without changing legacy flex", async () => {
+    const result = await importTrialSportProducts({
+      fetchText: createFetchText({
+        listingIds: ["3131351"],
+        productPageTransform: () => buildStructuredProductPage({
+          brand: "Rome", modelName: "HYPE", id: "3131351",
+        }).replaceAll("<td>Пол:</td>", "<td>Жесткость:</td><td>4</td></tr><tr><td>Пол:</td>"),
+      }),
+      fetchArrayBuffer: async () => buildSpecWorkbook({ modelName: "HYPE", flex: "" }),
+      checkedAt: "2026-09-04T06:42:15.849Z", concurrency: 1, logger: silentLogger,
+    });
+    expect(result.products).toHaveLength(1);
+    const product = result.products[0];
+    expect(product.truthV2.flex).toBe(4);
+    expect(product.truthV2.attributeEvidence.flex).toEqual({
+      state: "known", provenance: "merchant", method: "explicit",
+      sourceName: "Триал-Спорт", sourceUrl: "https://trial-sport.ru/goods/51526/3131351.html",
+      observedAt: "2026-09-04T06:42:15.849Z",
+      sourceField: "card-info__block[block1].table.Жесткость",
+      sourceScaleMax: 10, normalizationRule: null,
+    });
+    expect(product.flex).toBe(5);
+    expect(product.truthV2.boardLine).toBe("women");
+    expect(product.descriptionFull).toContain("LIVE_DESCRIPTION_MARKER");
+    expect(product.descriptionFull).not.toMatch(/BRAND_EXCLUDED|FILTER_EXCLUDED|VIDEO_EXCLUDED/u);
+    expect(product.sizes[0].truthV2).toMatchObject({ waistWidthMm: 250, widthType: "regular" });
+  });
   it("extracts a late description once without brand, filters or video text", async () => {
     const result = await importStructuredPage();
     expect(result.products).toHaveLength(1);
