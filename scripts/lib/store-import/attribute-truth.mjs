@@ -155,7 +155,10 @@ export function resolveSkillApplicabilityTruth(value, context = {}) {
   if (!text) return unknown(context, "missing");
 
   const selected = new Set();
-  if (/beginner|начина/u.test(text)) selected.add("beginner");
+  if (
+    /beginner|начина/u.test(text) ||
+    /(?:^|[^\p{L}\p{N}_])новичок(?=$|[^\p{L}\p{N}_])/u.test(text)
+  ) selected.add("beginner");
   if (/intermediate|продвин/u.test(text)) selected.add("intermediate");
   if (/advanced|expert|эксперт/u.test(text)) selected.add("advanced");
   if (/all\s*levels?|любо(?:й|го)\s+уров/u.test(text)) {

@@ -51,6 +51,29 @@ describe("attribute truth resolvers", () => {
   });
 
   it.each([
+    ["Новичок", "beginner"],
+    ["Новичок Продвинутый", "intermediate"],
+    ["Новичок\nПродвинутый", "intermediate"],
+    ["  НОВИЧОК  ", "beginner"],
+  ])("preserves novice skill evidence from %j", (source, max) => {
+    expect(resolveSkillApplicabilityTruth(source, context)).toMatchObject({
+      value: { min: "beginner", max },
+      evidence: {
+        state: "known", provenance: "merchant", method: "normalized",
+        normalizationRule: "skill-range-v1",
+      },
+    });
+  });
+
+  it.each(["", "nonsense", "xновичок", "новичокx", "новички", "любитель", "средний", "профессионал", "опытный", "pro"])(
+    "does not invent skill evidence for %j", (source) => {
+      expect(resolveSkillApplicabilityTruth(source, context)).toMatchObject({
+        value: null, evidence: { state: "unknown", method: null },
+      });
+    },
+  );
+
+  it.each([
     ["", null, "unknown"],
     ["6", 6, "known"],
     ["7.6", 7.6, "known"],

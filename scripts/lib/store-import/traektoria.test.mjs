@@ -427,6 +427,34 @@ describe("Traektoria corrected Product identity", () => {
 });
 
 describe("Traektoria size-table parsing", () => {
+  it.each(["Новичок\nПродвинутый", "Новичок<br>Продвинутый"])(
+    "preserves Mountain Twin novice skill evidence from LEVEL %j", async (level) => {
+      const sourceUrl = "https://www.traektoria.ru/product/1890653_snoubord-jones-mountain-twin/";
+      const checkedAt = "2026-09-04T07:56:25.862Z";
+      const result = await importTraektoriaProducts({
+        fetchJson: createImporterFetch({
+          [EXTRA_IDS[0]]: makeProductPayload(),
+          "1890653": makeProductPayload({
+            brand: "Jones", modelName: "Mountain Twin",
+            filterOptions: [{ code: "LEVEL", value: level }],
+          }),
+        }),
+        checkedAt,
+        concurrency: 1,
+        logger: { log: vi.fn() },
+      });
+      expect(result.diagnostics.unsafeFailureCount).toBe(0);
+      const product = result.products.find((item) => item.importMeta.sourceProductId === "1890653");
+      expect(product.truthV2.skillApplicability).toEqual({ min: "beginner", max: "intermediate" });
+      expect(product.truthV2.attributeEvidence.skillApplicability).toEqual({
+        state: "known", provenance: "merchant", method: "normalized",
+        sourceName: "Траектория", sourceUrl, observedAt: checkedAt,
+        sourceField: "filter.LEVEL", sourceScaleMax: null,
+        normalizationRule: "skill-range-v1",
+      });
+    },
+  );
+
   it("preserves column-oriented tables and supports semantic row-oriented tables", async () => {
     const result = await importExtras({
       [EXTRA_IDS[0]]: makeProductPayload({ modelName: "Column" }),
