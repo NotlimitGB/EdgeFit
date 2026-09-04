@@ -133,6 +133,57 @@ describe("attribute truth resolvers", () => {
     },
   );
 
+  it.each(["twin", "asym-twin", "directional-twin", "directional", "tapered-directional"])(
+    "round-trips canonical shape %j", (shape) => {
+      expect(resolveShapeTruth(shape, context)).toEqual({
+        value: shape,
+        evidence: {
+          ...context, state: "known", provenance: "merchant", method: "normalized",
+          sourceScaleMax: null, normalizationRule: "shape-v1",
+        },
+      });
+    },
+  );
+
+  it.each([
+    ["Directional Twin", "directional-twin"],
+    ["DIRECTIONAL-TWIN", "directional-twin"],
+    ["  directional-twin  ", "directional-twin"],
+    ["Directional", "directional"],
+    ["Tapered Directional", "tapered-directional"],
+    ["Asym Twin", "asym-twin"],
+    ["Twin", "twin"],
+    ["направленный твин", "directional-twin"],
+  ])("preserves shape formatting and specificity for %j", (source, value) => {
+    expect(resolveShapeTruth(source, context)).toEqual({
+      value,
+      evidence: {
+        ...context, state: "known", provenance: "merchant", method: "normalized",
+        sourceScaleMax: null, normalizationRule: "shape-v1",
+      },
+    });
+  });
+
+  it.each(["", "nonsense"])("keeps unsupported shape %j unknown", (source) => {
+    expect(resolveShapeTruth(source, context)).toMatchObject({
+      value: null,
+      evidence: {
+        ...context, state: "unknown", provenance: "merchant", method: null,
+        sourceScaleMax: null, normalizationRule: null,
+      },
+    });
+  });
+
+  it("preserves manual shape correction evidence", () => {
+    expect(resolveShapeTruth("", context, "directional-twin")).toEqual({
+      value: "directional-twin",
+      evidence: {
+        ...context, state: "known", provenance: "manual", method: "manual-override",
+        sourceScaleMax: null, normalizationRule: null,
+      },
+    });
+  });
+
   it("keeps shape/camber evidence explicit and bounded", () => {
     expect(resolveShapeTruth("Directional Twin", context)).toMatchObject({ value: "directional-twin" });
     expect(resolveCamberTruth("", context).value).toBeNull();

@@ -246,7 +246,7 @@ export function resolveShapeTruth(value, context = {}, correctedValue = null) {
   if (!text) return unknown(context, "missing");
   let shape = null;
   if (/asym/u.test(text)) shape = "asym-twin";
-  else if (/directional\s*twin/u.test(text) || (/направлен/u.test(text) && /твин/u.test(text))) shape = "directional-twin";
+  else if (/directional(?:\s*|-)twin/u.test(text) || (/направлен/u.test(text) && /твин/u.test(text))) shape = "directional-twin";
   else if (/tapered\s*directional/u.test(text) || (/directional/u.test(text) && /taper/u.test(text))) shape = "tapered-directional";
   else if (/true\s*twin/u.test(text) || text === "twin") shape = "twin";
   else if (/directional|направлен/u.test(text)) shape = "directional";
