@@ -7,6 +7,7 @@ import {
   resolveTrialSportSizeMetadataCorrection,
   resolveTrialSpecGroupMatch,
   TRIAL_SPORT_FAILURE_CATEGORIES,
+  TRIAL_SPORT_SOURCE_METADATA_CORRECTIONS,
 } from "./trial-sport.mjs";
 import { CatalogHttpTimeoutError } from "./catalog-http.mjs";
 import { buildSourceIdentityPlan } from "./source-identity.mjs";
@@ -30,6 +31,7 @@ function buildProductPage({
   availability = "available",
   brand = "TEST",
   description = "",
+  audience = [],
   entries,
   id = "1001",
   modelName = "Model",
@@ -49,9 +51,13 @@ function buildProductPage({
     availability === "malformed"
       ? "<script>const icspJS = notJson;</script>"
       : `<script>const icspJS = ${JSON.stringify(pageEntries)};</script>`;
-  const descriptionMarkup = description
-    ? `Сноуборд ${brand} ${modelName} - ${`${description} `.repeat(8)}<a href="javascript:void(0)" onclick="showBrand();">Brand</a>`
-    : "";
+  const descriptionMarkup = `<div class="card-info__blocks">
+    <div class="card-info__block" data-block="block1">
+      ${description ? `Сноуборд ${brand} ${modelName} - ${`${description} `.repeat(8)}` : ""}
+      <table><tr><td>Бренд:</td><td><a onclick="showBrand();">${brand}</a></td></tr>
+        ${audience.map(value => `<tr><td>Пол:</td><td>${value}</td></tr>`).join("")}
+      </table>
+    </div></div>`;
 
   return `
     <a href="/gds.php?brand=test"><span>${brand}</span></a>
@@ -122,6 +128,7 @@ function makeTrialEntry(size, isAvailable) {
 
 function createFetchText({
   listingIds = ["1001"],
+  audience = [],
   productFailure = false,
   availability = "available",
   productPageTransform = (page) => page,
@@ -140,6 +147,7 @@ function createFetchText({
       return productPageTransform(
         buildProductPage({
           availability,
+          audience,
           id,
         }),
       );
@@ -150,6 +158,204 @@ function createFetchText({
 }
 
 const silentLogger = { log: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
+function buildStructuredProductPage({
+  description = `LIVE_DESCRIPTION_MARKER ${"универсальная женская модель. ".repeat(5)}`,
+  audience = ["для женщин"],
+  duplicate = true,
+  ...options
+} = {}) {
+  const block = `
+    <div class="card-info__block" data-block="block1">
+      <div class="video-mobile-content">${description}<br><br>
+        <div class="video_icon_title">VIDEO_EXCLUDED</div>
+      </div>
+      <table><tr><td>Бренд:</td><td><a onclick="showBrand();">Brand</a></td></tr>
+        ${audience.map(value => `<tr><td>Пол:</td><td>${value}</td></tr>`).join("")}
+      </table>
+    </div>`;
+  return buildProductPage({ ...options, description: "" }).replace(
+    "</h1>",
+    `</h1>${"<!-- intermediate markup -->".repeat(300)}
+      <nav>FILTER_EXCLUDED для мужчин унисекс</nav>
+      <div class="card-info__blocks">${block}
+        <div class="card-info__block" data-block="block4">BRAND_EXCLUDED</div>
+      </div>${duplicate ? `<div class="card-info__blocks">${block}</div>` : ""}`,
+  );
+}
+
+async function importStructuredPage(options = {}) {
+  const { transform = page => page, ...pageOptions } = options;
+  return importTrialSportProducts({
+    fetchText: createFetchText({
+      listingIds: [options.id ?? "1001"],
+      productPageTransform: () => transform(buildStructuredProductPage(pageOptions)),
+    }),
+    fetchArrayBuffer: async () => buildSpecWorkbook({ modelName: options.modelName ?? "Model" }),
+    checkedAt: "2026-09-04T06:42:15.849Z",
+    concurrency: 1,
+    logger: silentLogger,
+  });
+}
+
+describe("Trial live structure regression", () => {
+  it("extracts a late description once without brand, filters or video text", async () => {
+    const result = await importStructuredPage();
+    expect(result.products).toHaveLength(1);
+    expect(result.products[0].descriptionFull.match(/LIVE_DESCRIPTION_MARKER/gu)).toHaveLength(1);
+    expect(result.products[0].descriptionFull).not.toMatch(/BRAND_EXCLUDED|FILTER_EXCLUDED|VIDEO_EXCLUDED/u);
+  });
+
+  it("recovers Rome HYPE structured women truth without a manual correction", async () => {
+    const result = await importStructuredPage({ brand: "Rome", modelName: "HYPE" });
+    expect(result.products).toHaveLength(1);
+    expect(result.products[0].truthV2).toMatchObject({
+      boardLine: "women",
+      attributeEvidence: { boardLine: {
+        state: "known", provenance: "merchant", method: "normalized",
+        normalizationRule: "board-line-v1", sourceField: "card-info__block[block1].table.Пол",
+      } },
+    });
+    expect(result.products[0].importMeta.sourceMetadataCorrectionApplied).toBe(false);
+    expect(result.products[0].descriptionFull).toContain("LIVE_DESCRIPTION_MARKER");
+  });
+
+  it.each([
+    [["для женщин"], "women", "known"],
+    [["для мужчин"], "men", "known"],
+    [["унисекс"], "unisex", "known"],
+    [[], null, "unknown"],
+    [[""], null, "unknown"],
+    [["для детей"], null, "unknown"],
+    [["не указано"], null, "unknown"],
+    [["для мужчин и женщин"], null, "ambiguous"],
+    [["для мужчин", "для женщин"], null, "ambiguous"],
+    [["для женщин", "для женщин"], "women", "known"],
+    [["для женщин", "не указано"], null, "ambiguous"],
+  ])("conservatively resolves product gender rows %j", async (audience, boardLine, state) => {
+    const result = await importStructuredPage({ audience });
+    expect(result.products[0].truthV2).toMatchObject({
+      boardLine,
+      attributeEvidence: { boardLine: { state, provenance: "merchant" } },
+    });
+    expect(result.products[0].boardLine).toBe(boardLine ?? "unisex");
+    if (state === "known") {
+      expect(result.products[0].truthV2.attributeEvidence.boardLine).toMatchObject({
+        method: "normalized", normalizationRule: "board-line-v1",
+        sourceField: "card-info__block[block1].table.Пол",
+        sourceName: "Триал-Спорт", sourceUrl: productUrl,
+        observedAt: "2026-09-04T06:42:15.849Z",
+      });
+    }
+  });
+
+  it.each([
+    "универсальная женская модель",
+    "мужская модель",
+    "подходит мужчинам и женщинам",
+  ])("does not use description-only audience %s as truth", async description => {
+    const result = await importStructuredPage({ description: `${description} `.repeat(8), audience: [] });
+    expect(result.products[0].descriptionFull).toContain(description);
+    expect(result.products[0].truthV2).toMatchObject({
+      boardLine: null, attributeEvidence: { boardLine: { state: "unknown" } },
+    });
+  });
+
+  it("keeps identical structured truth when description audience changes", async () => {
+    const outputs = [];
+    for (const description of ["универсальная женская модель", "универсальная доска", "мужская команда использует эту доску"]) {
+      const result = await importStructuredPage({ description: `${description} `.repeat(8) });
+      outputs.push(result.products[0].truthV2);
+    }
+    expect(outputs[0].boardLine).toBe("women");
+    expect(outputs[1]).toEqual(outputs[0]);
+    expect(outputs[2]).toEqual(outputs[0]);
+  });
+
+  it("ignores global filters, unrelated tables, brand blocks and scripted markup", async () => {
+    const table = '<table><tr><td>Бренд:</td><td><a onclick="showBrand();">Brand</a></td></tr><tr><td>Пол:</td><td>для мужчин</td></tr></table>';
+    const fakeBlock = `<div class="card-info__block" data-block="block1">${table}</div>`;
+    const result = await importStructuredPage({
+      audience: [],
+      transform: page => `<nav>${table}</nav><script>const decoy = '${fakeBlock}';</script><!-- ${fakeBlock} -->${page}<div class="card-info__block" data-block="block4">${table}</div>`,
+    });
+    expect(result.products[0].truthV2.boardLine).toBeNull();
+    const unrelated = await importStructuredPage({
+      audience: [],
+      transform: page => page.replace('VIDEO_EXCLUDED', '<table><tr><td>Пол:</td><td>для женщин</td></tr></table>'),
+    });
+    expect(unrelated.products[0].truthV2.boardLine).toBeNull();
+  });
+
+  it("supports attribute order, extra classes, inline markup and entities", async () => {
+    const result = await importStructuredPage({
+      audience: ["<span>для&nbsp;женщин</span>"],
+      transform: page => page.replaceAll('class="card-info__block" data-block="block1"', "data-block='block1' class='extra card-info__block'"),
+    });
+    expect(result.products[0].truthV2.boardLine).toBe("women");
+    expect(result.products[0].descriptionFull).toContain("LIVE_DESCRIPTION_MARKER");
+  });
+
+  it("stops description at the characteristic table even without video", async () => {
+    const result = await importStructuredPage({
+      transform: page => page.replaceAll('<div class="video_icon_title">VIDEO_EXCLUDED</div>', ''),
+    });
+    expect(result.products[0].descriptionFull).toContain("LIVE_DESCRIPTION_MARKER");
+    expect(result.products[0].descriptionFull).not.toMatch(/Бренд:|Пол:|BRAND_EXCLUDED/u);
+  });
+
+  it("allows genuinely empty descriptions without swallowing neighbouring sections", async () => {
+    const result = await importStructuredPage({ description: "" });
+    expect(result.products[0].descriptionFull).not.toMatch(/BRAND_EXCLUDED|FILTER_EXCLUDED|VIDEO_EXCLUDED|Бренд:|Пол:/u);
+    expect(result.products[0].truthV2.boardLine).toBe("women");
+  });
+
+  it("rejects contradictory desktop/mobile gender instead of preferring a copy", async () => {
+    const result = await importStructuredPage({
+      transform: page => page.replace('<td>для женщин</td>', '<td>для мужчин</td>'),
+    });
+    expect(result.products[0].truthV2).toMatchObject({
+      boardLine: null, attributeEvidence: { boardLine: { state: "ambiguous" } },
+    });
+  });
+
+  describe.each(Object.entries(TRIAL_SPORT_SOURCE_METADATA_CORRECTIONS))("structured correction %s", (id, correction) => {
+    const identity = { id, brand: correction.expectedBrand, modelName: correction.expectedModel };
+    it("overrides only the confirmed live unisex value with manual provenance", async () => {
+      expect(correction.expectedBoardLine).toBe("unisex");
+      const result = await importStructuredPage({ ...identity, audience: ["унисекс"] });
+      expect(result.products[0]).toMatchObject({
+        boardLine: "men",
+        importMeta: { sourceMetadataCorrectionApplied: true },
+        truthV2: { boardLine: "men", attributeEvidence: { boardLine: {
+          state: "known", provenance: "manual", method: "manual-override",
+          sourceField: "authorized_board_line_correction",
+        } } },
+      });
+    });
+
+    it("keeps direct men evidence merchant-attributed", async () => {
+      const result = await importStructuredPage({ ...identity, audience: ["для мужчин"] });
+      expect(result.products[0]).toMatchObject({
+        importMeta: { sourceMetadataCorrectionApplied: false },
+        truthV2: { boardLine: "men", attributeEvidence: { boardLine: {
+          state: "known", provenance: "merchant", method: "normalized",
+          sourceField: "card-info__block[block1].table.Пол",
+        } } },
+      });
+    });
+
+    it.each([
+      { brand: "Wrong" }, { modelName: "Wrong" },
+      { audience: [] }, { audience: [""] }, { audience: ["для женщин"] },
+      { audience: ["для детей"] }, { audience: ["для мужчин", "для женщин"] },
+    ])("fails closed for identity/audience drift %j", async patch => {
+      const result = await importStructuredPage({ ...identity, audience: ["унисекс"], ...patch });
+      expect(result.products).toEqual([]);
+      expect(result.diagnostics.failuresByCategory.source_metadata_conflict).toBe(1);
+    });
+  });
+});
 
 describe("Trial Sport source diagnostics", () => {
   it("matches Trial specification groups only across compatible protected variants", () => {
@@ -244,6 +450,7 @@ describe("Trial Sport source diagnostics", () => {
             brand: "Nitro",
             entries: [makeTrialEntry(157, true), makeTrialEntry(165, false)],
             id: "3132335",
+            audience: ["унисекс"],
             modelName: "Team Wide",
           }),
       }),
@@ -308,6 +515,7 @@ describe("Trial Sport source diagnostics", () => {
               makeTrialEntry(162, false),
             ],
             id: "3131513",
+            audience: ["унисекс"],
             modelName: "Team",
           }),
       }),
@@ -383,9 +591,9 @@ describe("Trial Sport source diagnostics", () => {
   });
 
   it.each([
-    ["женская команда бренда", "women"],
-    ["мужской стиль катания", "men"],
-    ["подходит мужчинам и женщинам", "women"],
+    ["женская команда бренда", "unisex"],
+    ["мужской стиль катания", "unisex"],
+    ["подходит мужчинам и женщинам", "unisex"],
   ])(
     "does not promote Trial marketing prose %j into board-line truth",
     async (description, legacyBoardLine) => {
@@ -400,7 +608,7 @@ describe("Trial Sport source diagnostics", () => {
 
       expect(result.products[0]).toMatchObject({
         boardLine: legacyBoardLine,
-        importMeta: { boardLineEvidence: "known" },
+        importMeta: { boardLineEvidence: "missing" },
         truthV2: {
           boardLine: null,
           attributeEvidence: {
@@ -408,7 +616,7 @@ describe("Trial Sport source diagnostics", () => {
               state: "unknown",
               provenance: "merchant",
               method: null,
-              sourceField: null,
+              sourceField: "card-info__block[block1].table.Пол",
             },
           },
         },
@@ -417,7 +625,7 @@ describe("Trial Sport source diagnostics", () => {
     },
   );
 
-  it("uses an authorized correction for truth even when legacy evidence already matches", async () => {
+  it("preserves direct merchant provenance when structured audience already matches", async () => {
     const result = await importTrialSportProducts({
       fetchText: createFetchText({
         listingIds: ["3131268"],
@@ -426,6 +634,7 @@ describe("Trial Sport source diagnostics", () => {
             brand: "Bataleon",
             description: "мужская модель",
             id: "3131268",
+            audience: ["для мужчин"],
             modelName: "Evil Twin",
           }),
       }),
@@ -446,9 +655,9 @@ describe("Trial Sport source diagnostics", () => {
         attributeEvidence: {
           boardLine: {
             state: "known",
-            provenance: "manual",
-            method: "manual-override",
-            sourceField: "authorized_board_line_correction",
+            provenance: "merchant",
+            method: "normalized",
+            sourceField: "card-info__block[block1].table.Пол",
           },
         },
       },
@@ -470,7 +679,7 @@ describe("Trial Sport source diagnostics", () => {
 
   it("applies reviewed Trial board-line evidence and fails closed on source drift", () => {
     expect(
-      resolveTrialSportBoardLineMetadata("3131268", "", {
+      resolveTrialSportBoardLineMetadata("3131268", "унисекс", {
         brand: "BATALEON",
         modelName: "EVIL TWIN",
       }),
@@ -481,13 +690,13 @@ describe("Trial Sport source diagnostics", () => {
       correctionApplied: true,
     });
     expect(
-      resolveTrialSportBoardLineMetadata("3131268", "женская модель", {
+      resolveTrialSportBoardLineMetadata("3131268", "для женщин", {
         brand: "Bataleon",
         modelName: "Evil Twin",
       }),
     ).toMatchObject({ status: "conflict", category: "source_metadata_conflict" });
     expect(
-      resolveTrialSportBoardLineMetadata("3131268", "", {
+      resolveTrialSportBoardLineMetadata("3131268", "унисекс", {
         brand: "Other",
         modelName: "Evil Twin",
       }),
@@ -496,7 +705,7 @@ describe("Trial Sport source diagnostics", () => {
 
   it("applies the exact Nitro Team corrections and fails closed for Team Wide identity drift", () => {
     expect(
-      resolveTrialSportBoardLineMetadata("3131513", "", {
+      resolveTrialSportBoardLineMetadata("3131513", "унисекс", {
         brand: "NITRO",
         modelName: "TEAM",
       }),
@@ -507,7 +716,7 @@ describe("Trial Sport source diagnostics", () => {
       correctionApplied: true,
     });
     expect(
-      resolveTrialSportBoardLineMetadata("3132335", "", {
+      resolveTrialSportBoardLineMetadata("3132335", "унисекс", {
         brand: "NITRO",
         modelName: "TEAM WIDE",
       }),
@@ -523,7 +732,7 @@ describe("Trial Sport source diagnostics", () => {
       { brand: "Nitro", modelName: "Team" },
     ]) {
       expect(
-        resolveTrialSportBoardLineMetadata("3132335", "", identity),
+        resolveTrialSportBoardLineMetadata("3132335", "унисекс", identity),
       ).toMatchObject({
         status: "conflict",
         category: "source_metadata_conflict",
@@ -541,7 +750,7 @@ describe("Trial Sport source diagnostics", () => {
       correctionApplied: false,
     });
     expect(
-      resolveTrialSportBoardLineMetadata("3132335", "женская модель", {
+      resolveTrialSportBoardLineMetadata("3132335", "для женщин", {
         brand: "Nitro",
         modelName: "Team Wide",
       }),
@@ -556,6 +765,7 @@ describe("Trial Sport source diagnostics", () => {
     const result = await importTrialSportProducts({
       fetchText: createFetchText({
         listingIds: ["3131268"],
+        audience: ["унисекс"],
         productPageTransform: (page) =>
           page.replaceAll("TEST", "Bataleon").replace("Model", "Evil Twin"),
       }),
@@ -581,6 +791,7 @@ describe("Trial Sport source diagnostics", () => {
     const result = await importTrialSportProducts({
       fetchText: createFetchText({
         listingIds: ["3132335"],
+        audience: ["унисекс"],
         productPageTransform: (page) =>
           page.replaceAll("TEST", "Nitro").replace("Model", "Team Wide"),
       }),

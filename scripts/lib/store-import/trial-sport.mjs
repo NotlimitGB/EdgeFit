@@ -21,7 +21,6 @@ import {
   toAbsoluteUrl,
 } from "./common.mjs";
 import {
-  getBoardLineEvidence,
   getExplicitVariantMarker,
   getStoreIdentityFromUrl,
   normalizeSourceIdentityText,
@@ -30,6 +29,7 @@ import {
   buildProductTruthV2,
   buildSizeTruthV2,
   knownTruth,
+  resolveBoardLineTruth,
   resolveCamberTruth,
   resolveFlexTruth,
   resolveRidingStylesTruth,
@@ -46,24 +46,28 @@ export const TRIAL_SPORT_SOURCE_METADATA_CORRECTIONS = Object.freeze({
   "3131268": Object.freeze({
     expectedBrand: "Bataleon",
     expectedModel: "Evil Twin",
+    expectedBoardLine: "unisex",
     correctedBoardLine: "men",
     reason: "Verified Bataleon Evil Twin 2025/2026 men identity.",
   }),
   "3131513": Object.freeze({
     expectedBrand: "Nitro",
     expectedModel: "Team",
+    expectedBoardLine: "unisex",
     correctedBoardLine: "men",
     reason: "Verified Nitro Team 2025/2026 men identity.",
   }),
   "3132335": Object.freeze({
     expectedBrand: "Nitro",
     expectedModel: "Team Wide",
+    expectedBoardLine: "unisex",
     correctedBoardLine: "men",
     reason: "Verified Nitro Team Wide 2025/2026 men identity.",
   }),
   "3137774": Object.freeze({
     expectedBrand: "Ride",
     expectedModel: "Warpig",
+    expectedBoardLine: "unisex",
     correctedBoardLine: "men",
     reason: "Verified RIDE Warpig 2025/2026 men identity.",
   }),
@@ -85,10 +89,11 @@ export const TRIAL_SPORT_SIZE_METADATA_CORRECTIONS = Object.freeze({
 
 export function resolveTrialSportBoardLineMetadata(
   sourceProductId,
-  descriptionText,
-  { brand, modelName } = {},
+  structuredAudience,
+  { brand, modelName, truthContext = {} } = {},
 ) {
-  const raw = getBoardLineEvidence(descriptionText);
+  const context = { ...truthContext, sourceField: "card-info__block[block1].table.Пол" };
+  const raw = resolveTrialStructuredAudience(structuredAudience, context);
   const correction =
     TRIAL_SPORT_SOURCE_METADATA_CORRECTIONS[String(sourceProductId ?? "")] ??
     null;
@@ -96,8 +101,9 @@ export function resolveTrialSportBoardLineMetadata(
   if (!correction) {
     return {
       status: "resolved",
-      boardLine: raw.boardLine,
-      evidence: raw.evidence,
+      boardLine: raw.value ?? "unisex",
+      evidence: raw.evidence.state === "known" ? "known" : "missing",
+      boardLineTruth: raw,
       correctionApplied: false,
       correctionAuthorized: false,
       reason: null,
@@ -105,6 +111,8 @@ export function resolveTrialSportBoardLineMetadata(
   }
 
   if (
+    !normalizeBoardKey(correction.expectedBrand) ||
+    !normalizeBoardKey(correction.expectedModel) ||
     normalizeBoardKey(brand) !== normalizeBoardKey(correction.expectedBrand) ||
     normalizeBoardKey(modelName) !== normalizeBoardKey(correction.expectedModel)
   ) {
@@ -117,7 +125,10 @@ export function resolveTrialSportBoardLineMetadata(
     };
   }
 
-  if (raw.evidence === "known" && raw.boardLine !== correction.correctedBoardLine) {
+  if (
+    raw.evidence.state !== "known" ||
+    (raw.value !== correction.expectedBoardLine && raw.value !== correction.correctedBoardLine)
+  ) {
     return {
       status: "conflict",
       category: "source_metadata_conflict",
@@ -127,11 +138,18 @@ export function resolveTrialSportBoardLineMetadata(
     };
   }
 
+  const correctionApplied = raw.value !== correction.correctedBoardLine;
   return {
     status: "resolved",
     boardLine: correction.correctedBoardLine,
     evidence: "known",
-    correctionApplied: raw.evidence !== "known",
+    correctionApplied,
+    boardLineTruth: correctionApplied
+      ? knownTruth(correction.correctedBoardLine, {
+          ...truthContext,
+          sourceField: "authorized_board_line_correction",
+        }, { provenance: "manual", method: "manual-override" })
+      : raw,
     correctionAuthorized: true,
     reason: correction.reason,
   };
@@ -463,22 +481,85 @@ function extractTrialJsonArrayResult(htmlText, variableName) {
   }
 }
 
-function extractTrialDescription(htmlText, brand) {
-  const productHeading = `Сноуборд ${brand}`;
-  const index = htmlText.indexOf(productHeading);
-  if (index === -1) {
-    return "";
+function trialHtmlAttribute(tag, name) {
+  const match = tag.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "iu"));
+  return match?.[1] ?? match?.[2] ?? "";
+}
+
+// Match balanced elements, not a fixed-length window or the first closing div.
+function trialHtmlElements(html, tagName) {
+  const tags = new RegExp(`<\\/?${tagName}\\b(?:[^"'<>]|"[^"]*"|'[^']*')*>`, "giu");
+  const stack = [];
+  const elements = [];
+  for (const match of html.matchAll(tags)) {
+    if (!match[0].startsWith("</")) {
+      stack.push({ tag: match[0], start: match.index, contentStart: match.index + match[0].length });
+    } else {
+      const open = stack.pop();
+      if (open) elements.push({ ...open, html: html.slice(open.contentStart, match.index) });
+    }
   }
+  return elements.sort((left, right) => left.start - right.start);
+}
 
-  const snippet = htmlText.slice(index, index + 5000);
-  const paragraphMatch = snippet.match(
-    new RegExp(
-      `Сноуборд\\s+${brand.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}[^-]{0,120}-\\s*([\\s\\S]{120,2200}?)<a href="javascript:void\\(0\\)" onclick="showBrand\\(\\);"`,
-      "iu",
-    ),
+function trialDescriptionBlocks(htmlText) {
+  const html = String(htmlText ?? "")
+    .replace(/<!--[\s\S]*?-->/gu, "")
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/giu, "");
+  return trialHtmlElements(html, "div").filter(({ tag }) =>
+    trialHtmlAttribute(tag, "class").split(/\s+/u).includes("card-info__block") &&
+    trialHtmlAttribute(tag, "data-block") === "block1",
   );
+}
 
-  return paragraphMatch ? stripHtml(paragraphMatch[1]) : "";
+function extractTrialStructuredAudience(blocks) {
+  const values = [];
+  for (const block of blocks) {
+    for (const table of trialHtmlElements(block.html, "table")) {
+      const rows = trialHtmlElements(table.html, "tr").map(row => ({
+        html: row.html,
+        cells: trialHtmlElements(row.html, "td").map(cell => stripHtml(cell.html)),
+      }));
+      // The product characteristic table has the brand/showBrand row. Header
+      // filters and unrelated tables must never supply audience evidence.
+      if (!rows.some(row => row.cells[0] === "Бренд:" && /onclick\s*=\s*["']showBrand\(\);?["']/u.test(row.html))) continue;
+      for (const row of rows) {
+        if (row.cells[0]?.replace(/:$/u, "").trim() === "Пол" && row.cells.length === 2) {
+          values.push(row.cells[1]);
+        }
+      }
+    }
+  }
+  return values;
+}
+
+function resolveTrialStructuredAudience(values, context) {
+  const inputs = Array.isArray(values) ? values : [values];
+  if (inputs.length === 0) return unknownTruth(context, "no_explicit_audience_field");
+  const resolutions = inputs.map(value => resolveBoardLineTruth(value, context));
+  const first = resolutions[0];
+  if (resolutions.every(item => item.value === first.value && item.evidence.state === first.evidence.state)) return first;
+  return {
+    value: null,
+    evidence: { ...first.evidence, state: "ambiguous", method: null, normalizationRule: null },
+    reason: "conflicting_structured_audience",
+  };
+}
+
+function extractTrialDescription(blocks) {
+  for (const block of blocks) {
+    const video = trialHtmlElements(block.html, "div").find(({ tag }) =>
+      trialHtmlAttribute(tag, "class").split(/\s+/u).some(name =>
+        ["video_icon_title", "video_icon_tabs", "video_icon_detail-out", "video-mobile"].includes(name),
+      ),
+    );
+    const table = trialHtmlElements(block.html, "table")[0];
+    const end = Math.min(video?.start ?? block.html.length, table?.start ?? block.html.length);
+    const description = stripHtml(block.html.slice(0, end));
+    // Desktop/mobile copies describe the same product; never concatenate them.
+    if (description) return description;
+  }
+  return "";
 }
 
 function extractTrialBrand(htmlText) {
@@ -770,13 +851,14 @@ function buildTrialProduct(
   const flex = specGroup?.flex || 5;
   const ridingStyle = mapRidingStyle(specGroup?.purpose);
   const shapeType = mapShapeType(specGroup?.shape);
-  const descriptionText = extractTrialDescription(htmlText, brand);
+  const descriptionBlocks = trialDescriptionBlocks(htmlText);
+  const descriptionText = extractTrialDescription(descriptionBlocks);
   const imageUrls = extractTrialImageUrls(htmlText);
   const seasonLabel = extractTrialSeasonLabel(htmlText);
   const boardLineIdentity = resolveTrialSportBoardLineMetadata(
     sourceProductId,
-    descriptionText,
-    { brand, modelName },
+    extractTrialStructuredAudience(descriptionBlocks),
+    { brand, modelName, truthContext },
   );
   if (boardLineIdentity.status === "conflict") {
     return {
@@ -790,16 +872,7 @@ function buildTrialProduct(
     levelText: "",
     flex,
   });
-  const boardLineTruth = boardLineIdentity.correctionAuthorized
-    ? knownTruth(
-        boardLine,
-        { ...truthContext, sourceField: "authorized_board_line_correction" },
-        { provenance: "manual", method: "manual-override" },
-      )
-    : unknownTruth(
-        { ...truthContext, sourceField: null },
-        "no_explicit_audience_field",
-      );
+  const boardLineTruth = boardLineIdentity.boardLineTruth;
   const truthV2 = buildProductTruthV2({
     ridingStyles: resolveRidingStylesTruth(specGroup?.purpose, {
       ...truthContext,
