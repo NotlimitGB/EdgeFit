@@ -1,4 +1,92 @@
+import {
+  assertProductSizeTruthV2,
+  assertProductTruthV2,
+} from "../../../scripts/lib/store-import/attribute-truth.mjs";
+
 let cachedProductColumnSupport = null;
+
+const TRUTH_WRITE_MODES = new Set(["disabled", "shadow"]);
+const REQUIRED_PRODUCT_TRUTH_COLUMNS = new Set([
+  "truth_model_version",
+  "truth_riding_styles",
+  "truth_skill_level_min",
+  "truth_skill_level_max",
+  "truth_board_line",
+  "truth_flex",
+  "truth_shape_type",
+  "truth_camber_profile",
+  "truth_attribute_evidence",
+]);
+const REQUIRED_SIZE_TRUTH_COLUMNS = new Set([
+  "truth_model_version",
+  "truth_waist_width_mm",
+  "truth_width_type",
+  "truth_attribute_evidence",
+]);
+
+function normalizeTruthWriteMode(options = {}) {
+  const mode = options.truthWriteMode ?? "disabled";
+  if (!TRUTH_WRITE_MODES.has(mode)) {
+    throw new TypeError(`Unsupported truthWriteMode: ${mode}`);
+  }
+  return mode;
+}
+
+function validateProductsForShadowWrite(products) {
+  for (const product of products) {
+    assertProductTruthV2(product.truthV2);
+    for (const size of product.sizes) assertProductSizeTruthV2(size.truthV2);
+  }
+}
+
+async function assertTruthShadowSchema(transaction) {
+  const rows = await transaction`
+    select table_name, column_name
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name in ('products', 'product_sizes')
+  `;
+  const byTable = new Map([
+    ["products", new Set()],
+    ["product_sizes", new Set()],
+  ]);
+  for (const row of rows) byTable.get(row.table_name)?.add(row.column_name);
+  const complete =
+    [...REQUIRED_PRODUCT_TRUTH_COLUMNS].every((column) => byTable.get("products").has(column)) &&
+    [...REQUIRED_SIZE_TRUTH_COLUMNS].every((column) => byTable.get("product_sizes").has(column));
+  if (!complete) {
+    const error = new Error("Catalog truth-v2 shadow schema is required.");
+    error.code = "TRUTH_V2_SCHEMA_REQUIRED";
+    throw error;
+  }
+}
+
+async function writeProductTruth(transaction, productId, truth) {
+  await transaction`
+    update products set
+      truth_model_version = ${truth.truthModelVersion},
+      truth_riding_styles = ${truth.ridingStyles},
+      truth_skill_level_min = ${truth.skillApplicability?.min ?? null},
+      truth_skill_level_max = ${truth.skillApplicability?.max ?? null},
+      truth_board_line = ${truth.boardLine},
+      truth_flex = ${truth.flex},
+      truth_shape_type = ${truth.shapeType},
+      truth_camber_profile = ${truth.camberProfile},
+      truth_attribute_evidence = ${JSON.stringify(truth.attributeEvidence)}::jsonb
+    where id = ${productId}
+  `;
+}
+
+async function writeSizeTruth(transaction, sizeId, truth) {
+  await transaction`
+    update product_sizes set
+      truth_model_version = ${truth.truthModelVersion},
+      truth_waist_width_mm = ${truth.waistWidthMm},
+      truth_width_type = ${truth.widthType},
+      truth_attribute_evidence = ${JSON.stringify(truth.attributeEvidence)}::jsonb
+    where id = ${sizeId}
+  `;
+}
 
 async function getProductColumnSupport(sql) {
   if (cachedProductColumnSupport) {
@@ -49,7 +137,11 @@ async function getProductColumnSupport(sql) {
   return cachedProductColumnSupport;
 }
 
-async function saveCatalogProductInTransaction(transaction, product) {
+async function saveCatalogProductInTransaction(
+  transaction,
+  product,
+  truthWriteMode = "disabled",
+) {
   const galleryImages = Array.isArray(product.galleryImages)
     ? product.galleryImages.map((image) => String(image ?? "").trim()).filter(Boolean)
     : null;
@@ -393,6 +485,10 @@ async function saveCatalogProductInTransaction(transaction, product) {
     `;
   }
 
+  if (truthWriteMode === "shadow") {
+    await writeProductTruth(transaction, savedProduct.id, product.truthV2);
+  }
+
   await transaction`delete from product_sizes where product_id = ${savedProduct.id}`;
 
   for (const size of product.sizes) {
@@ -400,7 +496,7 @@ async function saveCatalogProductInTransaction(transaction, product) {
     const isAvailable = size.isAvailable !== false;
 
     if (hasSizeLabel && hasSizeAvailable) {
-      await transaction`
+      const [savedSize] = await transaction`
         insert into product_sizes (
           product_id,
           size_cm,
@@ -419,13 +515,14 @@ async function saveCatalogProductInTransaction(transaction, product) {
           ${size.recommendedWeightMax},
           ${size.widthType},
           ${isAvailable}
-        )
+        ) returning id
       `;
+      if (truthWriteMode === "shadow") await writeSizeTruth(transaction, savedSize.id, size.truthV2);
       continue;
     }
 
     if (hasSizeLabel) {
-      await transaction`
+      const [savedSize] = await transaction`
         insert into product_sizes (
           product_id,
           size_cm,
@@ -442,13 +539,14 @@ async function saveCatalogProductInTransaction(transaction, product) {
           ${size.recommendedWeightMin},
           ${size.recommendedWeightMax},
           ${size.widthType}
-        )
+        ) returning id
       `;
+      if (truthWriteMode === "shadow") await writeSizeTruth(transaction, savedSize.id, size.truthV2);
       continue;
     }
 
     if (hasSizeAvailable) {
-      await transaction`
+      const [savedSize] = await transaction`
         insert into product_sizes (
           product_id,
           size_cm,
@@ -465,12 +563,13 @@ async function saveCatalogProductInTransaction(transaction, product) {
           ${size.recommendedWeightMax},
           ${size.widthType},
           ${isAvailable}
-        )
+        ) returning id
       `;
+      if (truthWriteMode === "shadow") await writeSizeTruth(transaction, savedSize.id, size.truthV2);
       continue;
     }
 
-    await transaction`
+    const [savedSize] = await transaction`
       insert into product_sizes (
         product_id,
         size_cm,
@@ -485,8 +584,9 @@ async function saveCatalogProductInTransaction(transaction, product) {
         ${size.recommendedWeightMin},
         ${size.recommendedWeightMax},
         ${size.widthType}
-      )
+      ) returning id
     `;
+    if (truthWriteMode === "shadow") await writeSizeTruth(transaction, savedSize.id, size.truthV2);
   }
 
   return {
@@ -508,16 +608,26 @@ async function saveCatalogProductInTransaction(transaction, product) {
   };
 }
 
-export async function saveCatalogProduct(sql, product) {
-  return sql.begin((transaction) => saveCatalogProductInTransaction(transaction, product));
+export async function saveCatalogProduct(sql, product, options = {}) {
+  const truthWriteMode = normalizeTruthWriteMode(options);
+  if (truthWriteMode === "shadow") validateProductsForShadowWrite([product]);
+  return sql.begin(async (transaction) => {
+    if (truthWriteMode === "shadow") await assertTruthShadowSchema(transaction);
+    return saveCatalogProductInTransaction(transaction, product, truthWriteMode);
+  });
 }
 
-export async function upsertCatalogProducts(sql, products) {
+export async function upsertCatalogProducts(sql, products, options = {}) {
+  const truthWriteMode = normalizeTruthWriteMode(options);
+  if (truthWriteMode === "shadow") validateProductsForShadowWrite(products);
   return sql.begin(async (transaction) => {
+    if (truthWriteMode === "shadow") await assertTruthShadowSchema(transaction);
     const savedProducts = [];
 
     for (const product of products) {
-      savedProducts.push(await saveCatalogProductInTransaction(transaction, product));
+      savedProducts.push(
+        await saveCatalogProductInTransaction(transaction, product, truthWriteMode),
+      );
     }
 
     return {

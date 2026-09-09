@@ -21,11 +21,22 @@ import {
   toAbsoluteUrl,
 } from "./common.mjs";
 import {
-  getBoardLineEvidence,
   getExplicitVariantMarker,
   getStoreIdentityFromUrl,
   normalizeSourceIdentityText,
 } from "./source-identity.mjs";
+import {
+  buildProductTruthV2,
+  buildSizeTruthV2,
+  knownTruth,
+  resolveBoardLineTruth,
+  resolveCamberTruth,
+  resolveFlexTruth,
+  resolveRidingStylesTruth,
+  resolveShapeTruth,
+  resolveSkillApplicabilityTruth,
+  unknownTruth,
+} from "./attribute-truth.mjs";
 
 const TRIAL_BASE_URL = "https://trial-sport.ru";
 const TRIAL_SECTION_URL =
@@ -35,24 +46,28 @@ export const TRIAL_SPORT_SOURCE_METADATA_CORRECTIONS = Object.freeze({
   "3131268": Object.freeze({
     expectedBrand: "Bataleon",
     expectedModel: "Evil Twin",
+    expectedBoardLine: "unisex",
     correctedBoardLine: "men",
     reason: "Verified Bataleon Evil Twin 2025/2026 men identity.",
   }),
   "3131513": Object.freeze({
     expectedBrand: "Nitro",
     expectedModel: "Team",
+    expectedBoardLine: "unisex",
     correctedBoardLine: "men",
     reason: "Verified Nitro Team 2025/2026 men identity.",
   }),
   "3132335": Object.freeze({
     expectedBrand: "Nitro",
     expectedModel: "Team Wide",
+    expectedBoardLine: "unisex",
     correctedBoardLine: "men",
     reason: "Verified Nitro Team Wide 2025/2026 men identity.",
   }),
   "3137774": Object.freeze({
     expectedBrand: "Ride",
     expectedModel: "Warpig",
+    expectedBoardLine: "unisex",
     correctedBoardLine: "men",
     reason: "Verified RIDE Warpig 2025/2026 men identity.",
   }),
@@ -74,10 +89,11 @@ export const TRIAL_SPORT_SIZE_METADATA_CORRECTIONS = Object.freeze({
 
 export function resolveTrialSportBoardLineMetadata(
   sourceProductId,
-  descriptionText,
-  { brand, modelName } = {},
+  structuredAudience,
+  { brand, modelName, truthContext = {} } = {},
 ) {
-  const raw = getBoardLineEvidence(descriptionText);
+  const context = { ...truthContext, sourceField: "card-info__block[block1].table.Пол" };
+  const raw = resolveTrialStructuredAudience(structuredAudience, context);
   const correction =
     TRIAL_SPORT_SOURCE_METADATA_CORRECTIONS[String(sourceProductId ?? "")] ??
     null;
@@ -85,14 +101,18 @@ export function resolveTrialSportBoardLineMetadata(
   if (!correction) {
     return {
       status: "resolved",
-      boardLine: raw.boardLine,
-      evidence: raw.evidence,
+      boardLine: raw.value ?? "unisex",
+      evidence: raw.evidence.state === "known" ? "known" : "missing",
+      boardLineTruth: raw,
       correctionApplied: false,
+      correctionAuthorized: false,
       reason: null,
     };
   }
 
   if (
+    !normalizeBoardKey(correction.expectedBrand) ||
+    !normalizeBoardKey(correction.expectedModel) ||
     normalizeBoardKey(brand) !== normalizeBoardKey(correction.expectedBrand) ||
     normalizeBoardKey(modelName) !== normalizeBoardKey(correction.expectedModel)
   ) {
@@ -100,24 +120,37 @@ export function resolveTrialSportBoardLineMetadata(
       status: "conflict",
       category: "source_metadata_conflict",
       correctionApplied: false,
+      correctionAuthorized: false,
       reason: correction.reason,
     };
   }
 
-  if (raw.evidence === "known" && raw.boardLine !== correction.correctedBoardLine) {
+  if (
+    raw.evidence.state !== "known" ||
+    (raw.value !== correction.expectedBoardLine && raw.value !== correction.correctedBoardLine)
+  ) {
     return {
       status: "conflict",
       category: "source_metadata_conflict",
       correctionApplied: false,
+      correctionAuthorized: false,
       reason: correction.reason,
     };
   }
 
+  const correctionApplied = raw.value !== correction.correctedBoardLine;
   return {
     status: "resolved",
     boardLine: correction.correctedBoardLine,
     evidence: "known",
-    correctionApplied: raw.evidence !== "known",
+    correctionApplied,
+    boardLineTruth: correctionApplied
+      ? knownTruth(correction.correctedBoardLine, {
+          ...truthContext,
+          sourceField: "authorized_board_line_correction",
+        }, { provenance: "manual", method: "manual-override" })
+      : raw,
+    correctionAuthorized: true,
     reason: correction.reason,
   };
 }
@@ -275,6 +308,7 @@ export function buildTrialSpecMap(workbookBytes) {
         modelName,
         shape,
         purpose,
+        flexSource: normalizeWhitespace(row.K),
         flex: parseFlexNumber(row.K),
         sizes: [],
       };
@@ -447,22 +481,350 @@ function extractTrialJsonArrayResult(htmlText, variableName) {
   }
 }
 
-function extractTrialDescription(htmlText, brand) {
-  const productHeading = `Сноуборд ${brand}`;
-  const index = htmlText.indexOf(productHeading);
-  if (index === -1) {
-    return "";
+function trialHtmlAttribute(tag, name) {
+  const match = tag.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "iu"));
+  return match?.[1] ?? match?.[2] ?? "";
+}
+
+// Match balanced elements, not a fixed-length window or the first closing div.
+function trialHtmlElements(html, tagName) {
+  const tags = new RegExp(`<\\/?${tagName}\\b(?:[^"'<>]|"[^"]*"|'[^']*')*>`, "giu");
+  const stack = [];
+  const elements = [];
+  for (const match of html.matchAll(tags)) {
+    if (!match[0].startsWith("</")) {
+      stack.push({ tag: match[0], start: match.index, contentStart: match.index + match[0].length });
+    } else {
+      const open = stack.pop();
+      if (open) elements.push({ ...open, html: html.slice(open.contentStart, match.index) });
+    }
+  }
+  return elements.sort((left, right) => left.start - right.start);
+}
+
+function trialDescriptionBlocks(htmlText) {
+  const html = String(htmlText ?? "")
+    .replace(/<!--[\s\S]*?-->/gu, "")
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/giu, "");
+  const divs = trialHtmlElements(html, "div");
+  return divs.filter((block) => {
+    const isDescriptionBlock =
+      trialHtmlAttribute(block.tag, "class").split(/\s+/u).includes("card-info__block") &&
+      trialHtmlAttribute(block.tag, "data-block") === "block1";
+    if (!isDescriptionBlock) return false;
+    const ancestors = divs.filter((candidate) =>
+      candidate.start < block.start &&
+      block.start < candidate.contentStart + candidate.html.length,
+    );
+    const hasCardContainer = ancestors.some(({ tag }) =>
+      trialHtmlAttribute(tag, "class").split(/\s+/u).includes("card-info__blocks"),
+    );
+    const insideExcludedSection = ancestors.some(({ tag }) => {
+      const classes = trialHtmlAttribute(tag, "class").split(/\s+/u);
+      return trialHtmlAttribute(tag, "data-block") === "block4" ||
+        classes.some(name => name.startsWith("video_") || name === "video-mobile");
+    });
+    return hasCardContainer && !insideExcludedSection;
+  });
+}
+
+function extractTrialStructuredCharacteristicValues(blocks, label) {
+  const values = [];
+  for (const block of blocks) {
+    const excludesNestedMedia =
+      label === "Жесткость" ||
+      label === "Форма" ||
+      label === "Назначение" ||
+      label.startsWith("Ширина талии сноуборда,");
+    const excludedSections = excludesNestedMedia
+      ? trialHtmlElements(block.html, "div").filter(({ tag }) =>
+          trialHtmlAttribute(tag, "data-block") === "block4" ||
+          trialHtmlAttribute(tag, "class").split(/\s+/u).some(name =>
+            name.startsWith("video_") || name === "video-mobile",
+          ),
+        )
+      : [];
+    for (const table of trialHtmlElements(block.html, "table")) {
+      if (excludedSections.some(section =>
+        table.start >= section.contentStart &&
+        table.start < section.contentStart + section.html.length,
+      )) continue;
+      const rows = trialHtmlElements(table.html, "tr").map(row => ({
+        html: row.html,
+        cells: trialHtmlElements(row.html, "td").map(cell => stripHtml(cell.html)),
+      }));
+      // The product characteristic table has the brand/showBrand row. Header
+      // filters and unrelated tables must never supply characteristic evidence.
+      if (!rows.some(row => row.cells[0] === "Бренд:" && /onclick\s*=\s*["']showBrand\(\);?["']/u.test(row.html))) continue;
+      for (const row of rows) {
+        const field = row.cells[0]?.replace(/:$/u, "").trim();
+        const normalizedField = label === "Жесткость" ? field?.replaceAll("ё", "е") : field;
+        if (normalizedField === label && row.cells.length === 2) {
+          values.push(row.cells[1]);
+        }
+      }
+    }
+  }
+  return values;
+}
+
+const TRIAL_CARD_WAIST_FIELD =
+  "card-info__block[block1].table.Ширина талии сноуборда";
+
+function parseTrialStructuredWaistPairs(value, unit) {
+  const source = normalizeWhitespace(value);
+  const pairPattern = /(\d+(?:[.,]\d+)?)\s*\(\s*(\d+(?:[.,]\d+)?(?:\s*(?:w|cm|см))?)\s*\)/giu;
+  const pairs = [];
+  let cursor = 0;
+
+  for (const match of source.matchAll(pairPattern)) {
+    if (!/^[\s,;]*$/u.test(source.slice(cursor, match.index))) return [];
+    const numericWaist = Number.parseFloat(match[1].replace(",", "."));
+    const waistWidthMm = unit === "cm" ? numericWaist * 10 : numericWaist;
+    const sizeLabel = normalizeWhitespace(match[2]);
+    const sizeCm = parseSizeCm(sizeLabel);
+    if (
+      !Number.isInteger(waistWidthMm) ||
+      !isReliableTrialSize(sizeCm, waistWidthMm)
+    ) return [];
+    pairs.push({
+      sizeKey: normalizeSizeKey(sizeLabel),
+      waistWidthMm,
+    });
+    cursor = match.index + match[0].length;
   }
 
-  const snippet = htmlText.slice(index, index + 5000);
-  const paragraphMatch = snippet.match(
-    new RegExp(
-      `Сноуборд\\s+${brand.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}[^-]{0,120}-\\s*([\\s\\S]{120,2200}?)<a href="javascript:void\\(0\\)" onclick="showBrand\\(\\);"`,
-      "iu",
-    ),
-  );
+  if (pairs.length === 0 || !/^[\s,;]*$/u.test(source.slice(cursor))) return [];
+  return pairs;
+}
 
-  return paragraphMatch ? stripHtml(paragraphMatch[1]) : "";
+function extractTrialStructuredWaistEvidence(blocks) {
+  const valuesBySizeKey = new Map();
+  for (const { label, unit } of [
+    { label: "Ширина талии сноуборда, мм", unit: "mm" },
+    { label: "Ширина талии сноуборда, см", unit: "cm" },
+  ]) {
+    for (const value of extractTrialStructuredCharacteristicValues(blocks, label)) {
+      for (const pair of parseTrialStructuredWaistPairs(value, unit)) {
+        const values = valuesBySizeKey.get(pair.sizeKey) ?? [];
+        values.push(pair.waistWidthMm);
+        valuesBySizeKey.set(pair.sizeKey, values);
+      }
+    }
+  }
+  return valuesBySizeKey;
+}
+
+function ambiguousTrialWaist(context) {
+  return {
+    value: null,
+    evidence: {
+      ...unknownTruth(context).evidence,
+      state: "ambiguous",
+    },
+  };
+}
+
+function resolveTrialWaistTruth({
+  manualCorrection,
+  manualSourceName,
+  workbookExact,
+  cardExactValues,
+  sizeKey,
+  sizeCm,
+  context,
+}) {
+  if (Number.isFinite(manualCorrection)) {
+    return knownTruth(
+      manualCorrection,
+      {
+        ...context,
+        sourceName: manualSourceName,
+        sourceField: `waistWidthMmBySizeCm.${sizeCm}`,
+      },
+      { provenance: "manual", method: "manual-override" },
+    );
+  }
+
+  const workbookContext = { ...context, sourceField: "workbook.waist_width" };
+  const cardContext = {
+    ...context,
+    sourceField: `${TRIAL_CARD_WAIST_FIELD}.${sizeKey}.waist_width`,
+  };
+  const workbook = Number.isFinite(workbookExact)
+    ? knownTruth(workbookExact, workbookContext)
+    : unknownTruth(workbookContext, "no_exact_geometry");
+  const cardValues = cardExactValues ?? [];
+  const card = cardValues.length === 0
+    ? unknownTruth(cardContext, "no_exact_geometry")
+    : cardValues.every((value) => value === cardValues[0])
+      ? knownTruth(cardValues[0], cardContext)
+      : ambiguousTrialWaist(cardContext);
+
+  if (
+    card.evidence.state === "ambiguous" ||
+    (workbook.evidence.state === "known" &&
+      card.evidence.state === "known" &&
+      workbook.value !== card.value)
+  ) {
+    const sourceField = workbook.evidence.state === "known"
+      ? `${workbook.evidence.sourceField}|${card.evidence.sourceField}`
+      : card.evidence.sourceField;
+    return ambiguousTrialWaist({ ...context, sourceField });
+  }
+  if (workbook.evidence.state === "known") return workbook;
+  if (card.evidence.state === "known") return card;
+  return workbook;
+}
+
+function ambiguousTrialFlex(context) {
+  return {
+    value: null,
+    evidence: {
+      ...unknownTruth(context).evidence,
+      state: "ambiguous",
+      sourceScaleMax: null,
+    },
+  };
+}
+
+function resolveTrialFlexTruth(workbookValue, cardValues, context) {
+  const workbookContext = { ...context, sourceField: "workbook.flex" };
+  const cardContext = { ...context, sourceField: "card-info__block[block1].table.Жесткость" };
+  const workbook = resolveFlexTruth(workbookValue, workbookContext);
+  const cards = cardValues.map(value => resolveFlexTruth(value, cardContext));
+  const first = cards[0] ?? unknownTruth(cardContext);
+  const card = cards.some(item => item.evidence.state === "ambiguous") ||
+    cards.some(item => item.value !== first.value || item.evidence.state !== first.evidence.state)
+    ? ambiguousTrialFlex(cardContext)
+    : first;
+
+  if (workbook.evidence.state === "ambiguous" || card.evidence.state === "ambiguous" ||
+      (workbook.evidence.state === "known" && card.evidence.state === "known" && workbook.value !== card.value)) {
+    const participating = [workbook, card].filter(item => item.evidence.state !== "unknown");
+    return ambiguousTrialFlex({
+      ...context,
+      sourceField: participating.map(item => item.evidence.sourceField).join("|"),
+    });
+  }
+  // Equal known values retain workbook attribution; unknown is not a default.
+  if (workbook.evidence.state === "known") return workbook;
+  return card.evidence.state === "known" ? card : workbook;
+}
+
+function ambiguousTrialShape(context) {
+  return {
+    value: null,
+    evidence: {
+      ...unknownTruth(context).evidence,
+      state: "ambiguous",
+    },
+  };
+}
+
+function resolveTrialShapeTruth(workbookValue, cardValues, context) {
+  const workbookContext = { ...context, sourceField: "workbook.shape" };
+  const cardContext = { ...context, sourceField: "card-info__block[block1].table.Форма" };
+  const workbook = resolveShapeTruth(workbookValue, workbookContext);
+  const cards = cardValues.map(value => resolveShapeTruth(value, cardContext));
+  const first = cards[0] ?? unknownTruth(cardContext);
+  const card = cards.some(item => item.evidence.state === "ambiguous") ||
+    cards.some(item => item.value !== first.value || item.evidence.state !== first.evidence.state)
+    ? ambiguousTrialShape(cardContext)
+    : first;
+
+  if (workbook.evidence.state === "ambiguous" || card.evidence.state === "ambiguous" ||
+      (workbook.evidence.state === "known" && card.evidence.state === "known" && workbook.value !== card.value)) {
+    const participating = [workbook, card].filter(item => item.evidence.state !== "unknown");
+    return ambiguousTrialShape({
+      ...context,
+      sourceField: participating.map(item => item.evidence.sourceField).join("|"),
+    });
+  }
+  // Equal canonical values retain workbook attribution; unknown is not a default.
+  if (workbook.evidence.state === "known") return workbook;
+  return card.evidence.state === "known" ? card : workbook;
+}
+
+function ambiguousTrialRidingStyles(context) {
+  return {
+    value: null,
+    evidence: {
+      ...unknownTruth(context).evidence,
+      state: "ambiguous",
+    },
+  };
+}
+
+function sameTrialRidingStyles(left, right) {
+  return Array.isArray(left) &&
+    Array.isArray(right) &&
+    left.length === right.length &&
+    left.every((value, index) => value === right[index]);
+}
+
+function resolveTrialRidingStylesTruth(workbookValue, cardValues, context) {
+  const workbookContext = { ...context, sourceField: "workbook.purpose" };
+  const cardContext = {
+    ...context,
+    sourceField: "card-info__block[block1].table.Назначение",
+  };
+  const workbook = resolveRidingStylesTruth(workbookValue, workbookContext);
+  const cards = cardValues.map(value => resolveRidingStylesTruth(value, cardContext));
+  const first = cards[0] ?? unknownTruth(cardContext);
+  const card = cards.some(item => item.evidence.state === "ambiguous") ||
+    cards.some(item =>
+      item.evidence.state !== first.evidence.state ||
+      (item.evidence.state === "known" && !sameTrialRidingStyles(item.value, first.value))
+    )
+    ? ambiguousTrialRidingStyles(cardContext)
+    : first;
+
+  if (
+    workbook.evidence.state === "ambiguous" ||
+    card.evidence.state === "ambiguous" ||
+    (workbook.evidence.state === "known" &&
+      card.evidence.state === "known" &&
+      !sameTrialRidingStyles(workbook.value, card.value))
+  ) {
+    const participating = [workbook, card].filter(item => item.evidence.state !== "unknown");
+    return ambiguousTrialRidingStyles({
+      ...context,
+      sourceField: participating.map(item => item.evidence.sourceField).join("|"),
+    });
+  }
+  // Equal canonical sets retain workbook attribution; unknown is not a default.
+  if (workbook.evidence.state === "known") return workbook;
+  return card.evidence.state === "known" ? card : workbook;
+}
+
+function resolveTrialStructuredAudience(values, context) {
+  const inputs = Array.isArray(values) ? values : [values];
+  if (inputs.length === 0) return unknownTruth(context, "no_explicit_audience_field");
+  const resolutions = inputs.map(value => resolveBoardLineTruth(value, context));
+  const first = resolutions[0];
+  if (resolutions.every(item => item.value === first.value && item.evidence.state === first.evidence.state)) return first;
+  return {
+    value: null,
+    evidence: { ...first.evidence, state: "ambiguous", method: null, normalizationRule: null },
+    reason: "conflicting_structured_audience",
+  };
+}
+
+function extractTrialDescription(blocks) {
+  for (const block of blocks) {
+    const video = trialHtmlElements(block.html, "div").find(({ tag }) =>
+      trialHtmlAttribute(tag, "class").split(/\s+/u).some(name =>
+        ["video_icon_title", "video_icon_tabs", "video_icon_detail-out", "video-mobile"].includes(name),
+      ),
+    );
+    const table = trialHtmlElements(block.html, "table")[0];
+    const end = Math.min(video?.start ?? block.html.length, table?.start ?? block.html.length);
+    const description = stripHtml(block.html.slice(0, end));
+    // Desktop/mobile copies describe the same product; never concatenate them.
+    if (description) return description;
+  }
+  return "";
 }
 
 function extractTrialBrand(htmlText) {
@@ -706,7 +1068,39 @@ function buildTrialProduct(
     modelName,
     sizeCorrectionResult.correction,
   );
-  const sizes = sizeResult.sizes;
+  const truthContext = {
+    sourceName: "Триал-Спорт",
+    sourceUrl: productUrl,
+    observedAt: checkedAt,
+  };
+  const descriptionBlocks = trialDescriptionBlocks(htmlText);
+  const cardWaistEvidence = extractTrialStructuredWaistEvidence(descriptionBlocks);
+  const exactSpecSizes = new Map(
+    (specGroup?.sizes ?? []).map((size) => [normalizeSizeKey(size.sizeLabel), size]),
+  );
+  const sizeCorrection = sizeCorrectionResult.correction;
+  const sizes = sizeResult.sizes.map((size) => {
+    const correctedWaist =
+      sizeCorrection?.waistWidthMmBySizeCm?.[String(size.sizeCm)] ?? null;
+    const sizeKey = normalizeSizeKey(size.sizeLabel);
+    const exactSpec = exactSpecSizes.get(sizeKey);
+    const waistResolution = resolveTrialWaistTruth({
+      manualCorrection: correctedWaist,
+      manualSourceName: sizeCorrection?.authoritativeSource,
+      workbookExact: exactSpec?.waistWidthMm,
+      cardExactValues: cardWaistEvidence.get(sizeKey),
+      sizeKey,
+      sizeCm: size.sizeCm,
+      context: truthContext,
+    });
+    return {
+      ...size,
+      truthV2: buildSizeTruthV2(waistResolution, {
+        ...truthContext,
+        sourceField: "derived.width_type",
+      }),
+    };
+  });
 
   if (sizes.length === 0 || availableEntries.length === 0) {
     return { status: "unsafe_failure", reason: "product_parse_failure" };
@@ -715,13 +1109,13 @@ function buildTrialProduct(
   const flex = specGroup?.flex || 5;
   const ridingStyle = mapRidingStyle(specGroup?.purpose);
   const shapeType = mapShapeType(specGroup?.shape);
-  const descriptionText = extractTrialDescription(htmlText, brand);
+  const descriptionText = extractTrialDescription(descriptionBlocks);
   const imageUrls = extractTrialImageUrls(htmlText);
   const seasonLabel = extractTrialSeasonLabel(htmlText);
   const boardLineIdentity = resolveTrialSportBoardLineMetadata(
     sourceProductId,
-    descriptionText,
-    { brand, modelName },
+    extractTrialStructuredCharacteristicValues(descriptionBlocks, "Пол"),
+    { brand, modelName, truthContext },
   );
   if (boardLineIdentity.status === "conflict") {
     return {
@@ -734,6 +1128,33 @@ function buildTrialProduct(
   const skillLevel = mapSkillLevel({
     levelText: "",
     flex,
+  });
+  const boardLineTruth = boardLineIdentity.boardLineTruth;
+  const truthV2 = buildProductTruthV2({
+    ridingStyles: resolveTrialRidingStylesTruth(
+      specGroup?.purpose,
+      extractTrialStructuredCharacteristicValues(descriptionBlocks, "Назначение"),
+      truthContext,
+    ),
+    skillApplicability: resolveSkillApplicabilityTruth("", {
+      ...truthContext,
+      sourceField: "workbook.skill_level",
+    }),
+    boardLine: boardLineTruth,
+    flex: resolveTrialFlexTruth(
+      specGroup?.flexSource,
+      extractTrialStructuredCharacteristicValues(descriptionBlocks, "Жесткость"),
+      truthContext,
+    ),
+    shapeType: resolveTrialShapeTruth(
+      specGroup?.shape,
+      extractTrialStructuredCharacteristicValues(descriptionBlocks, "Форма"),
+      truthContext,
+    ),
+    camberProfile: resolveCamberTruth("", {
+      ...truthContext,
+      sourceField: "workbook.camber_profile",
+    }),
   });
   const product = {
     slug: slugifyBoard(`${brand} ${modelName}`),
@@ -759,6 +1180,7 @@ function buildTrialProduct(
     scenarios: [],
     notIdealFor: [],
     sizes,
+    truthV2,
     importMeta: {
       storeCode: "trial-sport",
       sourceProductId,

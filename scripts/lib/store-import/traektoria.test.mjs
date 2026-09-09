@@ -4,11 +4,68 @@ import {
   revalidateTraektoriaProducts,
   resolveTraektoriaBoardLineMetadata,
   resolveTraektoriaSourceMetadata,
+  TRAEKTORIA_SOURCE_METADATA_CORRECTIONS,
 } from "./traektoria.mjs";
+import { normalizeSourceIdentityText } from "./source-identity.mjs";
+import { resolveBoardLineTruth } from "./attribute-truth.mjs";
 
 const EXTRA_IDS = ["1890639", "1890653"];
+const GUARDED_MEN_SOURCES = [
+  ["1890654", "Stratos"],
+  ["1890652", "Tweaker"],
+];
 
 describe("Traektoria trusted board-line corrections", () => {
+  it.each(Object.entries(TRAEKTORIA_SOURCE_METADATA_CORRECTIONS).flatMap(
+    ([sourceProductId, correction]) => ["men unisex", "male unisex", "women unisex", "men women"]
+      .map((rawGender) => [sourceProductId, correction, rawGender]),
+  ))("rejects ambiguous audience for %s with %j / %s", (sourceProductId, correction, rawGender) => {
+    expect(resolveBoardLineTruth(rawGender)).toMatchObject({
+      value: null, evidence: { state: "ambiguous" },
+    });
+    expect(resolveTraektoriaSourceMetadata({
+      sourceProductId,
+      brand: correction.expectedBrand,
+      modelName: correction.expectedModel,
+      rawGender,
+    })).toEqual({
+      status: "conflict",
+      category: "source_metadata_conflict",
+      correctionApplied: false,
+      reason: correction.reason,
+    });
+  });
+
+  it("preserves non-correction compatibility metadata for ambiguous audience", () => {
+    expect(resolveBoardLineTruth("men unisex")).toMatchObject({
+      value: null, evidence: { state: "ambiguous" },
+    });
+    expect(resolveTraektoriaSourceMetadata({
+      sourceProductId: "1890653", brand: "Jones", modelName: "Mountain Twin",
+      rawGender: "men unisex",
+    })).toEqual({
+      status: "resolved", boardLine: "men", evidence: "known",
+      correctionApplied: false, camberProfile: null, flex: null, shapeType: null,
+      reason: null,
+    });
+  });
+
+  it.each(["1890654", "1890652"])(
+    "rejects wrong identity for correction source %s",
+    (sourceProductId) => {
+      expect(resolveTraektoriaSourceMetadata({
+        sourceProductId,
+        brand: "Wrong",
+        modelName: "Wrong",
+        rawGender: "unisex",
+      })).toMatchObject({
+        status: "conflict",
+        category: "source_metadata_conflict",
+        correctionApplied: false,
+      });
+    },
+  );
+
   it.each([
     ["other-women", "women", "women"],
     ["other-men", "men", "men"],
@@ -22,18 +79,22 @@ describe("Traektoria trusted board-line corrections", () => {
     });
   });
 
-  it.each(["1890654", "1890652"])(
+  it.each(GUARDED_MEN_SOURCES)(
     "corrects trusted men source %s while the merchant reports unisex",
-    (sourceId) => {
+    (sourceProductId, modelName) => {
       expect(
-        resolveTraektoriaBoardLineMetadata(sourceId, "unisex"),
+        resolveTraektoriaSourceMetadata({
+          sourceProductId, brand: "Jones", modelName, rawGender: "unisex",
+        }),
       ).toMatchObject({
         status: "resolved",
         boardLine: "men",
         evidence: "known",
         correctionApplied: true,
       });
-      expect(resolveTraektoriaBoardLineMetadata(sourceId, "men")).toMatchObject({
+      expect(resolveTraektoriaSourceMetadata({
+        sourceProductId, brand: "Jones", modelName, rawGender: "men",
+      })).toMatchObject({
         status: "resolved",
         boardLine: "men",
         evidence: "known",
@@ -42,17 +103,70 @@ describe("Traektoria trusted board-line corrections", () => {
     },
   );
 
-  it.each(["1890654", "1890652"])(
-    "fails closed when trusted source %s reports women or ambiguous metadata",
-    (sourceId) => {
-      expect(resolveTraektoriaBoardLineMetadata(sourceId, "women")).toMatchObject({
+  describe.each(GUARDED_MEN_SOURCES)("identity guard for %s / %s", (sourceProductId, modelName) => {
+    it.each([
+      ["wrong brand", { brand: "Wrong" }],
+      ["wrong model", { modelName: "Wrong" }],
+      ["missing brand", { brand: undefined }],
+      ["missing model", { modelName: undefined }],
+      ["missing identity", { brand: undefined, modelName: undefined }],
+      ["empty brand", { brand: " " }],
+      ["empty model", { modelName: " " }],
+      ["empty identity", { brand: "", modelName: "" }],
+    ])("fails closed for %s", (_case, identity) => {
+      expect(resolveTraektoriaSourceMetadata({
+        sourceProductId, brand: "Jones", modelName, rawGender: "unisex", ...identity,
+      })).toMatchObject({
         status: "conflict",
         category: "source_metadata_conflict",
+        correctionApplied: false,
       });
-      expect(resolveTraektoriaBoardLineMetadata(sourceId, "")).toMatchObject({
-        status: "conflict",
-        category: "source_metadata_conflict",
-      });
+    });
+
+    it.each(["women", "", undefined, "unknown", "youth"])(
+      "rejects incompatible merchant audience %j with correct identity",
+      (rawGender) => {
+        expect(resolveTraektoriaSourceMetadata({
+          sourceProductId, brand: "Jones", modelName, rawGender,
+        })).toMatchObject({
+          status: "conflict",
+          category: "source_metadata_conflict",
+          correctionApplied: false,
+        });
+      },
+    );
+
+    it("uses the existing identity normalization", () => {
+      expect(resolveTraektoriaSourceMetadata({
+        sourceProductId,
+        brand: "  JONES  ",
+        modelName: ` ${modelName.toUpperCase()} `,
+        rawGender: "унисекс",
+      })).toMatchObject({ status: "resolved", boardLine: "men", correctionApplied: true });
+    });
+  });
+
+  it.each(Object.keys(TRAEKTORIA_SOURCE_METADATA_CORRECTIONS))(
+    "refuses identity-sensitive correction %s through the identity-free wrapper",
+    (sourceProductId) => {
+      for (const rawGender of ["unisex", "men", "", "unknown"]) {
+        expect(resolveTraektoriaBoardLineMetadata(sourceProductId, rawGender)).toMatchObject({
+          status: "conflict",
+          category: "source_metadata_conflict",
+          correctionApplied: false,
+        });
+      }
+    },
+  );
+
+  it.each(Object.entries(TRAEKTORIA_SOURCE_METADATA_CORRECTIONS))(
+    "requires a complete normalized correction identity for %s",
+    (_sourceProductId, correction) => {
+      for (const field of ["expectedBrand", "expectedModel"]) {
+        expect(correction[field]).toEqual(expect.any(String));
+        expect(correction[field].trim().length).toBeGreaterThan(0);
+        expect(correction[field]).toBe(normalizeSourceIdentityText(correction[field]));
+      }
     },
   );
 
@@ -153,6 +267,8 @@ function makeProductPayload({
   thingType = "сноуборд",
   gender = "унисекс",
   skuList,
+  filterOptions = [],
+  descriptions = {},
 } = {}) {
   return {
     data: {
@@ -179,8 +295,8 @@ function makeProductPayload({
                 },
               ] : skuList,
           },
-          filter_options: [],
-          descriptions: {},
+          filter_options: filterOptions,
+          descriptions,
           selected_sku: {},
           grid_size_html: table,
         },
@@ -239,6 +355,23 @@ function makeExistingProduct(sourceProductId, slug = `board-${sourceProductId}`)
 }
 
 describe("Traektoria corrected Product identity", () => {
+  it("rejects ambiguous audience Frontier without emitting correction metadata", async () => {
+    const result = await importExtras({
+      [EXTRA_IDS[0]]: makeProductPayload(),
+      [EXTRA_IDS[1]]: makeProductPayload(),
+      "1890649": makeProductPayload({
+        brand: "Jones", modelName: "Frontier 2.0", gender: "men unisex",
+      }),
+    }, { listingIds: ["1890649"] });
+
+    expect(result.products.map((product) => product.importMeta.sourceProductId).sort())
+      .toEqual([...EXTRA_IDS].sort());
+    expect(result.diagnostics).toMatchObject({
+      failuresByCategory: { source_metadata_conflict: 1 },
+      unsafeFailureCount: 1, staleSafe: false, importComplete: false,
+    });
+  });
+
   it("emits the complete guarded Jones Frontier 2.0 metadata target", async () => {
     const result = await importExtras(
       {
@@ -268,6 +401,12 @@ describe("Traektoria corrected Product identity", () => {
         sourceProductId: "1890649",
         boardLineEvidence: "known",
       },
+      truthV2: {
+        boardLine: "men",
+        flex: 5,
+        shapeType: "directional",
+        camberProfile: "hybrid-camber",
+      },
     });
     expect(result.diagnostics).toMatchObject({
       unsafeFailureCount: 0,
@@ -275,24 +414,34 @@ describe("Traektoria corrected Product identity", () => {
     });
   });
 
-  it("emits corrected board-line metadata consistently for Jones Stratos men", async () => {
+  it.each(GUARDED_MEN_SOURCES.flatMap(([sourceProductId, modelName]) =>
+    ["unisex", "men"].map((gender) => [sourceProductId, modelName, gender]),
+  ))("emits guarded %s / Jones %s truth for merchant line %s", async (sourceProductId, modelName, gender) => {
     const result = await importExtras(
       {
         [EXTRA_IDS[0]]: makeProductPayload(),
         [EXTRA_IDS[1]]: makeProductPayload(),
-        "1890654": makeProductPayload({ modelName: "Jones Stratos" }),
+        [sourceProductId]: makeProductPayload({ brand: "Jones", modelName, gender }),
       },
-      { listingIds: ["1890654"] },
+      { listingIds: [sourceProductId] },
     );
     const corrected = result.products.find(
-      (product) => product.importMeta.sourceProductId === "1890654",
+      (product) => product.importMeta.sourceProductId === sourceProductId,
     );
 
     expect(corrected).toMatchObject({
       boardLine: "men",
       importMeta: {
-        sourceProductId: "1890654",
+        sourceProductId,
         boardLineEvidence: "known",
+      },
+      truthV2: {
+        boardLine: "men",
+        attributeEvidence: {
+          boardLine: gender === "unisex"
+            ? { provenance: "manual", method: "manual-override" }
+            : { provenance: "merchant", method: "explicit" },
+        },
       },
     });
     expect(result.diagnostics).toMatchObject({
@@ -307,7 +456,8 @@ describe("Traektoria corrected Product identity", () => {
         [EXTRA_IDS[0]]: makeProductPayload(),
         [EXTRA_IDS[1]]: makeProductPayload(),
         "1890652": makeProductPayload({
-          modelName: "Jones Tweaker",
+          brand: "Jones",
+          modelName: "Tweaker",
           gender: "women",
         }),
       },
@@ -328,7 +478,170 @@ describe("Traektoria corrected Product identity", () => {
   });
 });
 
+describe("Traektoria camber truth", () => {
+  it.each([
+    ["1890639", "Dream Weaver", "women"],
+    ["1890652", "Tweaker", "unisex"],
+  ])(
+    "uses merchant filter.BEND camber evidence for %s / Jones %s",
+    async (sourceProductId, modelName, gender) => {
+      const checkedAt = "2026-09-08T00:00:00.000Z";
+      const result = await importTraektoriaProducts({
+        fetchJson: createImporterFetch({
+          "1890639": makeProductPayload({
+            brand: "Jones",
+            modelName: sourceProductId === "1890639" ? modelName : "Dream Weaver",
+            gender: sourceProductId === "1890639" ? gender : "women",
+            filterOptions: sourceProductId === "1890639"
+              ? [{ code: "BEND", value: "Кэмбер" }]
+              : [],
+          }),
+          "1890653": makeProductPayload({
+            brand: "Jones", modelName: "Mountain Twin", gender: "unisex",
+          }),
+          ...(sourceProductId === "1890652"
+            ? {
+                "1890652": makeProductPayload({
+                  brand: "Jones", modelName, gender,
+                  filterOptions: [{ code: "BEND", value: "Кэмбер" }],
+                }),
+              }
+            : {}),
+        }, {
+          listingIds: sourceProductId === "1890652" ? [sourceProductId] : [],
+        }),
+        checkedAt,
+        concurrency: 1,
+        logger: { log: vi.fn() },
+      });
+      const product = result.products.find(
+        (item) => item.importMeta.sourceProductId === sourceProductId,
+      );
+
+      expect(product).not.toHaveProperty("camberProfile");
+      expect(product.truthV2.camberProfile).toBe("camber");
+      expect(product.truthV2.attributeEvidence.camberProfile).toEqual({
+        state: "known",
+        provenance: "merchant",
+        method: "normalized",
+        sourceName: "Траектория",
+        sourceUrl: sourceProductId === "1890639"
+          ? "https://www.traektoria.ru/product/1890639_snoubord-jones-dream-weaver/"
+          : "https://www.traektoria.ru/product/1890652_test-board/",
+        observedAt: checkedAt,
+        sourceField: "filter.BEND",
+        sourceScaleMax: null,
+        normalizationRule: "camber-profile-v1",
+      });
+      if (sourceProductId === "1890652") {
+        expect(product.truthV2.attributeEvidence.boardLine).toMatchObject({
+          provenance: "manual",
+          method: "manual-override",
+          sourceField: "authorized_board_line_correction",
+        });
+      }
+    },
+  );
+
+  it.each([
+    ["1890653", "Mountain Twin"],
+    ["1890654", "Stratos"],
+  ])("keeps generic hybrid BEND unknown for %s / Jones %s", async (sourceProductId, modelName) => {
+    const result = await importExtras({
+      "1890639": makeProductPayload({ brand: "Jones", modelName: "Dream Weaver", gender: "women" }),
+      "1890653": makeProductPayload({
+        brand: "Jones",
+        modelName: sourceProductId === "1890653" ? modelName : "Mountain Twin",
+        gender: "men",
+        filterOptions: sourceProductId === "1890653"
+          ? [{ code: "BEND", value: "Гибрид" }]
+          : [],
+      }),
+      ...(sourceProductId === "1890654"
+        ? {
+            "1890654": makeProductPayload({
+              brand: "Jones", modelName, gender: "men",
+              filterOptions: [{ code: "BEND", value: "Гибрид" }],
+            }),
+          }
+        : {}),
+    }, { listingIds: sourceProductId === "1890654" ? [sourceProductId] : [] });
+    const product = result.products.find(
+      (item) => item.importMeta.sourceProductId === sourceProductId,
+    );
+
+    expect(product).not.toHaveProperty("camberProfile");
+    expect(product.truthV2.camberProfile).toBeNull();
+    expect(product.truthV2.attributeEvidence.camberProfile).toMatchObject({
+      state: "unknown",
+      provenance: "merchant",
+      method: null,
+      sourceField: "filter.BEND",
+      normalizationRule: null,
+    });
+  });
+
+  it.each([undefined, "Кэмбер", "Гибрид", "rocker"])(
+    "keeps the authorized Frontier camber correction for BEND %j",
+    async (bend) => {
+      const filterOptions = bend === undefined ? [] : [{ code: "BEND", value: bend }];
+      const result = await importExtras({
+        "1890639": makeProductPayload({
+          brand: "Jones", modelName: "Dream Weaver", gender: "women",
+        }),
+        "1890653": makeProductPayload({
+          brand: "Jones", modelName: "Mountain Twin", gender: "unisex",
+        }),
+        "1890649": makeProductPayload({
+          brand: "Jones", modelName: "Frontier 2.0", gender: "unisex", filterOptions,
+        }),
+      }, { listingIds: ["1890649"] });
+      const product = result.products.find(
+        (item) => item.importMeta.sourceProductId === "1890649",
+      );
+
+      expect(product.camberProfile).toBe("hybrid-camber");
+      expect(product.truthV2.camberProfile).toBe("hybrid-camber");
+      expect(product.truthV2.attributeEvidence.camberProfile).toMatchObject({
+        state: "known",
+        provenance: "manual",
+        method: "manual-override",
+        sourceField: "authorized_camber_correction",
+        normalizationRule: null,
+      });
+    },
+  );
+});
+
 describe("Traektoria size-table parsing", () => {
+  it.each(["Новичок\nПродвинутый", "Новичок<br>Продвинутый"])(
+    "preserves Mountain Twin novice skill evidence from LEVEL %j", async (level) => {
+      const sourceUrl = "https://www.traektoria.ru/product/1890653_snoubord-jones-mountain-twin/";
+      const checkedAt = "2026-09-04T07:56:25.862Z";
+      const result = await importTraektoriaProducts({
+        fetchJson: createImporterFetch({
+          [EXTRA_IDS[0]]: makeProductPayload(),
+          "1890653": makeProductPayload({
+            brand: "Jones", modelName: "Mountain Twin",
+            filterOptions: [{ code: "LEVEL", value: level }],
+          }),
+        }),
+        checkedAt,
+        concurrency: 1,
+        logger: { log: vi.fn() },
+      });
+      expect(result.diagnostics.unsafeFailureCount).toBe(0);
+      const product = result.products.find((item) => item.importMeta.sourceProductId === "1890653");
+      expect(product.truthV2.skillApplicability).toEqual({ min: "beginner", max: "intermediate" });
+      expect(product.truthV2.attributeEvidence.skillApplicability).toEqual({
+        state: "known", provenance: "merchant", method: "normalized",
+        sourceName: "Траектория", sourceUrl, observedAt: checkedAt,
+        sourceField: "filter.LEVEL", sourceScaleMax: null,
+        normalizationRule: "skill-range-v1",
+      });
+    },
+  );
+
   it("preserves column-oriented tables and supports semantic row-oriented tables", async () => {
     const result = await importExtras({
       [EXTRA_IDS[0]]: makeProductPayload({ modelName: "Column" }),
@@ -346,11 +659,38 @@ describe("Traektoria size-table parsing", () => {
         [164, 269],
         [168, 272],
       ]);
+    expect(result.products.flatMap((product) => product.sizes).every(
+      (size) => size.truthV2.waistWidthMm === size.waistWidthMm,
+    )).toBe(true);
     expect(result.diagnostics).toMatchObject({
       resolvedCount: 2,
       importComplete: true,
       staleSafe: true,
       complete: true,
+    });
+  });
+
+  it("attaches multi-value style, direct skill and normalized flex truth", async () => {
+    const result = await importExtras({
+      [EXTRA_IDS[0]]: makeProductPayload({
+        modelName: "Truth Board",
+        gender: "Девочки",
+        filterOptions: [
+          { code: "RIDING_STYLE", value: "All Mountain / Freestyle" },
+          { code: "LEVEL", value: "Продвинутый Эксперт" },
+          { code: "FLEX", value: "Жёсткие" },
+          { code: "SHAPE", value: "Directional Twin" },
+        ],
+      }),
+      [EXTRA_IDS[1]]: makeProductPayload(),
+    });
+    const product = result.products.find((item) => item.modelName === "Truth Board");
+    expect(product.truthV2).toMatchObject({
+      ridingStyles: ["all-mountain", "park"],
+      skillApplicability: { min: "intermediate", max: "advanced" },
+      flex: 8,
+      boardLine: "women",
+      shapeType: "directional-twin",
     });
   });
 
