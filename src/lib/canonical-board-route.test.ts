@@ -75,8 +75,26 @@ describe("legacy canonical board slug aliases", () => {
 });
 
 describe("resolveCanonicalBoardRoute", () => {
-  it("renders an exact active item before consulting its legacy alias", async () => {
-    const suffix = "jones-frontier";
+  it.each(Object.entries(expectedAliases))(
+    "redirects explicit alias %s even when an exact source item exists",
+    async (legacySlug, canonicalSlug) => {
+      const source = { slug: legacySlug, label: "Legacy source" };
+      const target = { slug: canonicalSlug, label: "Canonical target" };
+      const resolver = makeResolver({ items: [source, target] });
+
+      await expect(resolver.resolve(legacySlug)).resolves.toEqual({
+        kind: "redirect",
+        item: target,
+        canonicalSlug,
+      });
+      expect(resolver.loadCanonicalItemBySlug).toHaveBeenCalledTimes(1);
+      expect(resolver.loadCanonicalItemBySlug).toHaveBeenCalledWith(canonicalSlug);
+      expect(resolver.loadFamilyAliasTargetBySlug).not.toHaveBeenCalled();
+    },
+  );
+
+  it("renders a normal exact active item before consulting a family alias", async () => {
+    const suffix = "jones-mountain-twin";
     const resolver = makeResolver({
       items: [{ slug: suffix, label: "Current active suffix" }],
     });
@@ -115,9 +133,8 @@ describe("resolveCanonicalBoardRoute", () => {
         item: target,
         canonicalSlug,
       });
-      expect(resolver.loadCanonicalItemBySlug).toHaveBeenNthCalledWith(1, legacySlug);
-      expect(resolver.loadCanonicalItemBySlug).toHaveBeenNthCalledWith(2, canonicalSlug);
-      expect(resolver.loadCanonicalItemBySlug).toHaveBeenCalledTimes(2);
+      expect(resolver.loadCanonicalItemBySlug).toHaveBeenCalledWith(canonicalSlug);
+      expect(resolver.loadCanonicalItemBySlug).toHaveBeenCalledTimes(1);
       expect(resolver.loadFamilyAliasTargetBySlug).not.toHaveBeenCalled();
     },
   );
@@ -127,15 +144,15 @@ describe("resolveCanonicalBoardRoute", () => {
     await expect(missing.resolve("nitro-team-2025-2026")).resolves.toBeUndefined();
     expect(missing.loadFamilyAliasTargetBySlug).not.toHaveBeenCalled();
 
-    const mismatched = makeResolver({
-      items: [{ slug: "unexpected-target", label: "Wrong target" }],
-    });
-    mismatched.loadCanonicalItemBySlug.mockResolvedValueOnce(undefined);
+    const mismatched = makeResolver({});
     mismatched.loadCanonicalItemBySlug.mockResolvedValueOnce({
       slug: "unexpected-target",
       label: "Wrong target",
     });
     await expect(mismatched.resolve("nitro-team-2025-2026")).resolves.toBeUndefined();
+    expect(mismatched.loadCanonicalItemBySlug).toHaveBeenCalledTimes(1);
+    expect(mismatched.loadCanonicalItemBySlug).toHaveBeenCalledWith("nitro-team");
+    expect(mismatched.loadFamilyAliasTargetBySlug).not.toHaveBeenCalled();
   });
 
   it("preserves the existing Product-offer to ModelFamily redirect", async () => {

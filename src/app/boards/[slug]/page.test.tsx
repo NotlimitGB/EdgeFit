@@ -58,7 +58,7 @@ vi.mock("@/components/boards/board-gallery", () => ({
   BoardGallery: () => <div data-gallery />,
 }));
 
-import BoardPage from "@/app/boards/[slug]/page";
+import BoardPage, { generateMetadata } from "@/app/boards/[slug]/page";
 
 const board: CanonicalCatalogItem = {
   familyId: null,
@@ -106,6 +106,44 @@ const board: CanonicalCatalogItem = {
   media: [],
   defaultOfferSlug: "brand-model-offer",
 };
+
+describe("canonical board metadata", () => {
+  it.each([
+    { seasonLabel: null, identity: "Brand Model" },
+    { seasonLabel: "2025/2026", identity: "Brand Model 2025/2026" },
+    { seasonLabel: "2026/2027", identity: "Brand Model 2026/2027" },
+  ])("uses safe identity fields for season $seasonLabel", async ({ seasonLabel, identity }) => {
+    const item: CanonicalCatalogItem = {
+      ...board,
+      seasonLabel,
+      canonicalSpecs: {
+        ...board.canonicalSpecs,
+        descriptionShort: "Купить дешевле — лучший выбор магазина.",
+        descriptionFull: "Свободный merchant-текст не должен попасть в metadata.",
+      },
+    };
+    mocks.resolve.mockResolvedValue({ kind: "render", item });
+
+    const metadata = await generateMetadata({
+      params: Promise.resolve({ slug: item.slug }),
+    });
+    const description = `${identity}: характеристики, ростовки и геометрия модели. Проверь подходящую ростовку и ширину по своим параметрам в EdgeFit.`;
+
+    expect(metadata).toMatchObject({
+      title: identity,
+      description,
+      alternates: { canonical: `/boards/${item.slug}` },
+      openGraph: {
+        title: identity,
+        description,
+        url: `/boards/${item.slug}`,
+      },
+    });
+    expect(JSON.stringify(metadata)).not.toContain("Купить дешевле");
+    expect(JSON.stringify(metadata)).not.toContain("merchant-текст");
+    expect(metadata).not.toHaveProperty("twitter");
+  });
+});
 
 describe("canonical board page loading", () => {
   it("keeps the primary board and narrative lookup without loading the full catalog", async () => {

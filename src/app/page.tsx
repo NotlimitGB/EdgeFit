@@ -1,7 +1,28 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { MountEvent } from "@/components/analytics/mount-event";
 import publicStyles from "@/components/public/public-ui.module.css";
 import { getSeoLandingPath, seoLandingPages } from "@/lib/seo-pages";
+
+const homepageTitle =
+  "Подбор сноуборда по росту, весу и размеру ноги — EdgeFit";
+const homepageDescription =
+  "Подбери ростовку, ширину и модели сноубордов по росту, весу, размеру ботинка, уровню и стилю катания. EdgeFit объяснит выбор и риск зацепа ботинком.";
+
+export const metadata: Metadata = {
+  title: {
+    absolute: homepageTitle,
+  },
+  description: homepageDescription,
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    title: homepageTitle,
+    description: homepageDescription,
+    url: "/",
+  },
+};
 
 const fitFactors = [
   {

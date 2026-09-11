@@ -64,16 +64,23 @@ export async function generateMetadata({
   }
 
   const board = resolution.item;
-  const description =
-    board.canonicalSpecs.descriptionShort?.trim() ||
-    board.canonicalSpecs.descriptionFull?.trim() ||
-    `Характеристики, размеры и доступность ${board.brand} ${board.modelName} в каталоге EdgeFit.`;
+  const seasonLabel = board.seasonLabel?.trim();
+  const identity = [board.brand, board.modelName, seasonLabel]
+    .filter(Boolean)
+    .join(" ");
+  const description = `${identity}: характеристики, ростовки и геометрия модели. Проверь подходящую ростовку и ширину по своим параметрам в EdgeFit.`;
+  const canonicalUrl = `/boards/${board.slug}`;
 
   return {
-    title: `${board.brand} ${board.modelName}`,
+    title: identity,
     description,
     alternates: {
-      canonical: `/boards/${board.slug}`,
+      canonical: canonicalUrl,
+    },
+    openGraph: {
+      title: identity,
+      description,
+      url: canonicalUrl,
     },
   };
 }

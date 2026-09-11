@@ -2,6 +2,19 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
+const sitemapBoardSlugs = vi.hoisted(() => [
+  "test-board",
+  "bataleon-evil-twin-trial-sport-3131268",
+  "bataleon-evil-twin",
+  "nitro-team-2025-2026",
+  "nitro-team",
+  "ride-warpig-trial-sport-3137774",
+  "ride-warpig",
+  "jones-frontier",
+  "jones-frontier-2-0",
+  "unrelated-seasonal-board-2025-2026",
+]);
+
 vi.mock("next/link", () => ({
   default: ({
     href,
@@ -27,7 +40,7 @@ vi.mock("@/lib/saved-results", () => ({
 }));
 
 vi.mock("@/lib/canonical-catalog", () => ({
-  getAllCanonicalBoardSlugs: vi.fn().mockResolvedValue(["test-board"]),
+  getAllCanonicalBoardSlugs: vi.fn().mockResolvedValue(sitemapBoardSlugs),
 }));
 
 import { generateMetadata } from "@/app/[seoSlug]/page";
@@ -338,12 +351,30 @@ describe("SEO indexing hygiene", () => {
     expect(resultMetadata.robots).toEqual({ index: false, follow: true });
   });
 
-  it("excludes the session result and includes every SEO landing in sitemap", async () => {
+  it("excludes explicit alias sources while preserving canonical and unrelated URLs", async () => {
     const entries = await sitemap();
     const paths = entries.map((entry) => new URL(entry.url).pathname);
 
     expect(paths).not.toContain("/result");
     expect(paths).toContain("/boards/test-board");
+    expect(paths).not.toContain(
+      "/boards/bataleon-evil-twin-trial-sport-3131268",
+    );
+    expect(paths).not.toContain("/boards/nitro-team-2025-2026");
+    expect(paths).not.toContain("/boards/ride-warpig-trial-sport-3137774");
+    expect(paths).not.toContain("/boards/jones-frontier");
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        "/boards/bataleon-evil-twin",
+        "/boards/nitro-team",
+        "/boards/ride-warpig",
+        "/boards/jones-frontier-2-0",
+        "/boards/unrelated-seasonal-board-2025-2026",
+      ]),
+    );
+    expect(paths.filter((path) => path.startsWith("/boards/"))).toHaveLength(
+      sitemapBoardSlugs.length - 4,
+    );
     for (const page of seoLandingPages) {
       expect(paths).toContain(getSeoLandingPath(page.slug));
     }

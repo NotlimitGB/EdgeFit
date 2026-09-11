@@ -66,14 +66,6 @@ export async function resolveCanonicalBoardRoute<
 }: ResolveCanonicalBoardRouteOptions<TItem>): Promise<
   CanonicalBoardRouteResult<TItem> | undefined
 > {
-  const exactItem = await loadCanonicalItemBySlug(requestedSlug);
-  if (exactItem) {
-    return {
-      kind: "render",
-      item: exactItem,
-    };
-  }
-
   const legacyTarget = legacyAliases[requestedSlug];
   if (legacyTarget) {
     const targetItem = await loadCanonicalItemBySlug(legacyTarget);
@@ -85,6 +77,14 @@ export async function resolveCanonicalBoardRoute<
       kind: "redirect",
       item: targetItem,
       canonicalSlug: legacyTarget,
+    };
+  }
+
+  const exactItem = await loadCanonicalItemBySlug(requestedSlug);
+  if (exactItem) {
+    return {
+      kind: "render",
+      item: exactItem,
     };
   }
 
