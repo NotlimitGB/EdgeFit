@@ -32,11 +32,20 @@ export const quizSubmissionSchema = z.object({
 
 export type QuizSubmission = z.infer<typeof quizSubmissionSchema>;
 
+export const focusedBoardSlugSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(160)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u, "Некорректная ссылка на модель.");
+
 export const recommendationRequestSchema = quizSubmissionSchema
   .extend({
     purchasePreferences: purchasePreferencesSchema.optional(),
+    focusedBoardSlug: focusedBoardSlugSchema.optional(),
   })
-  .transform(({ purchasePreferences, ...riderInput }) => ({
+  .transform(({ purchasePreferences, focusedBoardSlug, ...riderInput }) => ({
     riderInput,
     purchasePreferences: purchasePreferences ?? EMPTY_PURCHASE_PREFERENCES,
+    focusedBoardSlug,
   }));

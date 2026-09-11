@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import publicStyles from "@/components/public/public-ui.module.css";
 import { QuizFlow } from "@/components/quiz/quiz-flow";
 import styles from "@/components/quiz/quiz-flow.module.css";
+import { resolveCanonicalBoardRouteBySlug } from "@/lib/canonical-catalog";
+import { focusedBoardSlugSchema } from "@/lib/quiz/schema";
 
 export const metadata: Metadata = {
   title: "Квиз подбора сноуборда",
@@ -9,7 +11,26 @@ export const metadata: Metadata = {
     "Пошаговый квиз EdgeFit для подбора длины, ширины и подходящих моделей сноубордов.",
 };
 
-export default function QuizPage() {
+interface QuizPageProps {
+  searchParams: Promise<{ board?: string | string[] }>;
+}
+
+export default async function QuizPage({ searchParams }: QuizPageProps) {
+  const rawBoardSlug = (await searchParams).board;
+  const parsedBoardSlug = focusedBoardSlugSchema.safeParse(
+    typeof rawBoardSlug === "string" ? rawBoardSlug : undefined,
+  );
+  const resolution = parsedBoardSlug.success
+    ? await resolveCanonicalBoardRouteBySlug(parsedBoardSlug.data)
+    : undefined;
+  const focusedBoard = resolution
+    ? {
+        slug: resolution.item.slug,
+        brand: resolution.item.brand,
+        modelName: resolution.item.modelName,
+      }
+    : undefined;
+
   return (
     <div className={`${publicStyles.theme} ${styles.quizPage}`}>
       <div className={styles.atmosphere} aria-hidden="true" />
@@ -23,7 +44,7 @@ export default function QuizPage() {
             в первую очередь.
           </p>
         </header>
-        <QuizFlow />
+        <QuizFlow focusedBoard={focusedBoard} />
       </div>
     </div>
   );

@@ -1696,3 +1696,167 @@
     transform: none;
   }
 }
+.focusedBoard {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(158, 223, 240, 0.34);
+  padding: clamp(1.25rem, 3vw, 2rem);
+}
+
+.focusedBoard::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0.25rem;
+  background: var(--ef-accent);
+  content: "";
+}
+
+.focusedBoard[data-verdict="COMPROMISE"]::before {
+  background: #f4c86a;
+}
+
+.focusedBoard[data-verdict="BETTER_OPTIONS"]::before {
+  background: #f18b78;
+}
+
+.focusedBoardHeader {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.focusedBoardHeader h2,
+.focusedBoardHeader p,
+.focusedSignalGroup h3,
+.focusedSignalGroup p,
+.focusedSignalGroup ul,
+.focusedAlternatives h3,
+.focusedAlternatives ul {
+  margin: 0;
+}
+
+.focusedBoardName {
+  margin-top: 0.45rem !important;
+  color: var(--ef-text-soft);
+  font-weight: 700;
+}
+
+.focusedBoardHeader h2 {
+  margin-top: 0.45rem;
+  max-width: 35rem;
+}
+
+.focusedBoardHeader h2 + p {
+  margin-top: 0.65rem;
+  max-width: 42rem;
+  color: var(--ef-text-soft);
+  line-height: 1.6;
+}
+
+.focusedSize {
+  border: 1px solid rgba(158, 223, 240, 0.2);
+  border-radius: 0.8rem;
+  background: rgba(7, 19, 24, 0.45);
+  padding: 1rem;
+}
+
+.focusedSize strong {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: clamp(1.45rem, 4vw, 2rem);
+}
+
+.focusedSize > p:last-child {
+  margin-top: 0.45rem;
+  color: var(--ef-text-soft);
+  line-height: 1.5;
+}
+
+.focusedSignals {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.focusedSignalGroup {
+  min-width: 0;
+}
+
+.focusedSignalGroup h3,
+.focusedAlternatives h3 {
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.focusedSignalGroup ul,
+.focusedAlternatives ul {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0;
+  list-style: none;
+}
+
+.focusedSignalGroup ul {
+  margin-top: 0.7rem;
+}
+
+.focusedSignalGroup li {
+  border-left: 2px solid rgba(158, 223, 240, 0.35);
+  padding-left: 0.75rem;
+}
+
+.focusedSignalGroup li[data-state="positive"] {
+  border-color: #7ed6ac;
+}
+
+.focusedSignalGroup li[data-state="tradeoff"] {
+  border-color: #f4c86a;
+}
+
+.focusedSignalGroup li p {
+  margin-top: 0.25rem;
+  color: var(--ef-text-soft);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.focusedAlternatives {
+  margin-top: 1.5rem;
+  border-top: 1px solid rgba(158, 223, 240, 0.18);
+  padding-top: 1.25rem;
+}
+
+.focusedAlternatives ul {
+  margin-top: 0.8rem;
+}
+
+.focusedAlternatives a {
+  display: grid;
+  gap: 0.2rem;
+  border: 1px solid rgba(158, 223, 240, 0.22);
+  border-radius: 0.7rem;
+  padding: 0.85rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.focusedAlternatives a:hover {
+  border-color: rgba(158, 223, 240, 0.55);
+}
+
+.focusedAlternatives span,
+.focusedAlternatives small {
+  color: var(--ef-text-soft);
+}
+
+@media (min-width: 720px) {
+  .focusedBoardHeader {
+    grid-template-columns: minmax(0, 1fr) minmax(14rem, 0.36fr);
+    align-items: start;
+  }
+
+  .focusedSignals,
+  .focusedAlternatives ul {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

@@ -76,6 +76,38 @@ const recommendation: RecommendationResult = {
   avoidBoards: [],
 };
 
+const focusedRecommendation: RecommendationResult = {
+  ...recommendation,
+  focusedBoardCheck: {
+    board: {
+      slug: "jones-mountain-twin",
+      brand: "Jones",
+      modelName: "Mountain Twin",
+    },
+    verdict: "GOOD",
+    bestFitSize: { sizeCm: 156, sizeLabel: "156" },
+    buyability: "AVAILABLE",
+    signals: [
+      {
+        key: "length",
+        state: "positive",
+        title: "Длина",
+        detail: "Ростовка подходит.",
+      },
+    ],
+    alternatives: [
+      {
+        slug: "rome-agent",
+        brand: "Rome",
+        modelName: "Agent",
+        sizeLabel: "157W",
+        role: "width-safe",
+        decisionLabel: "Больше запаса по ширине",
+      },
+    ],
+  },
+};
+
 describe("saved result contracts", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -284,6 +316,53 @@ describe("saved result contracts", () => {
       purchasePreferences: { budgetMaxRub: 60_000 },
     });
     expect(parseSavedResultSnapshot({ ...versioned, extra: true })).toBeNull();
+  });
+
+  it("keeps focusedBoardCheck optional for historical saved snapshots", () => {
+    expect(isRecommendationResultSnapshot(recommendation)).toBe(true);
+    expect(parseSavedResultSnapshot(recommendation)?.recommendation).toEqual(
+      recommendation,
+    );
+  });
+
+  it("accepts a valid focused board check in new saved snapshots", () => {
+    const snapshot = {
+      snapshotVersion: 2,
+      recommendation: focusedRecommendation,
+      purchasePreferences: { budgetMaxRub: null },
+    };
+
+    expect(isRecommendationResultSnapshot(focusedRecommendation)).toBe(true);
+    expect(parseSavedResultSnapshot(snapshot)?.recommendation).toEqual(
+      focusedRecommendation,
+    );
+  });
+
+  it("rejects an invalid focused board contract without loosening other fields", () => {
+    expect(
+      isRecommendationResultSnapshot({
+        ...focusedRecommendation,
+        focusedBoardCheck: {
+          ...focusedRecommendation.focusedBoardCheck,
+          verdict: "PERFECT",
+        },
+      }),
+    ).toBe(false);
+    expect(
+      isRecommendationResultSnapshot({
+        ...focusedRecommendation,
+        targetWaistWidthMm: "250",
+      }),
+    ).toBe(false);
+    expect(
+      isRecommendationResultSnapshot({
+        ...focusedRecommendation,
+        focusedBoardCheck: {
+          ...focusedRecommendation.focusedBoardCheck,
+          unexpected: true,
+        },
+      }),
+    ).toBe(false);
   });
 
   it("does not create a DB client for disabled or malformed lookup", async () => {

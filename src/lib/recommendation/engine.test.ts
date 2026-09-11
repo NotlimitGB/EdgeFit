@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { Product, ProductSize, QuizInput } from "@/types/domain";
+import type { CanonicalCatalogItem } from "@/types/canonical-catalog";
 import {
   getStoreDestinationPresentation,
   resolveProductStoreUrl,
 } from "@/lib/store-redirect";
 import { recommendationRequestSchema } from "@/lib/quiz/schema";
-import { ALGORITHM_VERSION, getRecommendation } from "./engine";
+import {
+  ALGORITHM_VERSION,
+  getFocusedBoardCheck,
+  getRecommendation,
+} from "./engine";
 
 const baseInput: QuizInput = {
   heightCm: 178,
@@ -91,6 +96,193 @@ const defaultBoards = [
     { sizeCm: 156, waistWidthMm: 258, widthType: "mid-wide" },
   ),
 ];
+
+function createCanonicalBoard(
+  overrides: Partial<CanonicalCatalogItem> = {},
+): CanonicalCatalogItem {
+  return {
+    familyId: "focused-family",
+    slug: "focused-board",
+    brand: "Focused",
+    modelName: "Board",
+    seasonLabel: null,
+    canonicalSpecs: {
+      descriptionShort: null,
+      descriptionFull: null,
+      ridingStyle: "all-mountain",
+      skillLevel: "intermediate",
+      flex: 5,
+      boardLine: "men",
+      shapeType: "directional-twin",
+      camberProfile: "hybrid-camber",
+      dataStatus: "verified",
+      canonicalSourceKind: "trusted-member",
+      sourceName: "Source",
+      sourceUrl: "https://example.test/board",
+      sourceCheckedAt: "2026-09-01T00:00:00.000Z",
+    },
+    offers: [
+      {
+        offerId: "focused-offer",
+        offerSlug: "focused-offer",
+        memberRole: "base",
+        familyMatchMethod: "source-id",
+        familyMatchConfidence: "high",
+        familyManualOverride: false,
+        priceFrom: 50_000,
+        isActive: true,
+        hasAvailableSize: true,
+        isFulfillable: true,
+        sourceName: "Source",
+        sourceUrl: "https://example.test/board",
+        sourceCheckedAt: "2026-09-01T00:00:00.000Z",
+        dataStatus: "verified",
+      },
+    ],
+    sizes: [
+      {
+        sourceSizeId: "focused-154",
+        offerId: "focused-offer",
+        offerSlug: "focused-offer",
+        memberRole: "base",
+        offerIsActive: true,
+        rawSizeLabel: "154",
+        displaySizeLabel: "154",
+        sizeLabel: "154",
+        sizeCm: 154,
+        waistWidthMm: 252,
+        recommendedWeightMin: 65,
+        recommendedWeightMax: 82,
+        widthType: "regular",
+        isAvailable: false,
+      },
+    ],
+    priceFrom: 50_000,
+    isActive: true,
+    hasAvailableSize: false,
+    media: [],
+    defaultOfferSlug: "focused-offer",
+    ...overrides,
+  };
+}
+
+describe("focused board fit check", () => {
+  it("evaluates an unavailable selected board independently of ranking and price", () => {
+    const recommendation = getRecommendation(baseInput, defaultBoards);
+    const board = createCanonicalBoard();
+    const check = getFocusedBoardCheck(recommendation, board);
+    const repriced = getFocusedBoardCheck(recommendation, {
+      ...board,
+      priceFrom: 999_999,
+      hasAvailableSize: true,
+      sizes: board.sizes.map((size) => ({ ...size, isAvailable: true })),
+    });
+
+    expect(check.bestFitSize).toEqual({ sizeCm: 154, sizeLabel: "154" });
+    expect(check.buyability).toBe("NOT_CONFIRMED");
+    expect(repriced.verdict).toBe(check.verdict);
+    expect(repriced.bestFitSize).toEqual(check.bestFitSize);
+    expect(repriced.buyability).toBe("AVAILABLE");
+    expect(JSON.stringify(check)).not.toContain('"score"');
+  });
+
+  it("keeps canonical unknown character evidence unknown without product fallbacks", () => {
+    const recommendation = getRecommendation(baseInput, defaultBoards);
+    const board = createCanonicalBoard({
+      canonicalSpecs: {
+        ...createCanonicalBoard().canonicalSpecs,
+        flex: null,
+        camberProfile: null,
+      },
+    });
+    const check = getFocusedBoardCheck(recommendation, board);
+
+    expect(check.signals.find((signal) => signal.key === "flex")?.state).toBe(
+      "unknown",
+    );
+    expect(check.signals.find((signal) => signal.key === "camber")?.state).toBe(
+      "unknown",
+    );
+    expect(check.verdict).toBe("GOOD");
+  });
+
+  it("does not average or first-win conflicting duplicate geometry", () => {
+    const recommendation = getRecommendation(baseInput, defaultBoards);
+    const first = createCanonicalBoard().sizes[0];
+    const board = createCanonicalBoard({
+      sizes: [
+        { ...first, sourceSizeId: "157-a", displaySizeLabel: "157", sizeLabel: "157", sizeCm: 157, waistWidthMm: 252 },
+        { ...first, sourceSizeId: "157-b", displaySizeLabel: "157", sizeLabel: "157", sizeCm: 157, waistWidthMm: 266 },
+      ],
+    });
+    const check = getFocusedBoardCheck(recommendation, board);
+
+    expect(check.bestFitSize?.sizeLabel).toBe("157");
+    expect(check.signals.find((signal) => signal.key === "width")?.state).toBe(
+      "unknown",
+    );
+  });
+
+  it("excludes the focused family from decision-labelled alternatives", () => {
+    const sameFamily = recommendationMatchForTest("same-family", "Same");
+    const otherFamily = recommendationMatchForTest("other-family", "Other");
+    const recommendation = {
+      ...getRecommendation(baseInput, defaultBoards),
+      recommendedBoards: [sameFamily, otherFamily],
+      avoidBoards: [],
+    };
+    const check = getFocusedBoardCheck(recommendation, createCanonicalBoard(), {
+      familyKeyByProductId: {
+        "same-family": "family:focused-family",
+        "other-family": "family:other-family",
+      },
+    });
+
+    expect(check.alternatives).toHaveLength(1);
+    expect(check.alternatives[0]).toMatchObject({
+      slug: "other-family",
+      decisionLabel: "Более ровный баланс",
+    });
+  });
+});
+
+describe("focused recommendation request contract", () => {
+  it("keeps the focused slug optional and outside riderInput", () => {
+    const generic = recommendationRequestSchema.parse(baseInput);
+    const focused = recommendationRequestSchema.parse({
+      ...baseInput,
+      focusedBoardSlug: "jones-mountain-twin",
+    });
+
+    expect(generic.focusedBoardSlug).toBeUndefined();
+    expect(focused.focusedBoardSlug).toBe("jones-mountain-twin");
+    expect(focused.riderInput).toEqual(baseInput);
+    expect(focused.riderInput).not.toHaveProperty("focusedBoardSlug");
+  });
+
+  it.each(["../board", "Board Name", "board?offer=1", "", "a".repeat(161)])(
+    "rejects unsafe focused slug %s",
+    (focusedBoardSlug) => {
+      expect(() =>
+        recommendationRequestSchema.parse({ ...baseInput, focusedBoardSlug }),
+      ).toThrow();
+    },
+  );
+});
+
+function recommendationMatchForTest(slug: string, modelName: string) {
+  return {
+    product: createProduct({ slug, modelName }),
+    size: createSize(),
+    score: 90,
+    fitLabel: "Точный fit",
+    role: "best-overall" as const,
+    confidence: "high" as const,
+    confidenceLabel: "Высокая уверенность",
+    isCatalogReady: true,
+    reasons: [],
+  };
+}
 
 describe("getRecommendation", () => {
   it("reports the localized width-safety algorithm version", () => {

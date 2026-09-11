@@ -113,6 +113,56 @@ export interface RecommendationShapeProfile {
   description: string;
 }
 
+export type FocusedBoardVerdict = "GOOD" | "COMPROMISE" | "BETTER_OPTIONS";
+
+export type FocusedBoardBuyability =
+  | "AVAILABLE"
+  | "NOT_CONFIRMED"
+  | "UNKNOWN";
+
+export type FocusedBoardSignalKey =
+  | "length"
+  | "weight"
+  | "width"
+  | "riding-style"
+  | "skill"
+  | "flex"
+  | "shape"
+  | "camber"
+  | "board-line";
+
+export interface FocusedBoardSignal {
+  key: FocusedBoardSignalKey;
+  state: "positive" | "tradeoff" | "unknown";
+  title: string;
+  detail: string;
+}
+
+export interface FocusedBoardAlternative {
+  slug: string;
+  brand: string;
+  modelName: string;
+  sizeLabel: string | null;
+  role: RecommendationRole;
+  decisionLabel: string;
+}
+
+export interface FocusedBoardCheck {
+  board: {
+    slug: string;
+    brand: string;
+    modelName: string;
+  };
+  verdict: FocusedBoardVerdict;
+  bestFitSize: {
+    sizeCm: number;
+    sizeLabel: string;
+  } | null;
+  buyability: FocusedBoardBuyability;
+  signals: FocusedBoardSignal[];
+  alternatives: FocusedBoardAlternative[];
+}
+
 export interface RecommendationResult {
   algorithmVersion: string;
   input: QuizInput;
@@ -127,4 +177,5 @@ export interface RecommendationResult {
   explanation: string[];
   recommendedBoards: RecommendationMatch[];
   avoidBoards: RecommendationMatch[];
+  focusedBoardCheck?: FocusedBoardCheck;
 }

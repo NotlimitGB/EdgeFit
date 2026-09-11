@@ -4,7 +4,9 @@ import type { RecommendationResult } from "@/types/domain";
 const mocks = vi.hoisted(() => ({
   save: vi.fn(),
   getRecommendation: vi.fn(),
+  getFocusedBoardCheck: vi.fn(),
   getRecommendationCatalog: vi.fn(),
+  resolveCanonicalBoardRouteBySlug: vi.fn(),
   recommendation: null as RecommendationResult | null,
 }));
 
@@ -15,6 +17,12 @@ vi.mock("@/lib/products", () => ({
 vi.mock("@/lib/recommendation/engine", () => ({
   getRecommendation: (...parameters: unknown[]) =>
     mocks.getRecommendation(...parameters),
+  getFocusedBoardCheck: (...parameters: unknown[]) =>
+    mocks.getFocusedBoardCheck(...parameters),
+}));
+vi.mock("@/lib/canonical-catalog", () => ({
+  resolveCanonicalBoardRouteBySlug: (...parameters: unknown[]) =>
+    mocks.resolveCanonicalBoardRouteBySlug(...parameters),
 }));
 vi.mock("@/lib/quiz-results", () => ({
   сохранитьРезультатКвиза: (...parameters: unknown[]) => mocks.save(...parameters),
@@ -59,6 +67,14 @@ describe("recommendation API saved-result transport", () => {
     vi.clearAllMocks();
     mocks.recommendation = recommendation;
     mocks.getRecommendation.mockReturnValue(recommendation);
+    mocks.getFocusedBoardCheck.mockReturnValue({
+      board: { slug: "focused-board", brand: "Focused", modelName: "Board" },
+      verdict: "GOOD",
+      bestFitSize: { sizeCm: 154, sizeLabel: "154" },
+      buyability: "AVAILABLE",
+      signals: [],
+      alternatives: [],
+    });
     mocks.getRecommendationCatalog.mockResolvedValue({
       products: [{ id: "product-1" }],
       familyKeyByProductId: { "product-1": "family:family-1" },
@@ -185,5 +201,73 @@ describe("recommendation API saved-result transport", () => {
 
     expect(response.status).toBe(400);
     expect(mocks.getRecommendation).not.toHaveBeenCalled();
+  });
+
+  it("keeps the generic response byte-shape free of focused fields", async () => {
+    mocks.save.mockResolvedValue(null);
+    const response = await POST(
+      new Request("http://localhost/api/recommendation", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(recommendation.input),
+      }),
+    );
+
+    expect(await response.json()).toEqual(recommendation);
+    expect(mocks.resolveCanonicalBoardRouteBySlug).not.toHaveBeenCalled();
+    expect(mocks.getFocusedBoardCheck).not.toHaveBeenCalled();
+  });
+
+  it("rejects an explicitly supplied unresolved focused board", async () => {
+    mocks.resolveCanonicalBoardRouteBySlug.mockResolvedValue(undefined);
+    const response = await POST(
+      new Request("http://localhost/api/recommendation", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...recommendation.input,
+          focusedBoardSlug: "missing-board",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      message:
+        "Выбранная модель не найдена. Вернись к карточке доски и попробуй снова.",
+    });
+    expect(mocks.getRecommendationCatalog).not.toHaveBeenCalled();
+    expect(mocks.save).not.toHaveBeenCalled();
+  });
+
+  it("adds the independently evaluated focused board to response and snapshot", async () => {
+    const item = { slug: "focused-board", brand: "Focused", modelName: "Board" };
+    mocks.resolveCanonicalBoardRouteBySlug.mockResolvedValue({
+      kind: "render",
+      item,
+    });
+    mocks.save.mockResolvedValue(null);
+
+    const response = await POST(
+      new Request("http://localhost/api/recommendation", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...recommendation.input,
+          focusedBoardSlug: "focused-board",
+        }),
+      }),
+    );
+    const body = await response.json();
+
+    expect(mocks.getFocusedBoardCheck).toHaveBeenCalledWith(
+      recommendation,
+      item,
+      { familyKeyByProductId: { "product-1": "family:family-1" } },
+    );
+    expect(body.focusedBoardCheck).toMatchObject({ verdict: "GOOD" });
+    expect(mocks.save).toHaveBeenCalledWith(
+      expect.objectContaining({ результат: body }),
+    );
   });
 });

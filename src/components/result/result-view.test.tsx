@@ -203,6 +203,65 @@ describe("ResultView saved mode", () => {
   });
 });
 
+describe("ResultView focused board check", () => {
+  const focusedRecommendation: RecommendationResult = {
+    ...recommendation,
+    focusedBoardCheck: {
+      board: {
+        slug: "jones-mountain-twin",
+        brand: "Jones",
+        modelName: "Mountain Twin",
+      },
+      verdict: "COMPROMISE",
+      bestFitSize: { sizeCm: 156, sizeLabel: "156" },
+      buyability: "NOT_CONFIRMED",
+      signals: [
+        { key: "length", state: "positive", title: "Длина", detail: "Подходит." },
+        { key: "width", state: "tradeoff", title: "Ширина", detail: "Нужна проверка." },
+        { key: "flex", state: "unknown", title: "Жёсткость", detail: "Нет данных." },
+      ],
+      alternatives: [
+        {
+          slug: "rome-agent",
+          brand: "Rome",
+          modelName: "Agent",
+          sizeLabel: "157W",
+          role: "width-safe",
+          decisionLabel: "Больше запаса по ширине",
+        },
+      ],
+    },
+  };
+
+  it("renders focused evidence high in the result without numeric scoring", () => {
+    const markup = renderToStaticMarkup(
+      <ResultView initialRecommendation={focusedRecommendation} mode="saved" />,
+    );
+
+    expect(markup).toContain("Проверяем выбранную доску");
+    expect(markup).toContain("Подходит, но есть заметные компромиссы");
+    expect(markup).toContain("Наличие 156 сейчас не подтверждено.");
+    expect(markup).toContain("Что подходит");
+    expect(markup).toContain("Компромиссы");
+    expect(markup).toContain("Что нужно уточнить");
+    expect(markup).toContain("Больше запаса по ширине");
+    expect(markup.indexOf("Твой профиль")).toBeLessThan(
+      markup.indexOf("Проверяем выбранную доску"),
+    );
+    expect(markup.indexOf("Проверяем выбранную доску")).toBeLessThan(
+      markup.indexOf("Почему получился такой результат"),
+    );
+    expect(markup).not.toMatch(/focused[^>]*score/iu);
+  });
+
+  it("keeps the generic result free of focused UI", () => {
+    const markup = renderToStaticMarkup(
+      <ResultView initialRecommendation={recommendation} mode="saved" />,
+    );
+    expect(markup).not.toContain("Проверяем выбранную доску");
+  });
+});
+
 describe("ResultView rider profile placement", () => {
   it("renders one complete profile after the fit summary and before explanation", () => {
     const markup = renderToStaticMarkup(

@@ -1,9 +1,12 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildRecommendationRequestPayload,
+  QuizFlow,
   buildQuizCompletionAnalyticsPayload,
   QuizFlowStepFields,
 } from "@/components/quiz/quiz-flow";
+import type { QuizSubmission } from "@/lib/quiz/schema";
 import { createQuizV2Draft } from "@/lib/quiz/draft";
 
 vi.mock("next/navigation", () => ({
@@ -101,6 +104,55 @@ describe("Quiz v2 rendered fields", () => {
     expect(markup).toMatch(
       /<input[^>]*type="number"[^>]*name="budgetMaxRub"[^>]*value=""/u,
     );
+  });
+});
+
+describe("focused board quiz context", () => {
+  const submission: QuizSubmission = {
+    heightCm: 178,
+    weightKg: 74,
+    bootSizeEu: 43,
+    stanceType: "standard",
+    skillLevel: "intermediate",
+    ridingStyle: "all-mountain",
+    terrainPriority: "balanced",
+    aggressiveness: "balanced",
+    boardLinePreference: "any",
+  };
+
+  it("shows the selected canonical board before the questions", () => {
+    const markup = renderToStaticMarkup(
+      <QuizFlow
+        focusedBoard={{
+          slug: "jones-mountain-twin",
+          brand: "Jones",
+          modelName: "Mountain Twin",
+        }}
+      />,
+    );
+
+    expect(markup).toContain("Сейчас проверяем");
+    expect(markup).toContain("Jones Mountain Twin");
+    expect(markup).toContain(
+      "После квиза сначала разберём именно эту модель.",
+    );
+  });
+
+  it("submits a focused slug only when canonical context exists", () => {
+    expect(
+      buildRecommendationRequestPayload(submission, { budgetMaxRub: null }),
+    ).toEqual({ ...submission, purchasePreferences: { budgetMaxRub: null } });
+    expect(
+      buildRecommendationRequestPayload(
+        submission,
+        { budgetMaxRub: null },
+        {
+          slug: "jones-mountain-twin",
+          brand: "Jones",
+          modelName: "Mountain Twin",
+        },
+      ),
+    ).toMatchObject({ focusedBoardSlug: "jones-mountain-twin" });
   });
 });
 

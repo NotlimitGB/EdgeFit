@@ -92,6 +92,49 @@ const recommendationMatchSchema = z
     reasons: z.array(z.string()),
   })
   .strict();
+const focusedBoardSignalSchema = z
+  .object({
+    key: z.enum([
+      "length",
+      "weight",
+      "width",
+      "riding-style",
+      "skill",
+      "flex",
+      "shape",
+      "camber",
+      "board-line",
+    ]),
+    state: z.enum(["positive", "tradeoff", "unknown"]),
+    title: z.string(),
+    detail: z.string(),
+  })
+  .strict();
+const focusedBoardAlternativeSchema = z
+  .object({
+    slug: z.string(),
+    brand: z.string(),
+    modelName: z.string(),
+    sizeLabel: z.string().nullable(),
+    role: z.enum(["best-overall", "playful", "stable", "width-safe"]),
+    decisionLabel: z.string(),
+  })
+  .strict();
+const focusedBoardCheckSchema = z
+  .object({
+    board: z
+      .object({ slug: z.string(), brand: z.string(), modelName: z.string() })
+      .strict(),
+    verdict: z.enum(["GOOD", "COMPROMISE", "BETTER_OPTIONS"]),
+    bestFitSize: z
+      .object({ sizeCm: z.number(), sizeLabel: z.string() })
+      .strict()
+      .nullable(),
+    buyability: z.enum(["AVAILABLE", "NOT_CONFIRMED", "UNKNOWN"]),
+    signals: z.array(focusedBoardSignalSchema),
+    alternatives: z.array(focusedBoardAlternativeSchema),
+  })
+  .strict();
 const recommendationResultSchema = z
   .object({
     algorithmVersion: z.string(),
@@ -123,6 +166,7 @@ const recommendationResultSchema = z
     explanation: z.array(z.string()),
     recommendedBoards: z.array(recommendationMatchSchema),
     avoidBoards: z.array(recommendationMatchSchema),
+    focusedBoardCheck: focusedBoardCheckSchema.optional(),
   })
   .strict();
 

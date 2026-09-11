@@ -1,14 +1,31 @@
 import { NextResponse } from "next/server";
 import { сохранитьРезультатКвиза } from "@/lib/quiz-results";
 import { getRecommendationCatalog } from "@/lib/products";
-import { getRecommendation } from "@/lib/recommendation/engine";
+import {
+  getFocusedBoardCheck,
+  getRecommendation,
+} from "@/lib/recommendation/engine";
 import { recommendationRequestSchema } from "@/lib/quiz/schema";
 import { SAVED_RESULT_TOKEN_HEADER } from "@/lib/saved-result-contract";
+import { resolveCanonicalBoardRouteBySlug } from "@/lib/canonical-catalog";
 
 export async function POST(request: Request) {
   try {
-    const { riderInput, purchasePreferences } =
+    const { riderInput, purchasePreferences, focusedBoardSlug } =
       recommendationRequestSchema.parse(await request.json());
+    const focusedBoardResolution = focusedBoardSlug
+      ? await resolveCanonicalBoardRouteBySlug(focusedBoardSlug)
+      : undefined;
+
+    if (focusedBoardSlug && !focusedBoardResolution) {
+      return NextResponse.json(
+        {
+          message:
+            "Выбранная модель не найдена. Вернись к карточке доски и попробуй снова.",
+        },
+        { status: 400 },
+      );
+    }
     const { products, familyKeyByProductId } =
       await getRecommendationCatalog();
 
@@ -24,15 +41,25 @@ export async function POST(request: Request) {
     const recommendation = getRecommendation(riderInput, products, {
       familyKeyByProductId,
     });
+    const responseRecommendation = focusedBoardResolution
+      ? {
+          ...recommendation,
+          focusedBoardCheck: getFocusedBoardCheck(
+            recommendation,
+            focusedBoardResolution.item,
+            { familyKeyByProductId },
+          ),
+        }
+      : recommendation;
 
     const savedResultToken = await сохранитьРезультатКвиза({
       вход: riderInput,
-      результат: recommendation,
+      результат: responseRecommendation,
       purchasePreferences,
       идентификаторСессии: request.headers.get("x-edgefit-session-id"),
     });
 
-    const response = NextResponse.json(recommendation);
+    const response = NextResponse.json(responseRecommendation);
 
     if (savedResultToken) {
       response.headers.set(SAVED_RESULT_TOKEN_HEADER, savedResultToken);

@@ -379,7 +379,29 @@ export function QuizFlowStepFields({
   );
 }
 
-export function QuizFlow() {
+export interface FocusedBoardContext {
+  readonly slug: string;
+  readonly brand: string;
+  readonly modelName: string;
+}
+
+export function buildRecommendationRequestPayload(
+  payload: QuizSubmission,
+  purchasePreferences: PurchasePreferences,
+  focusedBoard?: FocusedBoardContext,
+) {
+  return {
+    ...payload,
+    purchasePreferences,
+    ...(focusedBoard ? { focusedBoardSlug: focusedBoard.slug } : {}),
+  };
+}
+
+export function QuizFlow({
+  focusedBoard,
+}: {
+  focusedBoard?: FocusedBoardContext;
+} = {}) {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [draft, setDraft] = useState<QuizV2Draft>(createQuizV2Draft);
@@ -483,7 +505,13 @@ export function QuizFlow() {
           "Content-Type": "application/json",
           "x-edgefit-session-id": идентификаторСессии,
         },
-        body: JSON.stringify({ ...payload, purchasePreferences }),
+        body: JSON.stringify(
+          buildRecommendationRequestPayload(
+            payload,
+            purchasePreferences,
+            focusedBoard,
+          ),
+        ),
       });
 
       if (!response.ok) {
@@ -553,6 +581,13 @@ export function QuizFlow() {
 
   return (
     <div className={styles.quizLayout} aria-busy={isBusy}>
+      {focusedBoard ? (
+        <aside className={styles.focusedContext} aria-label="Выбранная модель">
+          <p className={publicStyles.microLabel}>Сейчас проверяем</p>
+          <strong>{focusedBoard.brand} {focusedBoard.modelName}</strong>
+          <p>После квиза сначала разберём именно эту модель.</p>
+        </aside>
+      ) : null}
       <section
         className={`${publicStyles.raisedTechnicalSurface} ${styles.quizCore}`}
         aria-labelledby="quiz-step-title"

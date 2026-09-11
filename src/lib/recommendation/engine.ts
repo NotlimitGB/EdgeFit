@@ -32,8 +32,14 @@ import type {
   RecommendationMatch,
   RecommendationRole,
   RecommendationResult,
+  FocusedBoardCheck,
+  FocusedBoardSignal,
   WidthType,
 } from "@/types/domain";
+import type {
+  CanonicalCatalogItem,
+  CanonicalSizeVariant,
+} from "@/types/canonical-catalog";
 
 export const ALGORITHM_VERSION = "v1.6.4";
 
@@ -45,6 +51,13 @@ const ALTERNATIVE_SCORE_THRESHOLD = 40;
 export interface RecommendationIdentityContext {
   familyKeyByProductId?: Readonly<Record<string, string>>;
 }
+
+const FOCUSED_ALTERNATIVE_LABELS: Record<RecommendationRole, string> = {
+  "best-overall": "Более ровный баланс",
+  stable: "Больше стабильности",
+  playful: "Более манёвренный вариант",
+  "width-safe": "Больше запаса по ширине",
+};
 const CATASTROPHIC_LENGTH_DISTANCE_CM = 12;
 const CATASTROPHIC_WAIST_DEFICIT_MM = 12;
 const CATASTROPHIC_WEIGHT_DISTANCE_KG = 20;
@@ -1403,6 +1416,412 @@ function buildExplanation(
     `Риск boot drag сейчас оценивается как ${bootDragRiskLabels[bootDragRisk]}. Это не абсолютный приговор, а понятная подсказка: при выборе доски уже видно, где ширина безопасна, а где лучше не рисковать.`,
     `В подборе мы дополнительно учитываем линию ${boardLineLabels[input.boardLinePreference]} и уровень ${skillLevelLabels[input.skillLevel]}, а в выдаче выше ставим проверенные карточки с живыми ссылками, чтобы рекомендации выглядели надёжнее.`,
   ];
+}
+
+type FocusedSizeCandidate = {
+  sizeCm: number;
+  sizeLabel: string;
+  waistWidthMm: number | null;
+  recommendedWeightMin: number | null;
+  recommendedWeightMax: number | null;
+  widthType: WidthType | null;
+  variants: CanonicalSizeVariant[];
+};
+
+function getExactConsensus<T>(values: T[]): T | null {
+  if (values.length === 0) {
+    return null;
+  }
+
+  const first = values[0];
+  return values.every((value) => Object.is(value, first)) ? first : null;
+}
+
+function hasExactConsensus<T>(values: T[]) {
+  return values.length > 0 && values.every((value) => Object.is(value, values[0]));
+}
+
+function buildFocusedSizeCandidates(
+  sizes: CanonicalSizeVariant[],
+): FocusedSizeCandidate[] {
+  const groups = new Map<string, CanonicalSizeVariant[]>();
+
+  for (const size of sizes) {
+    const label = size.displaySizeLabel.trim() || size.sizeLabel.trim();
+    const variants = groups.get(label) ?? [];
+    variants.push(size);
+    groups.set(label, variants);
+  }
+
+  return Array.from(groups, ([sizeLabel, variants]) => {
+    const sizeCm = getExactConsensus(variants.map((size) => size.sizeCm));
+    const waistWidthMm = getExactConsensus(
+      variants.map((size) => size.waistWidthMm),
+    );
+    const weightMinValues = variants.map((size) => size.recommendedWeightMin);
+    const weightMaxValues = variants.map((size) => size.recommendedWeightMax);
+    const recommendedWeightMin = getExactConsensus(weightMinValues);
+    const recommendedWeightMax = getExactConsensus(weightMaxValues);
+    const hasConsistentWeightRange =
+      hasExactConsensus(weightMinValues) && hasExactConsensus(weightMaxValues);
+    const widthType = getExactConsensus(variants.map((size) => size.widthType));
+
+    return {
+      sizeCm: sizeCm && sizeCm > 0 ? sizeCm : Number.NaN,
+      sizeLabel,
+      waistWidthMm:
+        waistWidthMm != null && waistWidthMm > 0 ? waistWidthMm : null,
+      recommendedWeightMin:
+        hasConsistentWeightRange &&
+        recommendedWeightMin != null &&
+        recommendedWeightMin > 0
+          ? recommendedWeightMin
+          : null,
+      recommendedWeightMax: hasConsistentWeightRange
+        ? recommendedWeightMax
+        : null,
+      widthType,
+      variants,
+    };
+  }).sort(
+    (left, right) =>
+      left.sizeCm - right.sizeCm || left.sizeLabel.localeCompare(right.sizeLabel),
+  );
+}
+
+function toKnownProductSize(candidate: FocusedSizeCandidate): ProductSize {
+  return {
+    sizeCm: candidate.sizeCm,
+    sizeLabel: candidate.sizeLabel,
+    waistWidthMm: candidate.waistWidthMm ?? 0,
+    recommendedWeightMin: candidate.recommendedWeightMin ?? 0,
+    recommendedWeightMax: candidate.recommendedWeightMax,
+    widthType: candidate.widthType ?? "regular",
+    isAvailable: candidate.variants.some((size) => size.isAvailable),
+  };
+}
+
+function rankFocusedSize(
+  candidate: FocusedSizeCandidate,
+  input: QuizInput,
+  lengthRange: RecommendationResult["lengthRange"],
+  targetWaistWidthMm: number,
+) {
+  const size = toKnownProductSize(candidate);
+  const length = getLengthCompatibility(candidate.sizeCm, lengthRange, input).score;
+  const weight =
+    candidate.recommendedWeightMin == null
+      ? 0
+      : getWeightCompatibility(size, input.weightKg).score;
+  const width =
+    candidate.waistWidthMm == null || candidate.widthType == null
+      ? 0
+      : getWidthCompatibility(
+          candidate.waistWidthMm - targetWaistWidthMm,
+          input,
+        ).score;
+
+  return {
+    candidate,
+    score: length + weight + width,
+    targetDistance: Math.abs(
+      candidate.sizeCm - getLengthTarget(lengthRange, input),
+    ),
+  };
+}
+
+function signalFromSeverity(
+  key: FocusedBoardSignal["key"],
+  title: string,
+  severity: CompatibilitySeverity,
+  positiveDetail: string,
+  tradeoffDetail: string,
+): FocusedBoardSignal {
+  return {
+    key,
+    title,
+    state: severity === "ideal" ? "positive" : "tradeoff",
+    detail: severity === "ideal" ? positiveDetail : tradeoffDetail,
+  };
+}
+
+function characterSignal(
+  key: FocusedBoardSignal["key"],
+  title: string,
+  score: number | null,
+  positiveDetail: string,
+  tradeoffDetail: string,
+): FocusedBoardSignal {
+  if (score == null) {
+    return {
+      key,
+      title,
+      state: "unknown",
+      detail: "В канонических характеристиках пока недостаточно данных.",
+    };
+  }
+
+  return {
+    key,
+    title,
+    state: score >= 3 ? "positive" : "tradeoff",
+    detail: score >= 3 ? positiveDetail : tradeoffDetail,
+  };
+}
+
+function getFocusedAlternatives(
+  recommendation: RecommendationResult,
+  board: CanonicalCatalogItem,
+  familyKeyByProductId: Readonly<Record<string, string>>,
+) {
+  const focusedFamilyKey = board.familyId ? `family:${board.familyId}` : null;
+  const focusedIds = new Set(board.offers.map((offer) => offer.offerId));
+  const focusedSlugs = new Set([
+    board.slug,
+    ...board.offers.map((offer) => offer.offerSlug),
+  ]);
+  const seen = new Set<string>();
+
+  return [...recommendation.recommendedBoards, ...recommendation.avoidBoards]
+    .filter((match) => {
+      const familyKey = familyKeyByProductId[match.product.id] ?? null;
+      const identity = familyKey ?? `product:${match.product.id}`;
+      const isFocused =
+        (focusedFamilyKey != null && familyKey === focusedFamilyKey) ||
+        focusedIds.has(match.product.id) ||
+        focusedSlugs.has(match.product.slug);
+
+      if (isFocused || seen.has(identity)) {
+        return false;
+      }
+
+      seen.add(identity);
+      return true;
+    })
+    .slice(0, 3)
+    .map((match) => ({
+      slug: match.product.slug,
+      brand: match.product.brand,
+      modelName: match.product.modelName,
+      sizeLabel: match.size.sizeLabel?.trim() || String(match.size.sizeCm),
+      role: match.role,
+      decisionLabel: FOCUSED_ALTERNATIVE_LABELS[match.role],
+    }));
+}
+
+export function getFocusedBoardCheck(
+  recommendation: RecommendationResult,
+  board: CanonicalCatalogItem,
+  identityContext: RecommendationIdentityContext = {},
+): FocusedBoardCheck {
+  const candidates = buildFocusedSizeCandidates(board.sizes).filter((candidate) =>
+    Number.isFinite(candidate.sizeCm),
+  );
+  const eligibleCandidates = candidates.filter((candidate) => {
+    const size = {
+      ...toKnownProductSize(candidate),
+      waistWidthMm:
+        candidate.waistWidthMm != null && candidate.widthType != null
+          ? candidate.waistWidthMm
+          : recommendation.targetWaistWidthMm,
+    };
+    return isPhysicallyEligibleSize(
+      size,
+      recommendation.input,
+      recommendation.lengthRange,
+      recommendation.targetWaistWidthMm,
+    );
+  });
+  const best = eligibleCandidates
+    .map((candidate) =>
+      rankFocusedSize(
+        candidate,
+        recommendation.input,
+        recommendation.lengthRange,
+        recommendation.targetWaistWidthMm,
+      ),
+    )
+    .sort(
+      (left, right) =>
+        right.score - left.score ||
+        left.targetDistance - right.targetDistance ||
+        left.candidate.sizeCm - right.candidate.sizeCm ||
+        left.candidate.sizeLabel.localeCompare(right.candidate.sizeLabel),
+    )[0]?.candidate ?? null;
+
+  const physicalSignals: FocusedBoardSignal[] = best
+    ? [
+        signalFromSeverity(
+          "length",
+          "Длина",
+          getLengthMismatchSeverity(best.sizeCm, recommendation.lengthRange),
+          "Ростовка попадает в твой рабочий диапазон.",
+          "Ростовка выходит за рабочий диапазон и потребует компромисса.",
+        ),
+        best.recommendedWeightMin == null
+          ? {
+              key: "weight",
+              title: "Вес райдера",
+              state: "unknown",
+              detail: "Для этой ростовки нет однозначного диапазона веса.",
+            }
+          : signalFromSeverity(
+              "weight",
+              "Вес райдера",
+              getWeightMismatchSeverity(
+                toKnownProductSize(best),
+                recommendation.input.weightKg,
+              ),
+              "Вес попадает в рабочий диапазон ростовки.",
+              "Вес находится вне рабочего диапазона этой ростовки.",
+            ),
+        best.waistWidthMm == null || best.widthType == null
+          ? {
+              key: "width",
+              title: "Ширина",
+              state: "unknown",
+              detail: "Талия этой ростовки неизвестна или расходится в источниках.",
+            }
+          : signalFromSeverity(
+              "width",
+              "Ширина",
+              getWidthMismatchSeverity(
+                best.waistWidthMm - recommendation.targetWaistWidthMm,
+                recommendation.input,
+              ),
+              "Ширина даёт подходящий запас под ботинок.",
+              "Запас по ширине не выглядит оптимальным под твой ботинок.",
+            ),
+      ]
+    : [
+        {
+          key: "length",
+          title: "Ростовка",
+          state: "tradeoff",
+          detail: "В размерной сетке нет физически убедительной ростовки.",
+        },
+        {
+          key: "weight",
+          title: "Вес райдера",
+          state: "unknown",
+          detail: "Без подходящей ростовки нельзя подтвердить диапазон веса.",
+        },
+        {
+          key: "width",
+          title: "Ширина",
+          state: "unknown",
+          detail: "Без подходящей ростовки нельзя подтвердить запас по ширине.",
+        },
+      ];
+
+  const specs = board.canonicalSpecs;
+  const boardLineScore =
+    specs.boardLine == null
+      ? null
+      : recommendation.input.boardLinePreference === "any"
+        ? 3
+        : getBoardLineCompatibility(
+            { boardLine: specs.boardLine } as Product,
+            recommendation.input.boardLinePreference,
+          );
+  const characterSignals: FocusedBoardSignal[] = [
+    characterSignal(
+      "riding-style",
+      "Стиль катания",
+      specs.ridingStyle == null
+        ? null
+        : getStyleCompatibility(specs.ridingStyle, recommendation.input),
+      "Характер модели совместим с выбранным стилем катания.",
+      "Характер модели требует компромисса относительно выбранного стиля.",
+    ),
+    characterSignal(
+      "skill",
+      "Уровень",
+      specs.skillLevel == null
+        ? null
+        : getSkillCompatibility(
+            specs.skillLevel,
+            recommendation.input.skillLevel,
+          ),
+      "Требовательность модели соответствует уровню райдера.",
+      "Требовательность модели может быть некомфортной для твоего уровня.",
+    ),
+    characterSignal(
+      "flex",
+      "Жёсткость",
+      specs.flex == null
+        ? null
+        : getFlexCompatibility(specs.flex, recommendation.input).score,
+      "Каноническая жёсткость попадает в подходящий диапазон.",
+      "Жёсткость заметно расходится с твоим сценарием.",
+    ),
+    characterSignal(
+      "shape",
+      "Форма",
+      specs.shapeType == null
+        ? null
+        : getShapeCompatibility(specs.shapeType, recommendation.shapeProfile).score,
+      "Форма поддерживает выбранный сценарий катания.",
+      "Форма менее приоритетна для выбранного сценария.",
+    ),
+    characterSignal(
+      "camber",
+      "Прогиб",
+      specs.camberProfile == null
+        ? null
+        : getCamberCompatibility(
+            specs.camberProfile,
+            recommendation.input,
+          ).score,
+      "Прогиб совместим с выбранным сценарием.",
+      "Прогиб потребует компромисса в выбранном сценарии.",
+    ),
+    characterSignal(
+      "board-line",
+      "Линейка",
+      boardLineScore,
+      recommendation.input.boardLinePreference === "any"
+        ? "При выборе без привязки линейка не ограничивает результат."
+        : "Линейка соответствует выбранному предпочтению.",
+      "Линейка расходится с выбранным предпочтением.",
+    ),
+  ];
+  const signals = [...physicalSignals, ...characterSignals];
+  const physicalUnknown = physicalSignals.some(
+    (signal) => signal.state === "unknown",
+  );
+  const knownCharacterCount = characterSignals.filter(
+    (signal) => signal.state !== "unknown",
+  ).length;
+  const hasTradeoff = signals.some((signal) => signal.state === "tradeoff");
+  const verdict = !best
+    ? "BETTER_OPTIONS"
+    : hasTradeoff || physicalUnknown || knownCharacterCount < 3
+      ? "COMPROMISE"
+      : "GOOD";
+
+  return {
+    board: {
+      slug: board.slug,
+      brand: board.brand,
+      modelName: board.modelName,
+    },
+    verdict,
+    bestFitSize: best
+      ? { sizeCm: best.sizeCm, sizeLabel: best.sizeLabel }
+      : null,
+    buyability: best
+      ? best.variants.some((size) => size.isAvailable)
+        ? "AVAILABLE"
+        : "NOT_CONFIRMED"
+      : "UNKNOWN",
+    signals,
+    alternatives: getFocusedAlternatives(
+      recommendation,
+      board,
+      identityContext.familyKeyByProductId ?? {},
+    ),
+  };
 }
 
 export function getRecommendation(

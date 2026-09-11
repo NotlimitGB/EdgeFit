@@ -45,6 +45,7 @@ import {
   type PurchasePreferences,
 } from "@/lib/purchase-preferences";
 import type {
+  FocusedBoardCheck,
   RecommendationMatch,
   RecommendationResult,
 } from "@/types/domain";
@@ -68,6 +69,103 @@ const riskClasses: Record<RecommendationResult["bootDragRisk"], string> = {
   medium: styles.riskMedium,
   high: styles.riskHigh,
 };
+
+const focusedVerdictCopy: Record<
+  FocusedBoardCheck["verdict"],
+  { title: string; summary: string }
+> = {
+  GOOD: {
+    title: "Хороший выбор под твои параметры",
+    summary: "Посадка и известный характер модели складываются без заметных конфликтов.",
+  },
+  COMPROMISE: {
+    title: "Подходит, но есть заметные компромиссы",
+    summary: "Рабочая ростовка есть, но перед покупкой стоит учесть ограничения ниже.",
+  },
+  BETTER_OPTIONS: {
+    title: "Есть более подходящие варианты",
+    summary: "В размерной сетке не нашлось физически убедительной посадки под твои параметры.",
+  },
+};
+
+function FocusedBoardResult({ check }: { check: FocusedBoardCheck }) {
+  const verdict = focusedVerdictCopy[check.verdict];
+  const signalGroups = [
+    { state: "positive" as const, title: "Что подходит" },
+    { state: "tradeoff" as const, title: "Компромиссы" },
+    { state: "unknown" as const, title: "Что нужно уточнить" },
+  ];
+  const buyability =
+    check.buyability === "AVAILABLE"
+      ? "Выбранная ростовка сейчас отмечена в наличии."
+      : check.buyability === "NOT_CONFIRMED" && check.bestFitSize
+        ? `Наличие ${check.bestFitSize.sizeLabel} сейчас не подтверждено.`
+        : "Сначала нужно определить подходящую ростовку.";
+
+  return (
+    <section
+      className={`${publicStyles.raisedTechnicalSurface} ${styles.focusedBoard}`}
+      data-verdict={check.verdict}
+      aria-labelledby="focused-board-title"
+    >
+      <header className={styles.focusedBoardHeader}>
+        <div>
+          <p className={publicStyles.kicker}>Проверяем выбранную доску</p>
+          <p className={styles.focusedBoardName}>
+            {check.board.brand} {check.board.modelName}
+          </p>
+          <h2 id="focused-board-title">{verdict.title}</h2>
+          <p>{verdict.summary}</p>
+        </div>
+        <div className={styles.focusedSize}>
+          <p className={publicStyles.microLabel}>Лучшая ростовка</p>
+          <strong>{check.bestFitSize?.sizeLabel ?? "Не определена"}</strong>
+          <p>{buyability}</p>
+        </div>
+      </header>
+
+      <div className={styles.focusedSignals}>
+        {signalGroups.map((group) => {
+          const signals = check.signals.filter(
+            (signal) => signal.state === group.state,
+          );
+          if (signals.length === 0) return null;
+
+          return (
+            <section key={group.state} className={styles.focusedSignalGroup}>
+              <h3>{group.title}</h3>
+              <ul>
+                {signals.map((signal) => (
+                  <li key={signal.key} data-state={signal.state}>
+                    <strong>{signal.title}</strong>
+                    <p>{signal.detail}</p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          );
+        })}
+      </div>
+
+      {check.alternatives.length > 0 ? (
+        <div className={styles.focusedAlternatives}>
+          <h3>Что сравнить перед решением</h3>
+          <ul>
+            {check.alternatives.map((alternative) => (
+              <li key={`${alternative.slug}-${alternative.sizeLabel ?? "board"}`}>
+                <Link href={`/boards/${alternative.slug}`}>
+                  <span>{alternative.decisionLabel}</span>
+                  <strong>{alternative.brand} {alternative.modelName}</strong>
+                  {alternative.sizeLabel ? <small>{alternative.sizeLabel}</small> : null}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </section>
+  );
+}
 
 type ResultStorePlacement =
   | "primary_recommendation"
@@ -589,6 +687,10 @@ export function ResultView({
           input={recommendation.input}
           purchasePreferences={purchasePreferences}
         />
+
+        {activeRecommendation.focusedBoardCheck ? (
+          <FocusedBoardResult check={activeRecommendation.focusedBoardCheck} />
+        ) : null}
 
         {savedResultPath ? (
           <section

@@ -259,7 +259,7 @@ export default async function BoardPage({ params }: BoardPageProps) {
                 </TrackedStoreLink>
               ) : null}
               <Link
-                href="/quiz"
+                href={`/quiz?board=${encodeURIComponent(board.slug)}`}
                 className={`${publicStyles.secondaryAction} ${styles.heroAction}`}
               >
                 Проверить по своим параметрам
@@ -391,7 +391,7 @@ export default async function BoardPage({ params }: BoardPageProps) {
               </p>
             </div>
             <Link
-              href="/quiz"
+              href={`/quiz?board=${encodeURIComponent(board.slug)}`}
               className={`${publicStyles.secondaryAction} ${styles.fitNoteAction}`}
             >
               Проверить мой размер

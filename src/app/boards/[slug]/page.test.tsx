@@ -136,5 +136,6 @@ describe("canonical board page loading", () => {
     );
     expect(markup).not.toContain("Похожие модели");
     expect(markup).not.toContain("Что ещё стоит сравнить");
+    expect(markup.match(/href="\/quiz\?board=brand-model"/gu)).toHaveLength(2);
   });
 });
