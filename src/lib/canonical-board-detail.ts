@@ -53,6 +53,12 @@ export interface CanonicalSizeStoreAction {
   };
 }
 
+export interface CanonicalBoardPublicNarrative {
+  intro: string;
+  fullDescription: string | null;
+  source: "stored" | "safe-fallback";
+}
+
 function normalizeText(value: string | null | undefined) {
   const normalized = value?.trim();
   return normalized ? normalized : null;
@@ -75,6 +81,157 @@ function pluralizeSize(count: number) {
   }
 
   return "размеров";
+}
+
+function normalizeNarrativeText(value: string | null | undefined) {
+  return normalizeText(value)?.replace(/\s+/gu, " ") ?? null;
+}
+
+function hasAdjacentDuplicateWord(value: string) {
+  const normalized = value.toLocaleLowerCase("ru-RU");
+  return /(?:^|[^\p{L}\p{N}])([\p{L}\p{N}]+)\s+\1(?=$|[^\p{L}\p{N}])/u.test(
+    normalized,
+  );
+}
+
+function isUnsafeStoredNarrative(value: string) {
+  const normalized = value.toLocaleLowerCase("ru-RU");
+
+  return (
+    /из\s+каталога/u.test(normalized) ||
+    /в\s+карточке\s+магазина/u.test(normalized) ||
+    /триал\s*[-–—]\s*спорт/u.test(normalized) ||
+    /траектория/u.test(normalized) ||
+    hasAdjacentDuplicateWord(normalized)
+  );
+}
+
+function compareNarrativeSizes(
+  left: CanonicalSizeVariant,
+  right: CanonicalSizeVariant,
+) {
+  return (
+    left.sizeCm - right.sizeCm ||
+    left.displaySizeLabel.localeCompare(right.displaySizeLabel, "ru") ||
+    left.sourceSizeId.localeCompare(right.sourceSizeId, "en")
+  );
+}
+
+function formatSizeList(labels: readonly string[]) {
+  if (labels.length <= 1) {
+    return labels[0] ?? "";
+  }
+
+  return `${labels.slice(0, -1).join(", ")} и ${labels.at(-1)}`;
+}
+
+function formatSizeValue(value: number) {
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(1)));
+}
+
+function getCanonicalNarrativeSizeCopy(
+  sizes: readonly CanonicalSizeVariant[],
+) {
+  const seen = new Set<string>();
+  const uniqueSizes = [...sizes]
+    .sort(compareNarrativeSizes)
+    .filter((size) => {
+      const label = normalizeNarrativeText(size.displaySizeLabel);
+      if (!label) {
+        return false;
+      }
+
+      const key = label.replace(/\s+/gu, "").toLocaleLowerCase("ru-RU");
+      if (seen.has(key)) {
+        return false;
+      }
+
+      seen.add(key);
+      return true;
+    });
+  const labels = uniqueSizes.map(
+    (size) => normalizeNarrativeText(size.displaySizeLabel)!,
+  );
+
+  if (labels.length === 0) {
+    return null;
+  }
+
+  if (labels.length <= 3) {
+    const unit = labels.every((label) => /^\d+(?:[.,]\d+)?$/u.test(label))
+      ? " см"
+      : "";
+    const sizeLabel = formatSizeList(labels);
+
+    return labels.length === 1
+      ? `В EdgeFit зафиксирована ростовка модели ${sizeLabel}${unit}.`
+      : `В EdgeFit зафиксированы ростовки модели ${sizeLabel}${unit}.`;
+  }
+
+  const numericSizes = uniqueSizes
+    .map((size) => size.sizeCm)
+    .filter((sizeCm) => Number.isFinite(sizeCm));
+  const minimumSize = Math.min(...numericSizes);
+  const maximumSize = Math.max(...numericSizes);
+
+  if (
+    numericSizes.length === uniqueSizes.length &&
+    minimumSize < maximumSize
+  ) {
+    return `В EdgeFit зафиксирована размерная сетка модели от ${formatSizeValue(minimumSize)} до ${formatSizeValue(maximumSize)} см.`;
+  }
+
+  return `В EdgeFit зафиксированы ростовки модели ${formatSizeList(labels)}.`;
+}
+
+export function getCanonicalBoardPublicNarrative(
+  board: Pick<
+    CanonicalCatalogItem,
+    "brand" | "modelName" | "seasonLabel" | "canonicalSpecs" | "sizes"
+  >,
+): CanonicalBoardPublicNarrative {
+  const descriptionShort = normalizeNarrativeText(
+    board.canonicalSpecs.descriptionShort,
+  );
+  const descriptionFull = normalizeNarrativeText(
+    board.canonicalSpecs.descriptionFull,
+  );
+  const storedNarratives = [descriptionShort, descriptionFull].filter(
+    (value): value is string => value != null,
+  );
+  const storedIntro = descriptionShort ?? descriptionFull;
+
+  if (
+    storedIntro &&
+    storedNarratives.every((value) => !isUnsafeStoredNarrative(value))
+  ) {
+    return {
+      intro: storedIntro,
+      fullDescription:
+        descriptionFull && descriptionFull !== storedIntro
+          ? descriptionFull
+          : null,
+      source: "stored",
+    };
+  }
+
+  const identity = [board.brand, board.modelName]
+    .map((value) => normalizeNarrativeText(value))
+    .filter((value): value is string => value != null)
+    .join(" ");
+  const seasonLabel = normalizeNarrativeText(board.seasonLabel);
+  const identityCopy = seasonLabel
+    ? `${identity}, сезон ${seasonLabel}.`
+    : `${identity}.`;
+  const sizeCopy = getCanonicalNarrativeSizeCopy(board.sizes);
+  const actionCopy =
+    "Подходящую ростовку можно проверить по своим параметрам.";
+
+  return {
+    intro: [identityCopy, sizeCopy, actionCopy].filter(Boolean).join(" "),
+    fullDescription: null,
+    source: "safe-fallback",
+  };
 }
 
 function roleOrder(role: CanonicalFamilyMemberRole | null) {

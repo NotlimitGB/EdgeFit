@@ -9,6 +9,7 @@ import {
   getCanonicalBoardAvailabilityHeadline,
   getCanonicalBoardLineLabel,
   getCanonicalBoardPricePresentation,
+  getCanonicalBoardPublicNarrative,
   getCanonicalBoardTrustDetails,
   getCanonicalCurrentAvailableSizes,
   getCanonicalFlexPresentation,
@@ -113,11 +114,7 @@ export default async function BoardPage({ params }: BoardPageProps) {
   const availabilityHeadline = getCanonicalBoardAvailabilityHeadline(board);
   const availabilityDescription =
     getCanonicalBoardAvailabilityDescription(board);
-  const introDescription =
-    specs.descriptionShort?.trim() || specs.descriptionFull?.trim() || "";
-  const fullDescription = specs.descriptionFull?.trim() || "";
-  const showModelCharacter =
-    fullDescription.length > 0 && fullDescription !== introDescription;
+  const publicNarrative = getCanonicalBoardPublicNarrative(board);
   const scenarios = narrativeProduct?.scenarios ?? [];
   const notIdealFor = narrativeProduct?.notIdealFor ?? [];
   const showScenarios = scenarios.length > 0 || notIdealFor.length > 0;
@@ -206,9 +203,7 @@ export default async function BoardPage({ params }: BoardPageProps) {
             <h1 id="board-title" className={styles.boardTitle}>
               {board.modelName}
             </h1>
-            {introDescription ? (
-              <p className={styles.heroDescription}>{introDescription}</p>
-            ) : null}
+            <p className={styles.heroDescription}>{publicNarrative.intro}</p>
 
             <dl className={styles.coreFacts}>
               {coreFacts.map((fact) => (
@@ -279,13 +274,15 @@ export default async function BoardPage({ params }: BoardPageProps) {
           </section>
         </section>
 
-        {showModelCharacter ? (
+        {publicNarrative.fullDescription ? (
           <section className={`${styles.contentSection} ${styles.characterSection}`}>
             <div className={styles.sectionHeading}>
               <p className={publicStyles.kicker}>Характер модели</p>
               <h2>Что важно знать об этой доске</h2>
             </div>
-            <p className={styles.characterCopy}>{fullDescription}</p>
+            <p className={styles.characterCopy}>
+              {publicNarrative.fullDescription}
+            </p>
           </section>
         ) : null}
 

@@ -176,4 +176,72 @@ describe("canonical board page loading", () => {
     expect(markup).not.toContain("Что ещё стоит сравнить");
     expect(markup.match(/href="\/quiz\?board=brand-model"/gu)).toHaveLength(2);
   });
+
+  it("replaces unsafe narrative and hides the manufactured character section", async () => {
+    const unsafeBoard: CanonicalCatalogItem = {
+      ...board,
+      seasonLabel: "2024/2025",
+      sizes: [
+        {
+          sourceSizeId: "size-151",
+          offerId: "offer-1",
+          offerSlug: "brand-model-offer",
+          memberRole: "base",
+          offerIsActive: true,
+          rawSizeLabel: "151 cm",
+          displaySizeLabel: "151",
+          sizeLabel: "151",
+          sizeCm: 151,
+          waistWidthMm: 250,
+          recommendedWeightMin: 55,
+          recommendedWeightMax: 80,
+          widthType: "regular",
+          isAvailable: true,
+        },
+      ],
+      canonicalSpecs: {
+        ...board.canonicalSpecs,
+        descriptionShort: "Универсальная универсальная модель из каталога Триал-Спорт.",
+        descriptionFull: "В карточке магазина указаны характеристики модели.",
+      },
+    };
+    mocks.resolve.mockResolvedValue({ kind: "render", item: unsafeBoard });
+    mocks.getProduct.mockResolvedValue(undefined);
+
+    const markup = renderToStaticMarkup(
+      await BoardPage({ params: Promise.resolve({ slug: unsafeBoard.slug }) }),
+    );
+
+    expect(markup).toContain(
+      "Brand Model, сезон 2024/2025. В EdgeFit зафиксирована ростовка модели 151 см.",
+    );
+    expect(markup).not.toMatch(
+      /универсальная универсальная|из каталога|Триал-Спорт|В карточке магазина/iu,
+    );
+    expect(markup).not.toContain("Характер модели");
+    expect(markup).not.toContain("Что важно знать об этой доске");
+    expect(markup.match(/href="\/quiz\?board=brand-model"/gu)).toHaveLength(2);
+  });
+
+  it("preserves a safe distinct full description and its character section", async () => {
+    const safeBoard: CanonicalCatalogItem = {
+      ...board,
+      canonicalSpecs: {
+        ...board.canonicalSpecs,
+        descriptionShort: "Короткое редакционное описание модели.",
+        descriptionFull: "Подробное редакционное описание модели.",
+      },
+    };
+    mocks.resolve.mockResolvedValue({ kind: "render", item: safeBoard });
+    mocks.getProduct.mockResolvedValue(undefined);
+
+    const markup = renderToStaticMarkup(
+      await BoardPage({ params: Promise.resolve({ slug: safeBoard.slug }) }),
+    );
+
+    expect(markup).toContain("Короткое редакционное описание модели.");
+    expect(markup).toContain("Подробное редакционное описание модели.");
+    expect(markup).toContain("Характер модели");
+    expect(markup).toContain("Что важно знать об этой доске");
+  });
 });

@@ -3,6 +3,7 @@ import {
   getCanonicalBoardAvailabilityDescription,
   getCanonicalBoardAvailabilityHeadline,
   getCanonicalBoardPricePresentation,
+  getCanonicalBoardPublicNarrative,
   getCanonicalBoardTrustDetails,
   getCanonicalCurrentAvailableSizes,
   getCanonicalFlexPresentation,
@@ -116,6 +117,170 @@ function boardWithAvailableSizeCount(count: number) {
 }
 
 describe("canonical Board Detail helpers", () => {
+  describe("public narrative", () => {
+    it.each([
+      "универсальная универсальная модель",
+      "Модель из каталога Триал-Спорт",
+      "Модель из каталога Траектория",
+      "В карточке магазина указаны размеры",
+      "  В КАРТОЧКЕ\n\tМАГАЗИНА указаны размеры  ",
+    ])("replaces a known unsafe narrative pattern: %s", (descriptionShort) => {
+      const narrative = getCanonicalBoardPublicNarrative(
+        makeBoard({
+          canonicalSpecs: {
+            descriptionShort,
+            descriptionFull: "Безопасное на вид продолжение.",
+          },
+        }),
+      );
+
+      expect(narrative.source).toBe("safe-fallback");
+      expect(narrative.intro).not.toContain(descriptionShort.trim());
+      expect(narrative.fullDescription).toBeNull();
+    });
+
+    it("preserves safe stored prose and a distinct full description", () => {
+      const narrative = getCanonicalBoardPublicNarrative(
+        makeBoard({
+          canonicalSpecs: {
+            descriptionShort: "Короткое редакционное описание модели.",
+            descriptionFull: "Подробное редакционное описание модели.",
+          },
+        }),
+      );
+
+      expect(narrative).toEqual({
+        intro: "Короткое редакционное описание модели.",
+        fullDescription: "Подробное редакционное описание модели.",
+        source: "stored",
+      });
+    });
+
+    it.each([
+      ["capita-paradise", "Capita Paradise"],
+      ["ride-warpig", "Ride Warpig"],
+    ])("preserves known safe stored copy for %s", (slug, identity) => {
+      const narrative = getCanonicalBoardPublicNarrative(
+        makeBoard({
+          slug,
+          brand: identity.split(" ")[0],
+          modelName: identity.split(" ").slice(1).join(" "),
+          canonicalSpecs: {
+            descriptionShort: `${identity} — модель с отдельным редакционным описанием.`,
+            descriptionFull: `${identity}: подробности модели без неподтверждённых характеристик.`,
+          },
+        }),
+      );
+
+      expect(narrative.source).toBe("stored");
+      expect(narrative.intro).toContain(identity);
+      expect(narrative.fullDescription).toContain(identity);
+    });
+
+    it("builds a season-aware fallback from identity and deduplicated canonical sizes", () => {
+      const narrative = getCanonicalBoardPublicNarrative(
+        makeBoard({
+          brand: "Bataleon",
+          modelName: "Beyond Medals",
+          seasonLabel: "2024/2025",
+          canonicalSpecs: {
+            descriptionShort: "Универсальная универсальная модель из каталога.",
+            descriptionFull: "В карточке магазина указаны характеристики.",
+          },
+          sizes: [
+            makeSize("duplicate-151", { sizeCm: 151, displaySizeLabel: "151" }),
+            makeSize("size-159", { sizeCm: 159, displaySizeLabel: "159" }),
+            makeSize("size-151", { sizeCm: 151, displaySizeLabel: " 151 " }),
+            makeSize("size-156", { sizeCm: 156, displaySizeLabel: "156" }),
+          ],
+        }),
+      );
+
+      expect(narrative).toEqual({
+        intro:
+          "Bataleon Beyond Medals, сезон 2024/2025. В EdgeFit зафиксированы ростовки модели 151, 156 и 159 см. Подходящую ростовку можно проверить по своим параметрам.",
+        fullDescription: null,
+        source: "safe-fallback",
+      });
+      expect(narrative.intro.match(/151/gu)).toHaveLength(1);
+    });
+
+    it("omits an unknown season and summarizes a larger size grid", () => {
+      const narrative = getCanonicalBoardPublicNarrative(
+        makeBoard({
+          brand: "Arbor",
+          modelName: "Westmark",
+          seasonLabel: null,
+          canonicalSpecs: {
+            descriptionShort: "Из каталога Траектория.",
+            descriptionFull: "В карточке магазина указаны характеристики.",
+          },
+          sizes: [148, 151, 154, 157, 160].map((sizeCm) =>
+            makeSize(`size-${sizeCm}`, {
+              sizeCm,
+              displaySizeLabel: String(sizeCm),
+            }),
+          ),
+        }),
+      );
+
+      expect(narrative.intro).toBe(
+        "Arbor Westmark. В EdgeFit зафиксирована размерная сетка модели от 148 до 160 см. Подходящую ростовку можно проверить по своим параметрам.",
+      );
+      expect(narrative.intro).not.toMatch(/сезон|магазин|каталог/iu);
+    });
+
+    it("does not leak unsupported canonical characteristics into fallback", () => {
+      const narrative = getCanonicalBoardPublicNarrative(
+        makeBoard({
+          canonicalSpecs: {
+            descriptionShort: "Из каталога Триал-Спорт.",
+            descriptionFull: "В карточке магазина указаны характеристики.",
+            ridingStyle: "freeride",
+            skillLevel: "advanced",
+            flex: 9,
+            boardLine: "women",
+            shapeType: "directional",
+            camberProfile: "camber",
+          },
+          sizes: [
+            makeSize("wide", {
+              displaySizeLabel: "161W",
+              sizeCm: 161,
+              waistWidthMm: 270,
+            }),
+          ],
+        }),
+      );
+
+      expect(narrative.intro).not.toMatch(
+        /фрирайд|advanced|ж[её]ст|женск|directional|направлен|camber|кэмбер|прогиб|талия|270|магазин|каталог/iu,
+      );
+      expect(narrative.intro).toContain("161W");
+      expect(narrative.fullDescription).toBeNull();
+    });
+
+    it("keeps the fallback useful when canonical sizes are unavailable", () => {
+      const narrative = getCanonicalBoardPublicNarrative(
+        makeBoard({
+          seasonLabel: null,
+          sizes: [],
+          canonicalSpecs: {
+            descriptionShort: null,
+            descriptionFull: null,
+          },
+        }),
+      );
+
+      expect(narrative).toEqual({
+        intro:
+          "Brand Model. Подходящую ростовку можно проверить по своим параметрам.",
+        fullDescription: null,
+        source: "safe-fallback",
+      });
+    });
+  });
+
   it("returns only active and available sizes as current", () => {
     const board = makeBoard({
       sizes: [
