@@ -208,6 +208,47 @@ const resultOutputs = [
   ["05", "Модели", "варианты для сравнения"],
 ] as const;
 
+const QUIZ_FIRST_INTERACTION_STORAGE_KEY =
+  `edgefit:quiz-first-interaction:${QUIZ_VERSION}`;
+
+type QuizEntryMode = "generic" | "focused";
+
+function buildQuizEntryPayload(
+  stepIndex: number,
+  entryMode: QuizEntryMode,
+) {
+  const stepKey = QUIZ_STEPS[stepIndex];
+
+  if (!stepKey) {
+    throw new Error("quiz_step_out_of_range");
+  }
+
+  return {
+    quiz_version: QUIZ_VERSION,
+    step_key: stepKey,
+    step_number: stepIndex + 1,
+    entry_mode: entryMode,
+  };
+}
+
+function claimQuizFirstInteraction(storage: Storage) {
+  try {
+    const sessionId = getOrCreateSessionId();
+
+    if (
+      !sessionId ||
+      storage.getItem(QUIZ_FIRST_INTERACTION_STORAGE_KEY) === sessionId
+    ) {
+      return false;
+    }
+
+    storage.setItem(QUIZ_FIRST_INTERACTION_STORAGE_KEY, sessionId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function buildQuizCompletionAnalyticsPayload(
   payload: QuizSubmission,
   recommendation: Pick<
@@ -417,6 +458,7 @@ export function QuizFlow({
   > | null>(null);
   const isBusy = isSubmitting || isPending;
   const currentStep = stepDetails[step];
+  const entryMode: QuizEntryMode = focusedBoard ? "focused" : "generic";
 
   if (questionHelpTrackerRef.current == null) {
     questionHelpTrackerRef.current = createQuizQuestionHelpTracker(
@@ -459,6 +501,13 @@ export function QuizFlow({
     key: Key,
     value: QuizV2Draft[Key],
   ) {
+    if (claimQuizFirstInteraction(window.sessionStorage)) {
+      void trackEvent(
+        "quiz_first_interaction",
+        buildQuizEntryPayload(step, entryMode),
+      );
+    }
+
     setDraft((current) => ({ ...current, [key]: value }));
     setErrors((current) => ({ ...current, [key]: undefined }));
   }
@@ -473,7 +522,12 @@ export function QuizFlow({
       setErrors({});
       return true;
     }
-    setErrors((current) => ({ ...current, ...result.errors }));
+    const nextErrors = { ...result.errors };
+    setErrors((current) => ({ ...current, ...nextErrors }));
+    void trackEvent("quiz_step_validation_failed", {
+      ...buildQuizEntryPayload(step, entryMode),
+      error_field_count: Object.values(nextErrors).filter(Boolean).length,
+    });
     return false;
   }
 

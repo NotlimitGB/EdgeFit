@@ -1,8 +1,10 @@
 export const analyticsEvents = {
   homeViewed: "home_viewed",
   quizStarted: "quiz_started",
+  quizFirstInteraction: "quiz_first_interaction",
   quizStepViewed: "quiz_step_viewed",
   quizStepCompleted: "quiz_step_completed",
+  quizStepValidationFailed: "quiz_step_validation_failed",
   quizCompleted: "quiz_completed",
   quizQuestionHelpOpened: "quiz_question_help_opened",
   resultViewed: "result_viewed",

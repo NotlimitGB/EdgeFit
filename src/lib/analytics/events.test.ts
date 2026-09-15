@@ -32,4 +32,13 @@ describe("getYandexGoalNames", () => {
       getYandexGoalNames(analyticsEvents.quizQuestionHelpOpened),
     ).toEqual([]);
   });
+
+  it("keeps quiz entry diagnostics first-party only", () => {
+    expect(getYandexGoalNames(analyticsEvents.quizFirstInteraction)).toEqual(
+      [],
+    );
+    expect(
+      getYandexGoalNames(analyticsEvents.quizStepValidationFailed),
+    ).toEqual([]);
+  });
 });
