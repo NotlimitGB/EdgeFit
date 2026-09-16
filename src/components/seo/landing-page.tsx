@@ -280,6 +280,18 @@ export function SeoLandingPageView({ page }: { page: SeoLandingPage }) {
             Что ещё посмотреть по теме
           </h2>
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
+            <Link
+              href="/"
+              className="rounded-[1.2rem] border border-[var(--color-border)] bg-white/82 p-4 hover:border-[var(--color-sky)]"
+            >
+              <p className="text-lg font-bold text-[var(--color-ink)]">
+                Подбор сноуборда по параметрам
+              </p>
+              <p className="mt-2 text-sm leading-7 text-[var(--color-muted)]">
+                Общий подбор по росту, весу, размеру ботинка, уровню и стилю
+                катания.
+              </p>
+            </Link>
             {relatedPages.map((item) => (
               <Link
                 key={item.slug}

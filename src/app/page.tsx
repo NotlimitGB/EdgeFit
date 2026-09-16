@@ -4,10 +4,9 @@ import { MountEvent } from "@/components/analytics/mount-event";
 import publicStyles from "@/components/public/public-ui.module.css";
 import { getSeoLandingPath, seoLandingPages } from "@/lib/seo-pages";
 
-const homepageTitle =
-  "Подбор сноуборда по росту, весу и размеру ноги — EdgeFit";
+const homepageTitle = "Подбор сноуборда онлайн по параметрам — EdgeFit";
 const homepageDescription =
-  "Подбери ростовку, ширину и модели сноубордов по росту, весу, размеру ботинка, уровню и стилю катания. EdgeFit объяснит выбор и риск зацепа ботинком.";
+  "Подбери сноуборд по росту, весу, размеру ботинка, уровню и стилю катания. EdgeFit рассчитает ростовку и ширину, оценит риск зацепа ботинком и покажет подходящие модели.";
 
 export const metadata: Metadata = {
   title: {
@@ -101,10 +100,57 @@ const processSteps = [
   },
 ];
 
+const homepageFaq = [
+  {
+    question: "Как подобрать сноуборд?",
+    answer:
+      "Начни с веса: он задаёт базовый диапазон длины. Затем учти рост, размер ботинка, стойку, уровень и стиль катания, а перед покупкой проверь параметры конкретной модели и ростовки.",
+  },
+  {
+    question: "Что важнее при подборе сноуборда — рост или вес?",
+    answer:
+      "Вес важнее для базовой длины, а рост помогает скорректировать диапазон с учётом комплекции. Выбирать доску только по одному из этих параметров недостаточно.",
+  },
+  {
+    question: "Как определить подходящую ростовку?",
+    answer:
+      "Сначала определи диапазон по весу, затем скорректируй его по росту, уровню и стилю катания. Внутри диапазона более короткая ростовка обычно манёвреннее, а более длинная — стабильнее.",
+  },
+  {
+    question: "Как понять, нужен ли сноуборд Wide?",
+    answer:
+      "Сопоставь размер ботинка, углы стойки и ширину талии конкретной ростовки. Если параметры пограничные, геометрию выбранной доски стоит проверить особенно внимательно.",
+  },
+  {
+    question: "Можно ли подобрать сноуборд онлайн?",
+    answer:
+      "Да. EdgeFit покажет рабочий диапазон длины, ориентир по ширине, оценку риска зацепа ботинком и модели для сравнения. Перед покупкой всё равно проверь геометрию выбранной ростовки.",
+  },
+];
+
+function buildHomepageFaqSchema() {
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: homepageFaq.map((item) => ({
+      "@type": "Question",
+      name: item.question,
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: item.answer,
+      },
+    })),
+  };
+}
+
 export default function Home() {
   return (
     <div className={`${publicStyles.theme} edgefit-home`}>
       <MountEvent eventName="home_viewed" />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(buildHomepageFaqSchema()) }}
+      />
       <div className="edgefit-home__atmosphere" aria-hidden="true" />
 
       <section
@@ -116,12 +162,12 @@ export default function Home() {
             Подбор сноуборда
           </p>
           <h1 id="home-title" className="edgefit-home__hero-title">
-            Подберём сноуборд под рост, вес, ботинок и стиль катания.
+            Подбор сноуборда по параметрам
           </h1>
           <p className="edgefit-home__hero-lead">
-            Учитываем вес, рост, размер ботинка, стойку, уровень и стиль
-            катания. В результате ты получаешь подходящий диапазон ростовок,
-            рекомендацию по ширине и конкретные модели для сравнения.
+            Укажи рост, вес, размер ботинка, уровень и стиль катания. EdgeFit
+            покажет подходящий диапазон ростовок и ширину, оценит риск зацепа
+            ботинком и предложит конкретные модели для сравнения.
           </p>
           <p className="edgefit-home__outcomes">
             Ростовка <span aria-hidden="true">/</span> ширина{" "}
@@ -134,7 +180,7 @@ export default function Home() {
               href="/quiz"
               className={`${publicStyles.primaryAction} edgefit-home__cta-primary`}
             >
-              Подобрать доску
+              Подобрать сноуборд
               <span aria-hidden="true">→</span>
             </Link>
             <Link
@@ -217,7 +263,7 @@ export default function Home() {
           <p className={`${publicStyles.kicker} edgefit-home__kicker`}>
             Что учитываем при подборе
           </p>
-          <h2 id="fit-factors-title">Учитываем не только рост</h2>
+          <h2 id="fit-factors-title">Как подобрать сноуборд по параметрам</h2>
           <p>
             Длина — только часть выбора. Ширина, стиль катания и уровень не
             менее важны, если хочется купить доску без неприятных сюрпризов.
@@ -323,6 +369,33 @@ export default function Home() {
       </section>
 
       <section
+        className="edgefit-home__section container-shell"
+        aria-labelledby="faq-title"
+      >
+        <div className="edgefit-home__section-intro">
+          <p className={`${publicStyles.kicker} edgefit-home__kicker`}>
+            Частые вопросы
+          </p>
+          <h2 id="faq-title">Что важно знать перед подбором</h2>
+          <p>
+            Коротко о длине, ширине и параметрах, которые стоит проверить до
+            покупки.
+          </p>
+        </div>
+
+        <ol className="edgefit-home__factor-rail">
+          {homepageFaq.map((item, index) => (
+            <FitFactor
+              key={item.question}
+              index={String(index + 1).padStart(2, "0")}
+              title={item.question}
+              text={item.answer}
+            />
+          ))}
+        </ol>
+      </section>
+
+      <section
         className="edgefit-home__section edgefit-home__guides container-shell"
         aria-labelledby="guides-title"
       >
@@ -373,7 +446,7 @@ export default function Home() {
               href="/quiz"
               className={`${publicStyles.primaryAction} edgefit-home__cta-primary`}
             >
-              Подобрать доску
+              Подобрать сноуборд
               <span aria-hidden="true">→</span>
             </Link>
           </div>

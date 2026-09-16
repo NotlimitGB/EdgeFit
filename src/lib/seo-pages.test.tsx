@@ -169,6 +169,25 @@ describe("SEO landing registry", () => {
     ).toEqual(["kalkulyator-snouborda"]);
   });
 
+  it("preserves calculator intent, route, canonical, and interactive experience", async () => {
+    const calculator = getSeoLandingPage("kalkulyator-snouborda");
+    const calculatorMetadata = await generateMetadata({
+      params: Promise.resolve({ seoSlug: "kalkulyator-snouborda" }),
+    });
+
+    expect(calculator).toMatchObject({
+      slug: "kalkulyator-snouborda",
+      title: "Калькулятор сноуборда: как подобрать длину и ширину доски",
+      interactiveExperience: "quiz",
+    });
+    expect(calculatorMetadata.title).toBe(
+      "Калькулятор сноуборда: как подобрать длину и ширину доски",
+    );
+    expect(calculatorMetadata.alternates?.canonical).toBe(
+      "/kalkulyator-snouborda",
+    );
+  });
+
   it("uses the intended narrow riding-style relationships and backlinks", () => {
     expect(getSeoLandingPage("snoubord-dlya-frirayda")?.relatedSlugs).toEqual([
       "rostovka-snouborda-po-rostu-i-vesu",
@@ -219,6 +238,19 @@ describe("SEO landing registry", () => {
 });
 
 describe("choice basics SEO rendering", () => {
+  it("adds one visible homepage hub link without replacing quiz or catalog actions", () => {
+    for (const page of seoLandingPages) {
+      const markup = renderToStaticMarkup(
+        createElement(SeoLandingPageView, { page }),
+      );
+
+      expect(markup.match(/href="\/"/gu)).toHaveLength(1);
+      expect(markup).toContain("Подбор сноуборда по параметрам");
+      expect(markup).toContain('href="/quiz"');
+      expect(markup).toContain('href="/catalog"');
+    }
+  });
+
   it.each(newPageExpectations)(
     "provides unique metadata and substantive content for $slug",
     async ({ slug, title, marker, hasComparison }) => {

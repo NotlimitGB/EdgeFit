@@ -22,9 +22,9 @@ import Home, { metadata } from "@/app/page";
 
 describe("homepage metadata", () => {
   it("defines one intent-led title, canonical, and matching OpenGraph URL", () => {
-    const title = "Подбор сноуборда по росту, весу и размеру ноги — EdgeFit";
+    const title = "Подбор сноуборда онлайн по параметрам — EdgeFit";
     const description =
-      "Подбери ростовку, ширину и модели сноубордов по росту, весу, размеру ботинка, уровню и стилю катания. EdgeFit объяснит выбор и риск зацепа ботинком.";
+      "Подбери сноуборд по росту, весу, размеру ботинка, уровню и стилю катания. EdgeFit рассчитает ростовку и ширину, оценит риск зацепа ботинком и покажет подходящие модели.";
 
     expect(metadata).toMatchObject({
       title: { absolute: title },
@@ -35,13 +35,47 @@ describe("homepage metadata", () => {
     expect(JSON.stringify(metadata)).not.toContain("EdgeFit | EdgeFit");
   });
 
-  it("keeps the existing visible homepage heading and primary actions", () => {
+  it("owns the broad selection intent with one H1 and unchanged destinations", () => {
     const markup = renderToStaticMarkup(<Home />);
 
-    expect(markup).toContain(
-      "Подберём сноуборд под рост, вес, ботинок и стиль катания.",
-    );
-    expect(markup).toContain('href="/quiz"');
+    expect(markup.match(/<h1\b/gu)).toHaveLength(1);
+    expect(markup).toContain("<h1");
+    expect(markup).toContain("Подбор сноуборда по параметрам</h1>");
+    expect(markup).toContain("Как подобрать сноуборд по параметрам");
+    expect(markup).toContain("Почему нельзя выбирать доску только по росту");
+    expect(markup.match(/href="\/quiz"/gu)).toHaveLength(2);
+    expect(markup.match(/Подобрать сноуборд/gu)).toHaveLength(2);
     expect(markup).toContain('href="/catalog"');
+  });
+
+  it("keeps the visible FAQ aligned with FAQPage structured data", () => {
+    const markup = renderToStaticMarkup(<Home />);
+    const questions = [
+      "Как подобрать сноуборд?",
+      "Что важнее при подборе сноуборда — рост или вес?",
+      "Как определить подходящую ростовку?",
+      "Как понять, нужен ли сноуборд Wide?",
+      "Можно ли подобрать сноуборд онлайн?",
+    ];
+    const scriptMatch = markup.match(
+      /<script type="application\/ld\+json">([^<]+)<\/script>/u,
+    );
+
+    expect(scriptMatch).not.toBeNull();
+    const schema = JSON.parse(scriptMatch![1]) as {
+      "@type": string;
+      mainEntity: Array<{
+        name: string;
+        acceptedAnswer: { text: string };
+      }>;
+    };
+    expect(schema["@type"]).toBe("FAQPage");
+    expect(schema.mainEntity).toHaveLength(5);
+    expect(schema.mainEntity.map((item) => item.name)).toEqual(questions);
+
+    for (const item of schema.mainEntity) {
+      expect(markup).toContain(item.name);
+      expect(markup).toContain(item.acceptedAnswer.text);
+    }
   });
 });
