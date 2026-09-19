@@ -230,23 +230,27 @@ describe("canonical catalog model", () => {
     });
   });
 
-  it("derives W for an audit-high explicit Wide member", () => {
-    const [item] = buildCanonicalCatalogItems(
-      [makeFamily()],
-      [
-        familyOffer("wide", {
-          sizes: [
-            makeSize({ sizeCm: 161, sizeLabel: "161 cm", widthType: "wide" }),
-          ],
-        }),
-      ],
-    );
+  it.each(["regular", "mid-wide", "wide"] as const)(
+    "derives W for an audit-high Wide member with %s physical width",
+    (widthType) => {
+      const [item] = buildCanonicalCatalogItems(
+        [makeFamily()],
+        [
+          familyOffer("wide", {
+            sizes: [
+              makeSize({ sizeCm: 161, sizeLabel: "161 cm", widthType }),
+            ],
+          }),
+        ],
+      );
 
-    expect(item.sizes[0]).toMatchObject({
-      rawSizeLabel: "161 cm",
-      displaySizeLabel: "161W",
-    });
-  });
+      expect(item.sizes[0]).toMatchObject({
+        rawSizeLabel: "161 cm",
+        displaySizeLabel: "161W",
+        sizeLabel: "161W",
+      });
+    },
+  );
 
   it("derives W for a manually confirmed Wide member", () => {
     const [item] = buildCanonicalCatalogItems(
@@ -257,7 +261,11 @@ describe("canonical catalog model", () => {
           familyMatchConfidence: "reviewed",
           familyManualOverride: true,
           sizes: [
-            makeSize({ sizeCm: 162, sizeLabel: "162 cm", widthType: "wide" }),
+            makeSize({
+              sizeCm: 162,
+              sizeLabel: "162 cm",
+              widthType: "mid-wide",
+            }),
           ],
         }),
       ],
@@ -282,13 +290,28 @@ describe("canonical catalog model", () => {
     expect(item.sizes[0].displaySizeLabel).toBe("162");
   });
 
-  it("does not derive W from a base mid-wide size", () => {
+  it("does not derive W from a physically wide base member", () => {
     const [item] = buildCanonicalCatalogItems(
       [makeFamily()],
       [
         familyOffer("base", {
           sizes: [
-            makeSize({ sizeCm: 159, sizeLabel: "159 cm", widthType: "mid-wide" }),
+            makeSize({ sizeCm: 159, sizeLabel: "159 cm", widthType: "wide" }),
+          ],
+        }),
+      ],
+    );
+
+    expect(item.sizes[0].displaySizeLabel).toBe("159");
+  });
+
+  it("does not derive W from a physically wide other member", () => {
+    const [item] = buildCanonicalCatalogItems(
+      [makeFamily()],
+      [
+        familyOffer("other", {
+          sizes: [
+            makeSize({ sizeCm: 159, sizeLabel: "159 cm", widthType: "wide" }),
           ],
         }),
       ],
@@ -307,6 +330,84 @@ describe("canonical catalog model", () => {
     ]);
 
     expect(item.sizes[0].displaySizeLabel).toBe("160");
+  });
+
+  it("keeps Drake-like base and trusted Wide sizes as distinct identities", () => {
+    const [item] = buildCanonicalCatalogItems(
+      [makeFamily({ slug: "drake-league-2021-2022" })],
+      [
+        familyOffer("base", {
+          sizes: [
+            makeSize({
+              id: "base-156",
+              sizeCm: 156,
+              sizeLabel: "156 cm",
+              waistWidthMm: 254,
+            }),
+            makeSize({
+              id: "base-159",
+              sizeCm: 159,
+              sizeLabel: "159 cm",
+              waistWidthMm: 255,
+            }),
+          ],
+        }),
+        familyOffer("wide", {
+          sizes: [
+            makeSize({
+              id: "wide-156",
+              sizeCm: 156,
+              sizeLabel: "156 cm",
+              waistWidthMm: 260,
+              widthType: "mid-wide",
+            }),
+            makeSize({
+              id: "wide-159",
+              sizeCm: 159,
+              sizeLabel: "159 cm",
+              waistWidthMm: 263,
+              widthType: "mid-wide",
+            }),
+          ],
+        }),
+      ],
+    );
+
+    expect(
+      item.sizes.map(
+        ({ sourceSizeId, displaySizeLabel, waistWidthMm, widthType }) => ({
+          sourceSizeId,
+          displaySizeLabel,
+          waistWidthMm,
+          widthType,
+        }),
+      ),
+    ).toEqual([
+      {
+        sourceSizeId: "base-156",
+        displaySizeLabel: "156",
+        waistWidthMm: 254,
+        widthType: "regular",
+      },
+      {
+        sourceSizeId: "wide-156",
+        displaySizeLabel: "156W",
+        waistWidthMm: 260,
+        widthType: "mid-wide",
+      },
+      {
+        sourceSizeId: "base-159",
+        displaySizeLabel: "159",
+        waistWidthMm: 255,
+        widthType: "regular",
+      },
+      {
+        sourceSizeId: "wide-159",
+        displaySizeLabel: "159W",
+        waistWidthMm: 263,
+        widthType: "mid-wide",
+      },
+    ]);
   });
 
   it("uses the minimum positive active family price", () => {

@@ -223,6 +223,40 @@ describe("focused board fit check", () => {
     );
   });
 
+  it("keeps Regular and Wide display identities in separate focused candidates", () => {
+    const recommendation = getRecommendation(baseInput, defaultBoards);
+    const first = createCanonicalBoard().sizes[0];
+    const board = createCanonicalBoard({
+      sizes: [
+        {
+          ...first,
+          sourceSizeId: "159-base",
+          displaySizeLabel: "159",
+          sizeLabel: "159",
+          sizeCm: 159,
+          waistWidthMm: 255,
+          widthType: "regular",
+        },
+        {
+          ...first,
+          sourceSizeId: "159-wide",
+          displaySizeLabel: "159W",
+          sizeLabel: "159W",
+          sizeCm: 159,
+          waistWidthMm: 263,
+          widthType: "mid-wide",
+          memberRole: "wide",
+        },
+      ],
+    });
+    const check = getFocusedBoardCheck(recommendation, board);
+
+    expect(check.bestFitSize?.sizeLabel).toBe("159");
+    expect(check.signals.find((signal) => signal.key === "width")?.state).not.toBe(
+      "unknown",
+    );
+  });
+
   it("excludes the focused family from decision-labelled alternatives", () => {
     const sameFamily = recommendationMatchForTest("same-family", "Same");
     const otherFamily = recommendationMatchForTest("other-family", "Other");

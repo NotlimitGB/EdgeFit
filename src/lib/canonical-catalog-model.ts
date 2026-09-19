@@ -133,9 +133,8 @@ function canDeriveWideLabel(
   memberRole: CanonicalFamilyMemberRole | null,
   familyMatchMethod: string | null,
   familyManualOverride: boolean,
-  widthType: WidthType,
 ) {
-  if (memberRole !== "wide" || widthType !== "wide") {
+  if (memberRole !== "wide") {
     return false;
   }
 
@@ -167,7 +166,6 @@ export function getCanonicalSizeDisplayLabel(
       membership.memberRole,
       membership.familyMatchMethod,
       membership.familyManualOverride,
-      size.widthType,
     )
   ) {
     return `${formatBoardSizeValue(sizeCm)}W`;
