@@ -67,6 +67,18 @@ describe("030P-D exact-size merchant offer schema", () => {
     expect(migration).toMatch(/reconciliation_status = 'conflict'[\s\S]*cardinality\(reconciliation_codes\) > 0/iu);
   });
 
+  it("requires source-side size evidence and rejects canonical-derived exact-size identities", () => {
+    expect(migration).toMatch(/chk_merchant_offers_exact_size_source_evidence[\s\S]*offer_scope <> 'exact_size'[\s\S]*merchant_size_sku[\s\S]*raw_size_label[\s\S]*source_size_cm[\s\S]*merchant_size_url/iu);
+    expect(migration).toContain("lower(trim(source_identity_key)) not like 'canonical-size:%'");
+    expect(migration).toContain("source_identity_key ~* '^sku:[^[:space:]].*'");
+    expect(migration).toContain("source_identity_key ~* '^variant:[^[:space:]].*'");
+    expect(migration).toContain("source_identity_key ~* '^url:https?://[^[:space:]].*'");
+    expect(migration).toContain("merchant_size_sku is not null");
+    expect(migration).toContain("merchant_size_url is not null");
+    expect(schema).toContain("chk_merchant_offers_exact_size_source_evidence");
+    expect(schema).toContain("chk_merchant_offers_source_identity_namespace");
+  });
+
   it("is additive structure-only DDL and contains no personal data or affiliate economics", () => {
     expect(migration).not.toMatch(/^\s*(insert|update|delete|truncate|drop|alter)\b/gimu);
     for (const forbidden of [

@@ -235,7 +235,7 @@ describe("merchant offer contract", () => {
       NOW,
       POLICY,
     );
-    expect(result.eligible.map((entry) => entry.offer.merchantSlug)).toEqual([
+    expect(result.displayEligible.map((entry) => entry.offer.merchantSlug)).toEqual([
       "merchant-a",
       "merchant-b",
     ]);
@@ -248,7 +248,7 @@ describe("merchant offer contract", () => {
       NOW,
       POLICY,
     );
-    expect(result.eligible.map((entry) => entry.offer.id)).toEqual(["wide"]);
+    expect(result.displayEligible.map((entry) => entry.offer.id)).toEqual(["wide"]);
   });
 
   it("preserves explicit availability and maps missing or unrecognized values to UNKNOWN", () => {
@@ -261,7 +261,7 @@ describe("merchant offer contract", () => {
         regular159,
         NOW,
         POLICY,
-      ).eligible,
+      ).displayEligible,
     ).toBe(false);
     expect(
       evaluateCurrentExactSizeOffer(
@@ -273,37 +273,67 @@ describe("merchant offer contract", () => {
     ).toContain("AVAILABILITY_UNKNOWN");
   });
 
-  it("classifies timestamp freshness and fails closed when missing or stale", () => {
+  it("separates display eligibility from a fresh current-availability claim", () => {
     expect(classifyOfferFreshness(null, NOW, POLICY)).toBe("UNKNOWN");
     expect(classifyOfferFreshness(new Date("2026-09-24T11:00:00.000Z"), NOW, POLICY)).toBe("STALE");
     expect(classifyOfferFreshness(new Date("2026-09-25T06:00:01.000Z"), NOW, POLICY)).toBe("FRESH");
     expect(classifyOfferFreshness(new Date("2026-09-25T04:00:00.000Z"), NOW, POLICY)).toBe("AGING");
-    expect(
-      evaluateCurrentExactSizeOffer(
-        offer(regular159, { observedAt: new Date("2026-09-25T04:00:00.000Z") }),
+    const fresh = evaluateCurrentExactSizeOffer(offer(), regular159, NOW, POLICY);
+    expect(fresh).toMatchObject({
+      displayEligible: true,
+      currentAvailabilityEligible: true,
+      availabilityFreshness: "FRESH",
+      priceFreshness: "FRESH",
+    });
+
+    const agingAvailability = evaluateCurrentExactSizeOffer(
+      offer(regular159, { observedAt: new Date("2026-09-25T04:00:00.000Z") }),
+      regular159,
+      NOW,
+      POLICY,
+    );
+    expect(agingAvailability).toMatchObject({
+      displayEligible: true,
+      currentAvailabilityEligible: false,
+      availabilityFreshness: "AGING",
+    });
+
+    const agingPrice = evaluateCurrentExactSizeOffer(
+      offer(regular159, {
+        price: { ...offer().price!, observedAt: new Date("2026-09-25T04:00:00.000Z") },
+      }),
+      regular159,
+      NOW,
+      POLICY,
+    );
+    expect(agingPrice).toMatchObject({
+      displayEligible: true,
+      currentAvailabilityEligible: true,
+      priceFreshness: "AGING",
+    });
+
+    for (const observedAt of [null, new Date("2026-09-24T11:00:00.000Z")]) {
+      const unavailable = evaluateCurrentExactSizeOffer(
+        offer(regular159, { observedAt }),
         regular159,
         NOW,
         POLICY,
-      ).eligible,
-    ).toBe(true);
-    expect(
-      evaluateCurrentExactSizeOffer(
-        offer(regular159, { observedAt: null }),
-        regular159,
-        NOW,
-        POLICY,
-      ).reasonCodes,
-    ).toContain("AVAILABILITY_UNKNOWN");
-    expect(
-      evaluateCurrentExactSizeOffer(
-        offer(regular159, {
-          price: { ...offer().price!, observedAt: null },
-        }),
-        regular159,
-        NOW,
-        POLICY,
-      ).reasonCodes,
-    ).toContain("PRICE_UNKNOWN");
+      );
+      expect(unavailable.displayEligible).toBe(false);
+      expect(unavailable.currentAvailabilityEligible).toBe(false);
+    }
+
+    const unknownPrice = evaluateCurrentExactSizeOffer(
+      offer(regular159, {
+        price: { ...offer().price!, observedAt: null },
+      }),
+      regular159,
+      NOW,
+      POLICY,
+    );
+    expect(unknownPrice.reasonCodes).toContain("PRICE_UNKNOWN");
+    expect(unknownPrice.displayEligible).toBe(false);
+    expect(unknownPrice.currentAvailabilityEligible).toBe(false);
   });
 
   it("does not turn legacy imports, unauthorized sources, or price alone into current offers", () => {
@@ -316,7 +346,7 @@ describe("merchant offer contract", () => {
     ]) {
       expect(
         evaluateCurrentExactSizeOffer(offer(regular159, overrides), regular159, NOW, POLICY)
-          .eligible,
+          .displayEligible,
       ).toBe(false);
     }
   });
@@ -324,19 +354,37 @@ describe("merchant offer contract", () => {
   it("uses a stable SKU before URLs, so tracking parameters cannot duplicate source identity", () => {
     const first = buildMerchantOfferSourceIdentityKey({
       merchantSizeSku: " drake-159 ",
-      sourceUrl: "https://merchant.example/board?utm_source=one",
+      sizeSpecificSourceUrl: "https://merchant.example/board/159?utm_source=one",
     });
     const second = buildMerchantOfferSourceIdentityKey({
       merchantSizeSku: "DRAKE-159",
-      sourceUrl: "https://merchant.example/board?utm_source=two&gclid=abc",
+      sizeSpecificSourceUrl: "https://merchant.example/board/159?utm_source=two&gclid=abc",
     });
     expect(first).toBe("sku:DRAKE-159");
     expect(second).toBe(first);
     expect(
       buildMerchantOfferSourceIdentityKey({
-        sourceUrl: "https://merchant.example/board?utm_source=one&color=black#size",
+        normalizedSourceVariantKey: "wide-159",
       }),
-    ).toBe("url:https://merchant.example/board?color=black");
+    ).toBe("variant:wide-159");
+    expect(
+      buildMerchantOfferSourceIdentityKey({
+        sizeSpecificSourceUrl: "https://merchant.example/board/159W?utm_source=one&color=black#size",
+      }),
+    ).toBe("url:https://merchant.example/board/159W?color=black");
+
+    expect(() =>
+      buildMerchantOfferSourceIdentityKey({
+        canonicalSizeIdentity: regular159,
+      } as Parameters<typeof buildMerchantOfferSourceIdentityKey>[0]),
+    ).toThrow("Merchant offer source identity requires a stable key.");
+
+    expect(() =>
+      buildMerchantOfferSourceIdentityKey({
+        canonicalSizeIdentity: regular159,
+        sourceUrl: "https://merchant.example/product",
+      } as Parameters<typeof buildMerchantOfferSourceIdentityKey>[0]),
+    ).toThrow("Merchant offer source identity requires a stable key.");
   });
 
   it("keeps model/edition identities distinct even when numeric size is equal", () => {
@@ -428,8 +476,9 @@ describe("merchant offer contract", () => {
       offer(jones159, { id: "b-159", merchantSlug: "merchant-b", sourceIdentityKey: "sku:B-159", merchantSizeSku: "B-159", price: { ...offer().price!, amount: 48_990 } }),
       offer(jones159W, { id: "b-159w", merchantSlug: "merchant-b", sourceIdentityKey: "sku:B-159W", merchantSizeSku: "B-159W", availabilityStatus: "OUT_OF_STOCK" }),
     ];
-    expect(selectCurrentExactSizeOffers(fixtureOffers, jones159, NOW, POLICY).eligible.map((entry) => entry.offer.id).sort()).toEqual(["a-159", "b-159"]);
-    expect(selectCurrentExactSizeOffers(fixtureOffers, jones159W, NOW, POLICY).eligible.map((entry) => entry.offer.id)).toEqual(["a-159w"]);
+    expect(selectCurrentExactSizeOffers(fixtureOffers, jones159, NOW, POLICY).displayEligible.map((entry) => entry.offer.id).sort()).toEqual(["a-159", "b-159"]);
+    expect(selectCurrentExactSizeOffers(fixtureOffers, jones159W, NOW, POLICY).displayEligible.map((entry) => entry.offer.id)).toEqual(["a-159w"]);
+    expect(selectCurrentExactSizeOffers(fixtureOffers, jones159W, NOW, POLICY).currentAvailabilityEligible.map((entry) => entry.offer.id)).toEqual(["a-159w"]);
     expect(fixtureOffers.find((entry) => entry.id === "b-159w")?.availabilityStatus).toBe("OUT_OF_STOCK");
   });
 

@@ -83,9 +83,8 @@ export function buildCanonicalSizeIdentity(
 
 export function buildMerchantOfferSourceIdentityKey(args: {
   merchantSizeSku?: string | null;
-  canonicalSizeIdentity?: CanonicalSizeIdentity | null;
   normalizedSourceVariantKey?: string | null;
-  sourceUrl?: string | null;
+  sizeSpecificSourceUrl?: string | null;
 }) {
   const sku = args.merchantSizeSku?.trim().toLocaleUpperCase("en-US");
   if (sku) return `sku:${sku}`;
@@ -93,30 +92,28 @@ export function buildMerchantOfferSourceIdentityKey(args: {
   const sourceVariant = args.normalizedSourceVariantKey?.trim();
   if (sourceVariant) return `variant:${sourceVariant}`;
 
-  if (args.sourceUrl?.trim()) {
+  if (args.sizeSpecificSourceUrl?.trim()) {
     try {
-      const url = new URL(args.sourceUrl);
-      for (const key of [...url.searchParams.keys()]) {
-        const normalizedKey = key.toLowerCase();
-        if (
-          normalizedKey.startsWith("utm_") ||
-          normalizedKey === "gclid" ||
-          normalizedKey === "yclid" ||
-          normalizedKey === "_openstat"
-        ) {
-          url.searchParams.delete(key);
+      const url = new URL(args.sizeSpecificSourceUrl);
+      if (url.protocol === "http:" || url.protocol === "https:") {
+        for (const key of [...url.searchParams.keys()]) {
+          const normalizedKey = key.toLowerCase();
+          if (
+            normalizedKey.startsWith("utm_") ||
+            normalizedKey === "gclid" ||
+            normalizedKey === "yclid" ||
+            normalizedKey === "_openstat"
+          ) {
+            url.searchParams.delete(key);
+          }
         }
+        url.searchParams.sort();
+        url.hash = "";
+        return `url:${url.toString()}`;
       }
-      url.searchParams.sort();
-      url.hash = "";
-      return `url:${url.toString()}`;
     } catch {
       // An invalid source URL is not a stable fallback identity.
     }
-  }
-
-  if (args.canonicalSizeIdentity) {
-    return `canonical-size:${args.canonicalSizeIdentity.identityKey}`;
   }
 
   throw new Error("Merchant offer source identity requires a stable key.");
@@ -216,7 +213,10 @@ export interface ExactSizeMerchantOfferSnapshot {
 
 export interface EvaluatedMerchantOffer {
   offer: ExactSizeMerchantOfferSnapshot;
-  eligible: boolean;
+  /** Passes display checks; AGING is allowed within the caller-supplied policy. */
+  displayEligible: boolean;
+  /** Display-eligible with a FRESH availability observation, not merely AGING. */
+  currentAvailabilityEligible: boolean;
   reasonCodes: string[];
   availabilityFreshness: FreshnessStatus;
   priceFreshness: FreshnessStatus;
@@ -252,6 +252,9 @@ export function evaluateCurrentExactSizeOffer(
   if (availabilityFreshness === "STALE" || availabilityFreshness === "UNKNOWN") {
     reasonCodes.push(`AVAILABILITY_${availabilityFreshness}`);
   }
+  if (priceFreshness === "STALE" || priceFreshness === "UNKNOWN") {
+    reasonCodes.push(`PRICE_${priceFreshness}`);
+  }
 
   if (!offer.price) {
     reasonCodes.push("PRICE_MISSING");
@@ -260,14 +263,15 @@ export function evaluateCurrentExactSizeOffer(
       reasonCodes.push("PRICE_INVALID");
     }
     if (!/^[A-Z]{3}$/u.test(offer.price.currency)) reasonCodes.push("CURRENCY_INVALID");
-    if (priceFreshness === "STALE" || priceFreshness === "UNKNOWN") {
-      reasonCodes.push(`PRICE_${priceFreshness}`);
-    }
   }
+
+  const displayEligible = reasonCodes.length === 0;
 
   return {
     offer,
-    eligible: reasonCodes.length === 0,
+    displayEligible,
+    currentAvailabilityEligible:
+      displayEligible && availabilityFreshness === "FRESH",
     reasonCodes,
     availabilityFreshness,
     priceFreshness,
@@ -283,15 +287,21 @@ export function selectCurrentExactSizeOffers(
   const evaluated = offers.map((offer) =>
     evaluateCurrentExactSizeOffer(offer, requestedIdentity, now, policy),
   );
-  const eligible = evaluated
-    .filter((entry) => entry.eligible)
+  const displayEligible = evaluated
+    .filter((entry) => entry.displayEligible)
     .sort(
       (left, right) =>
         left.offer.merchantSlug.localeCompare(right.offer.merchantSlug, "en") ||
         left.offer.id.localeCompare(right.offer.id, "en"),
     );
 
-  return { evaluated, eligible };
+  return {
+    evaluated,
+    displayEligible,
+    currentAvailabilityEligible: displayEligible.filter(
+      (entry) => entry.currentAvailabilityEligible,
+    ),
+  };
 }
 
 export interface MerchantOfferReconciliationCandidate {

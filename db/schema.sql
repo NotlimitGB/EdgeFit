@@ -632,6 +632,34 @@ create table if not exists merchant_offers (
     check (length(trim(source_identity_key)) > 0),
   constraint chk_merchant_offers_source_size_cm
     check (source_size_cm is null or source_size_cm > 0),
+  constraint chk_merchant_offers_exact_size_source_evidence
+    check (
+      offer_scope <> 'EXACT_SIZE'
+      or (merchant_size_sku is not null and length(trim(merchant_size_sku)) > 0)
+      or (raw_size_label is not null and length(trim(raw_size_label)) > 0)
+      or source_size_cm is not null
+      or (merchant_size_url is not null and length(trim(merchant_size_url)) > 0)
+    ),
+  constraint chk_merchant_offers_source_identity_namespace
+    check (
+      offer_scope <> 'EXACT_SIZE'
+      or (
+        lower(trim(source_identity_key)) not like 'canonical-size:%'
+        and (
+          (
+            source_identity_key ~* '^sku:[^[:space:]].*'
+            and merchant_size_sku is not null
+            and length(trim(merchant_size_sku)) > 0
+          )
+          or source_identity_key ~* '^variant:[^[:space:]].*'
+          or (
+            source_identity_key ~* '^url:https?://[^[:space:]].*'
+            and merchant_size_url is not null
+            and length(trim(merchant_size_url)) > 0
+          )
+        )
+      )
+    ),
   constraint chk_merchant_offers_availability
     check (availability_status in ('IN_STOCK', 'OUT_OF_STOCK', 'PREORDER', 'UNKNOWN')),
   constraint chk_merchant_offers_reconciliation
