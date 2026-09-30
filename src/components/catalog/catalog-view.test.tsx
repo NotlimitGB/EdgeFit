@@ -146,7 +146,10 @@ const boards = [
 ];
 
 function renderCatalog() {
-  return render(<CatalogView boards={boards} />);
+  const view = render(<CatalogView boards={boards} />);
+  const summary = screen.getByText("Стиль, уровень и характеристики");
+  if (!summary.closest("details")?.open) fireEvent.click(summary);
+  return view;
 }
 
 function expectOnlyBoard(slug: string) {
@@ -183,6 +186,21 @@ afterEach(() => {
 });
 
 describe("CatalogView multiselect interactions", () => {
+  it("discloses extra filters without hiding an active deep-linked selection", async () => {
+    const user = userEvent.setup();
+    const view = render(<CatalogView boards={boards} />);
+    const summary = screen.getByText("Стиль, уровень и характеристики");
+    expect(summary.closest("details")?.open).toBe(false);
+    await user.click(summary);
+    expect(summary.closest("details")?.open).toBe(true);
+    expect(screen.getByRole("button", { name: "Стиль Все стили" })).toBeTruthy();
+    view.unmount();
+    navigation.currentSearch = "style=park";
+    render(<CatalogView boards={boards} />);
+    expect(screen.getByText("Стиль, уровень и характеристики").closest("details")?.open).toBe(true);
+    expect(screen.getByRole("button", { name: "Стиль park / freestyle" })).toBeTruthy();
+  });
+
   it("selects style by clicking the public option label", async () => {
     const user = userEvent.setup();
     renderCatalog();

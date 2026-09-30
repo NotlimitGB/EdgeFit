@@ -196,7 +196,7 @@ const stanceOptions = [
   {
     value: "unknown",
     title: "Не знаю",
-    description: "Это нормально — EdgeFit оставит более осторожную оценку.",
+    description: "Это нормально — SnowDex оставит более осторожную оценку.",
   },
 ] as const satisfies readonly ChoiceOption<QuizSubmission["stanceType"]>[];
 
@@ -704,7 +704,7 @@ export function QuizFlow({
 
       <aside className={styles.contextRail} aria-labelledby="quiz-output-title">
         <div className={styles.contextCoordinate} aria-hidden="true">
-          EF / ШАГ 0{step + 1}
+          SD / ШАГ 0{step + 1}
         </div>
         <p className={publicStyles.microLabel}>Что получится на выходе</p>
         <h2 id="quiz-output-title">

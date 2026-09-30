@@ -198,7 +198,7 @@ describe("canonical Board Detail helpers", () => {
 
       expect(narrative).toEqual({
         intro:
-          "Bataleon Beyond Medals, сезон 2024/2025. В EdgeFit зафиксированы ростовки модели 151, 156 и 159 см. Подходящую ростовку можно проверить по своим параметрам.",
+          "Bataleon Beyond Medals, сезон 2024/2025. В SnowDex зафиксированы ростовки модели 151, 156 и 159 см. Подходящую ростовку можно проверить по своим параметрам.",
         fullDescription: null,
         source: "safe-fallback",
       });
@@ -225,7 +225,7 @@ describe("canonical Board Detail helpers", () => {
       );
 
       expect(narrative.intro).toBe(
-        "Arbor Westmark. В EdgeFit зафиксирована размерная сетка модели от 148 до 160 см. Подходящую ростовку можно проверить по своим параметрам.",
+        "Arbor Westmark. В SnowDex зафиксирована размерная сетка модели от 148 до 160 см. Подходящую ростовку можно проверить по своим параметрам.",
       );
       expect(narrative.intro).not.toMatch(/сезон|магазин|каталог/iu);
     });
@@ -315,19 +315,19 @@ describe("canonical Board Detail helpers", () => {
 
   it("pluralizes one available size", () => {
     expect(getCanonicalBoardAvailabilityHeadline(boardWithAvailableSizeCount(1))).toBe(
-      "В данных EdgeFit отмечено: 1 размер",
+      "В данных SnowDex отмечено: 1 размер",
     );
   });
 
   it("pluralizes two available sizes", () => {
     expect(getCanonicalBoardAvailabilityHeadline(boardWithAvailableSizeCount(2))).toBe(
-      "В данных EdgeFit отмечено: 2 размера",
+      "В данных SnowDex отмечено: 2 размера",
     );
   });
 
   it("pluralizes five available sizes", () => {
     expect(getCanonicalBoardAvailabilityHeadline(boardWithAvailableSizeCount(5))).toBe(
-      "В данных EdgeFit отмечено: 5 размеров",
+      "В данных SnowDex отмечено: 5 размеров",
     );
   });
 

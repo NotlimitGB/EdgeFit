@@ -213,7 +213,7 @@ describe("canonical board page loading", () => {
     );
 
     expect(markup).toContain(
-      "Brand Model, сезон 2024/2025. В EdgeFit зафиксирована ростовка модели 151 см.",
+      "Brand Model, сезон 2024/2025. В SnowDex зафиксирована ростовка модели 151 см.",
     );
     expect(markup).not.toMatch(
       /универсальная универсальная|из каталога|Триал-Спорт|В карточке магазина/iu,

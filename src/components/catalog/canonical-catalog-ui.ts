@@ -129,7 +129,7 @@ export function getCanonicalAvailabilityHeadline(
     return "Доступность не подтверждена";
   }
 
-  return `В данных EdgeFit отмечено: ${sizeCount} ${pluralizeSize(sizeCount)}`;
+  return `В данных SnowDex отмечено: ${sizeCount} ${pluralizeSize(sizeCount)}`;
 }
 
 export function getCanonicalAvailabilityPreview(

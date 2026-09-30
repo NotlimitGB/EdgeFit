@@ -164,8 +164,8 @@ function getCanonicalNarrativeSizeCopy(
     const sizeLabel = formatSizeList(labels);
 
     return labels.length === 1
-      ? `В EdgeFit зафиксирована ростовка модели ${sizeLabel}${unit}.`
-      : `В EdgeFit зафиксированы ростовки модели ${sizeLabel}${unit}.`;
+      ? `В SnowDex зафиксирована ростовка модели ${sizeLabel}${unit}.`
+      : `В SnowDex зафиксированы ростовки модели ${sizeLabel}${unit}.`;
   }
 
   const numericSizes = uniqueSizes
@@ -178,10 +178,10 @@ function getCanonicalNarrativeSizeCopy(
     numericSizes.length === uniqueSizes.length &&
     minimumSize < maximumSize
   ) {
-    return `В EdgeFit зафиксирована размерная сетка модели от ${formatSizeValue(minimumSize)} до ${formatSizeValue(maximumSize)} см.`;
+    return `В SnowDex зафиксирована размерная сетка модели от ${formatSizeValue(minimumSize)} до ${formatSizeValue(maximumSize)} см.`;
   }
 
-  return `В EdgeFit зафиксированы ростовки модели ${formatSizeList(labels)}.`;
+  return `В SnowDex зафиксированы ростовки модели ${formatSizeList(labels)}.`;
 }
 
 export function getCanonicalBoardPublicNarrative(
@@ -265,7 +265,7 @@ export function getCanonicalBoardAvailabilityHeadline(
 
   return count === 0
     ? "Доступность не подтверждена"
-    : `В данных EdgeFit отмечено: ${count} ${pluralizeSize(count)}`;
+    : `В данных SnowDex отмечено: ${count} ${pluralizeSize(count)}`;
 }
 
 export function getCanonicalBoardAvailabilityDescription(

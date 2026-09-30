@@ -391,7 +391,7 @@ export default async function BoardPage({ params }: BoardPageProps) {
               <p className={publicStyles.microLabel}>Не уверен в ростовке?</p>
               <h3>Проверь длину и ширину по своим параметрам</h3>
               <p>
-                EdgeFit учитывает вес, ботинок, стойку и стиль катания.
+                SnowDex учитывает вес, ботинок, стойку и стиль катания.
               </p>
             </div>
             <Link

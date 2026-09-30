@@ -50,8 +50,8 @@ describe("direct catalog navigation", () => {
   it("disables only the catalog navigation item in the global header", () => {
     const markup = renderToStaticMarkup(<SiteHeader />);
 
-    expectCatalogPrefetchDisabled(markup, 1);
-    expect(markup.match(/data-prefetch="false"/g)).toHaveLength(1);
+    expectCatalogPrefetchDisabled(markup, 2);
+    expect(markup.match(/data-prefetch="false"/g)).toHaveLength(2);
   });
 
   it("disables prefetch for the homepage catalog CTA", () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./board-gallery.module.css";
 
 interface BoardGalleryProps {
@@ -36,6 +36,8 @@ export function BoardGallery({
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [failedImages, setFailedImages] = useState<string[]>([]);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
+  const viewerRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
 
   const availableImages = images.filter((image) => !failedImages.includes(image));
   const activeImage =
@@ -77,11 +79,35 @@ export function BoardGallery({
   }
 
   useEffect(() => {
+    if (!isViewerOpen) return;
+    const previousFocus = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeRef.current?.focus();
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      if (previousFocus instanceof HTMLElement) previousFocus.focus();
+    };
+  }, [isViewerOpen]);
+
+  useEffect(() => {
     if (!isViewerOpen) {
       return;
     }
 
     function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Tab") {
+        const buttons = viewerRef.current?.querySelectorAll<HTMLButtonElement>("button");
+        const first = buttons?.[0];
+        const last = buttons?.[buttons.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
+      }
       if (event.key === "Escape") {
         closeViewer();
       }
@@ -204,6 +230,7 @@ export function BoardGallery({
           onClick={closeViewer}
         >
           <div
+            ref={viewerRef}
             className={styles.viewerPanel}
             onClick={(event) => event.stopPropagation()}
           >
@@ -214,6 +241,7 @@ export function BoardGallery({
               </div>
 
               <button
+                ref={closeRef}
                 type="button"
                 onClick={closeViewer}
                 className={styles.viewerClose}

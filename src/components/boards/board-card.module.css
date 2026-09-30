@@ -5,11 +5,9 @@
   flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--ef-border);
-  border-radius: 1.1rem 0.4rem 1.1rem 1.1rem;
-  background:
-    linear-gradient(160deg, rgba(16, 40, 50, 0.92), rgba(7, 21, 27, 0.96)),
-    var(--ef-surface);
-  box-shadow: 0 1.25rem 3.25rem rgba(0, 0, 0, 0.2);
+  border-radius: 0.5rem;
+  background: var(--ef-bg);
+  box-shadow: none;
   transition:
     border-color 160ms ease,
     transform 160ms ease;
@@ -35,21 +33,10 @@
   justify-content: center;
   overflow: hidden;
   padding: 1.25rem;
-  background:
-    linear-gradient(145deg, rgba(158, 223, 240, 0.08), transparent 48%),
-    rgba(4, 16, 21, 0.62);
+  background: var(--ef-bg-soft);
 }
 
-.imageGrid {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(rgba(158, 223, 240, 0.055) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(158, 223, 240, 0.055) 1px, transparent 1px);
-  background-size: 1.5rem 1.5rem;
-  mask-image: linear-gradient(135deg, #000, transparent 76%);
-}
+.imageGrid { display: none; }
 
 .imageStage::after {
   position: absolute;
@@ -58,11 +45,7 @@
   left: 1rem;
   height: 0.3rem;
   content: "";
-  background: repeating-linear-gradient(
-    90deg,
-    var(--ef-accent) 0 1px,
-    transparent 1px 0.65rem
-  );
+  background: var(--ef-bg-soft);
   opacity: 0.3;
   pointer-events: none;
 }
@@ -113,10 +96,8 @@
   justify-self: center;
   border: 1px solid var(--ef-border-strong);
   border-radius: 999px;
-  background: linear-gradient(180deg, var(--ef-accent), rgba(158, 223, 240, 0.1));
-  box-shadow:
-    -0.7rem 0 0 -0.66rem var(--ef-accent),
-    0.7rem 0 0 -0.66rem var(--ef-accent);
+  background: var(--ef-bg-soft);
+  box-shadow: none;
   opacity: 0.72;
 }
 
@@ -167,7 +148,7 @@
 .identity h3 {
   min-height: 2.45em;
   margin-top: 0.35rem;
-  font-family: var(--font-space-grotesk), var(--font-manrope), sans-serif;
+  font-family: var(--font-manrope), sans-serif;
   font-size: clamp(1.35rem, 6vw, 1.8rem);
   font-weight: 700;
   line-height: 1.1;
@@ -204,7 +185,7 @@
   border-radius: 999px;
   padding: 0.35rem 0.55rem;
   color: var(--ef-text-soft);
-  background: rgba(158, 223, 240, 0.05);
+  background: var(--ef-bg-soft);
   font-size: 0.64rem;
   font-weight: 800;
   line-height: 1.35;
@@ -293,7 +274,7 @@
 }
 
 .price strong {
-  font-family: var(--font-space-grotesk), var(--font-manrope), sans-serif;
+  font-family: var(--font-manrope), sans-serif;
   font-size: 1.15rem;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.025em;
@@ -338,4 +319,29 @@
   .imageLink:hover .productImage {
     transform: none;
   }
+}
+/* SnowDex surface-specific density and decision hierarchy. */
+.catalogCard {
+  background: white;
+}
+.imageStage {
+  min-height: 15rem;
+  aspect-ratio: 4/3;
+  background: #f0f3ef;
+}
+.imageStage::after {
+  display: none;
+}
+.identity h3 {
+  min-height: 0;
+  font-size: 1.5rem;
+}
+.description {
+  min-height: 0;
+}
+.cardBody {
+  padding: 1.2rem;
+}
+.tags span {
+  border-radius: 4px;
 }

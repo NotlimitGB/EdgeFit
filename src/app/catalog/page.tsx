@@ -23,9 +23,9 @@ export default async function CatalogPage() {
       <div className={`container-shell ${styles.catalogShell}`}>
         <section className={styles.hero} aria-labelledby="catalog-title">
           <div className={styles.heroCopy}>
-            <p className={publicStyles.kicker}>EdgeFit / каталог</p>
+            <p className={publicStyles.kicker}>SnowDex / сноуборды</p>
             <h1 id="catalog-title" className={styles.heroTitle}>
-              Сравни модели по характеристикам и стилю катания
+              Найди доску. Разберись в деталях.
             </h1>
             <p className={styles.heroLead}>
               Фильтруй модели по стилю, форме и ширине, сравнивай
@@ -52,7 +52,7 @@ export default async function CatalogPage() {
               </div>
               <div>
                 <dt>Наличие</dt>
-                <dd>Размеры, отмеченные доступными в данных EdgeFit</dd>
+                <dd>Размеры, отмеченные доступными в данных каталога</dd>
               </div>
               <div>
                 <dt>Подбор под тебя</dt>

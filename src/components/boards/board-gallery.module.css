@@ -3,35 +3,12 @@
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--ef-border-strong);
-  border-radius: 1.25rem;
-  background:
-    linear-gradient(145deg, rgb(16 40 50 / 96%), rgb(7 19 24 / 98%)),
-    var(--ef-surface-technical);
-  box-shadow: 0 1.4rem 4rem rgb(0 0 0 / 22%);
+  border-radius: 0.5rem;
+  background: var(--ef-bg);
+  box-shadow: none;
 }
 
-.measurementGrid {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  opacity: 0.55;
-  background:
-    repeating-linear-gradient(
-      90deg,
-      transparent 0,
-      transparent calc(12.5% - 1px),
-      rgb(167 220 233 / 7%) calc(12.5% - 1px),
-      rgb(167 220 233 / 7%) 12.5%
-    ),
-    repeating-linear-gradient(
-      0deg,
-      transparent 0,
-      transparent calc(20% - 1px),
-      rgb(167 220 233 / 5%) calc(20% - 1px),
-      rgb(167 220 233 / 5%) 20%
-    );
-}
+.measurementGrid { display: none; }
 
 .mainImageButton {
   position: relative;
@@ -52,9 +29,7 @@
   min-height: 23rem;
   padding: clamp(1.25rem, 6vw, 3rem);
   place-items: center;
-  background:
-    radial-gradient(circle at 50% 48%, rgb(237 247 250 / 8%), transparent 48%),
-    linear-gradient(180deg, rgb(237 247 250 / 4%), transparent);
+  background: var(--ef-bg-soft);
 }
 
 .mainImage {
@@ -83,7 +58,7 @@
   font-weight: 650;
   letter-spacing: 0.05em;
   border-top: 1px solid var(--ef-border);
-  background: rgb(7 19 24 / 68%);
+  background: var(--ef-bg-soft);
 }
 
 .openAffordance {
@@ -111,8 +86,8 @@
   overflow: hidden;
   cursor: pointer;
   border: 1px solid var(--ef-border);
-  border-radius: 0.45rem;
-  background: rgb(237 247 250 / 5%);
+  border-radius: 0.5rem;
+  background: var(--ef-bg-soft);
   transition:
     border-color 160ms ease,
     background-color 160ms ease,
@@ -128,8 +103,8 @@
 .thumbnailButton[aria-pressed="true"],
 .viewerThumbnailButton[aria-pressed="true"] {
   border-color: var(--ef-accent);
-  background: rgb(158 223 240 / 12%);
-  box-shadow: inset 0 0 0 1px var(--ef-accent);
+  background: var(--ef-bg-soft);
+  box-shadow: none;
 }
 
 .thumbnailButton img,
@@ -142,33 +117,13 @@
 
 .fallbackFrame {
   display: grid;
-  min-height: 29rem;
+  min-height: 15rem;
   padding: clamp(1.25rem, 6vw, 3rem);
   grid-template-rows: 1fr auto;
   isolation: isolate;
 }
 
-.fallbackGrid {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  opacity: 0.7;
-  background:
-    repeating-linear-gradient(
-      90deg,
-      transparent 0,
-      transparent calc(12.5% - 1px),
-      rgb(167 220 233 / 8%) calc(12.5% - 1px),
-      rgb(167 220 233 / 8%) 12.5%
-    ),
-    repeating-linear-gradient(
-      0deg,
-      transparent 0,
-      transparent calc(16.666% - 1px),
-      rgb(167 220 233 / 6%) calc(16.666% - 1px),
-      rgb(167 220 233 / 6%) 16.666%
-    );
-}
+.fallbackGrid { display: none; }
 
 .fallbackIdentity {
   align-self: end;
@@ -191,9 +146,9 @@
 .fallbackModel {
   margin-top: 0.55rem;
   color: var(--ef-text);
-  font-family: var(--font-space-grotesk), sans-serif;
+  font-family: var(--font-manrope), sans-serif;
   font-size: clamp(2rem, 8vw, 4rem);
-  line-height: 0.95;
+  line-height: 1.1;
   letter-spacing: -0.05em;
   overflow-wrap: anywhere;
 }
@@ -226,12 +181,10 @@
   position: absolute;
   inset: 0 40%;
   content: "";
-  border: 1px solid rgb(158 223 240 / 30%);
+  border: 1px solid rgb(36 99 75 / 30%);
   border-radius: 999px 999px 34% 34%;
-  background:
-    linear-gradient(90deg, transparent 49%, rgb(158 223 240 / 18%) 50% 51%, transparent 52%),
-    rgb(158 223 240 / 5%);
-  box-shadow: 0 0 0 0.55rem rgb(158 223 240 / 2%);
+  background: var(--ef-bg-soft);
+  box-shadow: none;
 }
 
 .fallbackMeasurement span {
@@ -240,7 +193,7 @@
   right: 0;
   left: 0;
   height: 1px;
-  background: rgb(158 223 240 / 34%);
+  background: var(--ef-bg-soft);
 }
 
 .fallbackMeasurement span::before,
@@ -250,7 +203,7 @@
   width: 1px;
   height: 0.5rem;
   content: "";
-  background: rgb(158 223 240 / 34%);
+  background: var(--ef-bg-soft);
 }
 
 .fallbackMeasurement span::before {
@@ -270,7 +223,7 @@
   padding: clamp(0.5rem, 2vw, 1.5rem);
   overflow: auto;
   place-items: center;
-  background: rgb(2 8 11 / 92%);
+  background: var(--ef-bg-soft);
   backdrop-filter: blur(0.7rem);
 }
 
@@ -280,9 +233,9 @@
   max-height: calc(100dvh - 1rem);
   overflow: auto;
   border: 1px solid var(--ef-border-strong);
-  border-radius: 1rem;
+  border-radius: 0.5rem;
   background: var(--ef-bg);
-  box-shadow: 0 2rem 7rem rgb(0 0 0 / 55%);
+  box-shadow: none;
 }
 
 .viewerHeader {
@@ -310,7 +263,7 @@
 .viewerHeader h2 {
   margin-top: 0.2rem;
   color: var(--ef-text);
-  font-family: var(--font-space-grotesk), sans-serif;
+  font-family: var(--font-manrope), sans-serif;
   font-size: clamp(1rem, 3vw, 1.35rem);
   line-height: 1.1;
   overflow-wrap: anywhere;
@@ -323,7 +276,7 @@
   cursor: pointer;
   color: var(--ef-text);
   border: 1px solid var(--ef-border-strong);
-  background: rgb(16 40 50 / 88%);
+  background: var(--ef-bg-soft);
   transition:
     border-color 160ms ease,
     background-color 160ms ease;
@@ -331,7 +284,7 @@
 
 .viewerClose {
   padding: 0.65rem 0.9rem;
-  border-radius: 0.65rem;
+  border-radius: 0.5rem;
   font-weight: 700;
 }
 
@@ -339,7 +292,7 @@
 .viewerArrow:hover {
   color: var(--ef-accent-strong);
   border-color: var(--ef-accent);
-  background: rgb(16 40 50 / 100%);
+  background: var(--ef-bg-soft);
 }
 
 .viewerStage {
@@ -347,9 +300,7 @@
   display: grid;
   min-height: min(67dvh, 46rem);
   place-items: center;
-  background:
-    radial-gradient(circle at center, rgb(237 247 250 / 7%), transparent 50%),
-    rgb(7 19 24 / 80%);
+  background: var(--ef-bg-soft);
 }
 
 .viewerCanvas {
@@ -392,7 +343,7 @@
 
 .viewerThumbnails {
   justify-content: center;
-  background: rgb(7 19 24 / 76%);
+  background: var(--ef-bg-soft);
 }
 
 .viewerThumbnailButton {
@@ -416,7 +367,7 @@
   }
 
   .fallbackFrame {
-    min-height: 36rem;
+    min-height: 20rem;
   }
 
   .thumbnailButton {
@@ -439,7 +390,7 @@
   }
 
   .fallbackFrame {
-    min-height: 42rem;
+    min-height: 28rem;
   }
 }
 
@@ -450,5 +401,34 @@
   .viewerClose,
   .viewerArrow {
     transition-duration: 0.01ms !important;
+  }
+}
+/* SnowDex surface-specific density and decision hierarchy. */
+.galleryFrame {
+  background: #edf1ee;
+  border: 0;
+  border-radius: 8px;
+}
+.imageCanvas, .viewerCanvas, .viewerStage {
+  background: #edf1ee;
+}
+.imageMeta {
+  background: #e5ece5;
+}
+.viewerBackdrop {
+  background: #172723e8;
+}
+.viewerClose, .viewerArrow {
+  background: white;
+}
+.viewerClose:hover, .viewerArrow:hover {
+  background: #eaf0e8;
+}
+@media(min-width:1180px) {
+  .imageCanvas {
+    min-height: 30rem;
+  }
+  .mainImage {
+    height: 28rem;
   }
 }

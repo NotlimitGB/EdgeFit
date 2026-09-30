@@ -197,7 +197,7 @@ describe("canonical Catalog UI helpers", () => {
 
     expect(getCanonicalAvailableSizeCount(board)).toBe(1);
     expect(getCanonicalAvailabilityHeadline(board)).toBe(
-      "В данных EdgeFit отмечено: 1 размер",
+      "В данных SnowDex отмечено: 1 размер",
     );
   });
 

@@ -3,51 +3,12 @@
   isolation: isolate;
   min-width: 0;
   overflow: hidden;
-  background:
-    linear-gradient(
-      180deg,
-      #f7fbfd 0,
-      rgba(7, 19, 24, 0.94) 5rem,
-      var(--ef-bg) 8.5rem,
-      var(--ef-bg) calc(100% - 8rem),
-      rgba(7, 19, 24, 0.92) calc(100% - 4rem),
-      #f7fbfd 100%
-    );
+  background: var(--ef-bg);
 }
 
-.quizPage::before {
-  position: absolute;
-  inset: 5rem 0 auto;
-  z-index: -1;
-  height: 60rem;
-  background-image:
-    linear-gradient(rgba(158, 223, 240, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(158, 223, 240, 0.045) 1px, transparent 1px);
-  background-size: 34px 34px;
-  mask-image: linear-gradient(180deg, #000, transparent 90%);
-  content: "";
-  pointer-events: none;
-}
+.quizPage::before { display: none; }
 
-.atmosphere {
-  position: absolute;
-  top: 1.5rem;
-  right: -20rem;
-  z-index: -1;
-  width: 58rem;
-  height: 58rem;
-  background:
-    repeating-radial-gradient(
-      ellipse at 50% 48%,
-      transparent 0 2.8rem,
-      rgba(158, 223, 240, 0.065) 2.84rem 2.9rem,
-      transparent 2.94rem 5.9rem
-    ),
-    radial-gradient(circle at 40% 52%, rgba(72, 145, 166, 0.11), transparent 44%);
-  mask-image: linear-gradient(130deg, transparent 5%, #000 34%, transparent 82%);
-  content: "";
-  pointer-events: none;
-}
+.atmosphere { display: none; }
 
 .quizShell {
   position: relative;
@@ -61,7 +22,7 @@
 .quizPage h2,
 .quizPage strong,
 .quizPage legend {
-  font-family: var(--font-space-grotesk), var(--font-manrope), sans-serif;
+  font-family: var(--font-manrope), sans-serif;
 }
 
 .quizPage h1,
@@ -124,10 +85,10 @@
 
 .focusedContext {
   grid-area: focused;
-  border: 1px solid rgba(158, 223, 240, 0.3);
+  border: 1px solid rgba(36, 99, 75, 0.3);
   border-left: 0.24rem solid var(--ef-accent);
-  border-radius: 0.35rem 1rem 1rem 0.35rem;
-  background: rgba(20, 42, 51, 0.72);
+  border-radius: 0.5rem;
+  background: var(--ef-bg-soft);
   padding: 1rem 1.15rem;
 }
 
@@ -147,7 +108,7 @@
 .quizCore {
   grid-area: core;
   overflow: hidden;
-  border-radius: 1.35rem 0.45rem 1.35rem 1.35rem;
+  border-radius: 0.5rem;
   padding: 1.1rem;
 }
 
@@ -157,11 +118,7 @@
   bottom: 0;
   left: 1.1rem;
   height: 0.32rem;
-  background: repeating-linear-gradient(
-    90deg,
-    rgba(158, 223, 240, 0.28) 0 1px,
-    transparent 1px 0.85rem
-  );
+  background: var(--ef-bg-soft);
   content: "";
   pointer-events: none;
 }
@@ -233,9 +190,9 @@
 
 .progressSteps li[data-state="active"] .progressMarker {
   border-color: var(--ef-accent-strong);
-  color: #071318;
+  color: #ffffff;
   background: var(--ef-accent-strong);
-  box-shadow: 0 0 0 4px rgba(158, 223, 240, 0.1);
+  box-shadow: none;
 }
 
 .progressSteps li[data-state="completed"] {
@@ -243,9 +200,9 @@
 }
 
 .progressSteps li[data-state="completed"] .progressMarker {
-  border-color: rgba(158, 223, 240, 0.55);
+  border-color: rgba(36, 99, 75, 0.55);
   color: var(--ef-accent-strong);
-  background: rgba(158, 223, 240, 0.1);
+  background: var(--ef-bg-soft);
 }
 
 .stepHeader {
@@ -310,12 +267,12 @@
   min-width: 0;
   height: 4.25rem;
   border: 1px solid var(--ef-border-strong);
-  border-radius: 0.8rem;
+  border-radius: 0.5rem;
   outline: none;
   padding: 0.75rem 3.4rem 0.75rem 1rem;
   color: var(--ef-text);
-  background: rgba(5, 18, 23, 0.72);
-  font-family: var(--font-space-grotesk), var(--font-manrope), sans-serif;
+  background: var(--ef-bg-soft);
+  font-family: var(--font-manrope), sans-serif;
   font-size: 1.65rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -326,12 +283,14 @@
 }
 
 .numberControl input:hover {
-  border-color: rgba(158, 223, 240, 0.46);
+  border-color: rgba(36, 99, 75, 0.46);
 }
 
 .numberControl input:focus-visible {
   border-color: var(--ef-accent-strong);
-  box-shadow: 0 0 0 3px rgba(158, 223, 240, 0.15);
+  outline: 3px solid var(--ef-accent-strong);
+  outline-offset: 3px;
+  box-shadow: none;
 }
 
 .numberControl input[aria-invalid="true"] {
@@ -373,7 +332,7 @@
 .whyWeAsk summary {
   width: fit-content;
   cursor: pointer;
-  border-radius: 0.45rem;
+  border-radius: 0.5rem;
   padding: 0.75rem 0.25rem;
   color: var(--ef-accent-strong);
   font-weight: 800;
@@ -444,10 +403,10 @@
   min-height: 7.25rem;
   cursor: pointer;
   border: 1px solid var(--ef-border);
-  border-radius: 0.85rem;
+  border-radius: 0.5rem;
   padding: 0.95rem;
   color: var(--ef-text);
-  background: rgba(7, 23, 29, 0.66);
+  background: var(--ef-bg-soft);
   transition:
     border-color 0.18s ease,
     background-color 0.18s ease,
@@ -456,18 +415,14 @@
 }
 
 .choiceCard:hover {
-  border-color: rgba(158, 223, 240, 0.42);
-  background: rgba(158, 223, 240, 0.055);
+  border-color: rgba(36, 99, 75, 0.42);
+  background: var(--ef-bg-soft);
 }
 
 .choiceCard[data-selected="true"] {
   border-color: var(--ef-accent);
-  background:
-    linear-gradient(145deg, rgba(38, 91, 108, 0.3), rgba(11, 33, 41, 0.9)),
-    var(--ef-surface-raised);
-  box-shadow:
-    inset 3px 0 0 var(--ef-accent-strong),
-    0 0.75rem 2rem rgba(0, 0, 0, 0.12);
+  background: var(--ef-bg-soft);
+  box-shadow: none;
 }
 
 .choiceInput {
@@ -544,7 +499,7 @@
 .submissionError {
   margin-top: 1.5rem;
   border: 1px solid rgba(255, 176, 170, 0.4);
-  border-radius: 0.8rem;
+  border-radius: 0.5rem;
   padding: 0.9rem 1rem;
   color: var(--ef-danger);
   background: var(--ef-danger-surface);
@@ -573,8 +528,8 @@
   position: absolute;
   top: 1.55rem;
   right: 0.2rem;
-  color: rgba(158, 223, 240, 0.5);
-  font-family: var(--font-space-grotesk), sans-serif;
+  color: rgba(36, 99, 75, 0.5);
+  font-family: var(--font-manrope), sans-serif;
   font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -606,8 +561,8 @@
 }
 
 .outputList > div > span {
-  color: rgba(158, 223, 240, 0.55);
-  font-family: var(--font-space-grotesk), sans-serif;
+  color: var(--ef-muted);
+  font-family: var(--font-manrope), sans-serif;
   font-size: 0.63rem;
   font-variant-numeric: tabular-nums;
 }
@@ -627,7 +582,7 @@
 
 .contextNote {
   margin-top: 1.15rem;
-  border-left: 2px solid rgba(158, 223, 240, 0.5);
+  border-left: 2px solid rgba(36, 99, 75, 0.5);
   padding-left: 0.9rem;
 }
 
@@ -787,5 +742,85 @@
   .numberControl input,
   .choiceCard {
     transition-duration: 0.01ms;
+  }
+}
+/* SnowDex surface-specific density and decision hierarchy. */
+.numberControl input, .choiceCard {
+  border-color: var(--ef-control-border);
+}
+.numberControl input::placeholder {
+  color: var(--ef-muted);
+  opacity: 1;
+}
+.quizShell {
+  max-width: 74rem;
+  padding-top: 2.5rem;
+  padding-bottom: 5rem;
+}
+.pageIntro {
+  max-width: 52rem;
+  margin-bottom: 1.75rem;
+}
+.pageIntro h1 {
+  max-width: 25ch;
+  font-size: clamp(1.85rem,3.5vw,2.8rem);
+  line-height: 1.15;
+}
+.pageIntro > p:last-child {
+  margin-top: .8rem;
+  font-size: .9rem;
+}
+.quizCore {
+  padding: clamp(1.25rem,3vw,2rem);
+  border-radius: 8px;
+}
+.quizCore::after {
+  display: none;
+}
+.stepHeader {
+  padding: 1.6rem 0;
+}
+.stepHeader h2 {
+  font-size: clamp(1.45rem,3vw,2rem);
+  line-height: 1.2;
+}
+.stepHeader > p:last-child {
+  font-size: .85rem;
+}
+.choiceCard {
+  min-height: 6.75rem;
+  background: white;
+}
+.choiceCard[data-selected="true"] {
+  background: #edf4ed;
+  border: 2px solid var(--ef-accent);
+  padding: calc(.95rem - 1px);
+}
+.progressSteps li[data-state="active"] .progressMarker {
+  background: var(--ef-accent);
+  color: white;
+}
+.numberControl input {
+  height: 3.5rem;
+  background: white;
+  font-size: 1.5rem;
+}
+.contextRail h2 {
+  font-size: 1.2rem;
+}
+.contextCoordinate {
+  display: none;
+}
+.contextRail {
+  padding-top: 1rem;
+}
+.navigation {
+  padding-top: 1rem;
+}
+@media(min-width:1000px) {
+  .quizLayout {
+    grid-template-columns: minmax(0,2.3fr) minmax(15rem,.8fr);
+    grid-template-areas: "focused focused" "core rail" "navigation rail";
+    gap: 1.25rem 2rem;
   }
 }

@@ -71,6 +71,10 @@ describe("homepage metadata", () => {
     };
     expect(schema["@type"]).toBe("FAQPage");
     expect(schema.mainEntity).toHaveLength(5);
+    expect(markup.match(/<details\b/gu)).toHaveLength(5);
+    expect(markup.match(/<summary\b/gu)).toHaveLength(5);
+    expect(markup).not.toContain("Да. EdgeFit покажет");
+    expect(markup).toContain("Да. SnowDex покажет");
     expect(schema.mainEntity.map((item) => item.name)).toEqual(questions);
 
     for (const item of schema.mainEntity) {

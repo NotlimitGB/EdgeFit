@@ -119,7 +119,7 @@ export function ProductRecommendationCard({
     >
       <header className={styles.recommendationCardHeader}>
         <div className={styles.recommendationCoordinate}>
-          <span>EF / REC {String(position).padStart(2, "0")}</span>
+          <span>Вариант {String(position).padStart(2, "0")}</span>
           <span
             className={`${styles.readiness} ${
               match.isCatalogReady

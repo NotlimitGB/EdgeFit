@@ -47,9 +47,8 @@ export default function RootLayout({
       className={`${bodyFont.variable} ${headingFont.variable} h-full scroll-smooth antialiased`}
     >
       <body className="min-h-full bg-[var(--color-snow)] text-[var(--color-ink)]">
-        <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(74,136,170,0.14),transparent_38%),linear-gradient(180deg,#f5f9fc_0%,#eef4f8_52%,#f7fbfd_100%)]" />
         <SiteHeader />
-        <main className="flex min-h-[calc(100vh-9rem)] flex-col">{children}</main>
+        <main id="main-content" className="flex min-h-[calc(100vh-9rem)] flex-col">{children}</main>
         <SiteFooter />
         <SiteAnalytics
           yandexMetrikaId={hasYandexMetrika ? yandexMetrikaId : null}

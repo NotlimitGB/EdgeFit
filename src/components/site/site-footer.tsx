@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getSeoLandingPath, seoLandingPages } from "@/lib/seo-pages";
+import styles from "./site-shell.module.css";
 
 const serviceLinks = [
   { href: "/privacy", label: "Политика конфиденциальности" },
@@ -10,23 +11,22 @@ const serviceLinks = [
 
 export function SiteFooter() {
   return (
-    <footer className="border-t border-[var(--color-border)] bg-[rgba(255,255,255,0.78)] backdrop-blur-xl">
-      <div className="container-shell grid gap-8 py-10 lg:grid-cols-[1.1fr_0.9fr_0.9fr]">
-        <div className="max-w-2xl space-y-2 text-sm text-[var(--color-muted)]">
-          <p className="heading-display text-lg font-bold text-[var(--color-ink)]">
-            EdgeFit
+    <footer className={styles.footer}>
+      <div className={`container-shell ${styles.footerInner}`}>
+        <div>
+          <p className={styles.footerTitle}>
+            SnowDex.
           </p>
-          <p className="text-pretty">
-            MVP-версия сервиса помогает быстро понять рабочую длину, ширину и
-            риск зацепа ботинком перед покупкой сноуборда.
+          <p className={styles.footerCopy}>
+            Разобраться в снаряжении. Выбрать осознанно. Сегодня — подбор и сравнение сноубордов.
           </p>
         </div>
 
         <div>
-          <p className="text-sm font-bold uppercase tracking-[0.18em] text-[var(--color-sky-deep)]">
+          <p className={styles.footerHeading}>
             Полезные страницы
           </p>
-          <div className="mt-4 grid gap-3 text-sm text-[var(--color-muted)]">
+          <div className={styles.footerLinks}>
             {seoLandingPages.map((page) => (
               <Link
                 key={page.slug}
@@ -40,10 +40,10 @@ export function SiteFooter() {
         </div>
 
         <div>
-          <p className="text-sm font-bold uppercase tracking-[0.18em] text-[var(--color-sky-deep)]">
+          <p className={styles.footerHeading}>
             Служебные страницы
           </p>
-          <div className="mt-4 grid gap-3 text-sm text-[var(--color-muted)]">
+          <div className={styles.footerLinks}>
             {serviceLinks.map((link) => (
               <Link
                 key={link.href}
@@ -55,6 +55,7 @@ export function SiteFooter() {
             ))}
           </div>
         </div>
+        <p className={styles.footerNote}>Рекомендация помогает сузить выбор. Геометрию, цену и наличие выбранной ростовки проверь у продавца.</p>
       </div>
     </footer>
   );

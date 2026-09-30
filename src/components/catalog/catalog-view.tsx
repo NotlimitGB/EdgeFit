@@ -376,7 +376,12 @@ export function CatalogView({ boards }: CatalogViewProps) {
           />
         </div>
 
-        <div className={styles.secondaryFilters}>
+        <details
+          className={styles.refineFilters}
+          open={selectedStyles.length + selectedSkills.length + selectedLines.length + selectedShapes.length > 0}
+        >
+          <summary>Стиль, уровень и характеристики <span aria-hidden="true">+</span></summary>
+          <div className={styles.secondaryFilters}>
           <MultiSelectField<RidingStyle>
             id="style"
             label="Стиль"
@@ -437,7 +442,8 @@ export function CatalogView({ boards }: CatalogViewProps) {
               label: boardShapeLabels[value],
             }))}
           />
-        </div>
+          </div>
+        </details>
 
         <fieldset className={styles.widthFieldset}>
           <legend>Ширина</legend>

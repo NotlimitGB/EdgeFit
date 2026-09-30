@@ -3,46 +3,12 @@
   isolation: isolate;
   overflow: hidden;
   min-width: 0;
-  background:
-    linear-gradient(
-      180deg,
-      #f7fbfd 0,
-      rgba(7, 19, 24, 0.94) 5.5rem,
-      var(--ef-bg) 9rem,
-      var(--ef-bg) calc(100% - 10rem),
-      rgba(7, 19, 24, 0.92) calc(100% - 5rem),
-      #f7fbfd 100%
-    );
+  background: var(--ef-bg);
 }
 
-.resultPage::before {
-  position: absolute;
-  inset: 5rem 0 auto;
-  z-index: -1;
-  height: 56rem;
-  background-image:
-    linear-gradient(rgba(158, 223, 240, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(158, 223, 240, 0.045) 1px, transparent 1px);
-  background-size: 34px 34px;
-  mask-image: linear-gradient(180deg, black, transparent 88%);
-  content: "";
-  pointer-events: none;
-}
+.resultPage::before { display: none; }
 
-.atmosphere {
-  position: absolute;
-  top: 2rem;
-  right: -16rem;
-  z-index: -1;
-  width: 52rem;
-  height: 52rem;
-  border: 1px solid rgba(158, 223, 240, 0.055);
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 50% 50%, transparent 0 28%, rgba(158, 223, 240, 0.04) 28.2% 28.5%, transparent 28.8% 42%, rgba(158, 223, 240, 0.035) 42.2% 42.5%, transparent 42.8% 58%, rgba(158, 223, 240, 0.03) 58.2% 58.5%, transparent 58.8%),
-    radial-gradient(circle at 28% 62%, rgba(67, 132, 153, 0.1), transparent 36%);
-  pointer-events: none;
-}
+.atmosphere { display: none; }
 
 .resultShell {
   width: min(100%, 80rem);
@@ -54,7 +20,7 @@
 .resultPage h2,
 .resultPage h3,
 .resultPage strong {
-  font-family: var(--font-space-grotesk), sans-serif;
+  font-family: var(--font-manrope), sans-serif;
 }
 
 .resultPage h1,
@@ -116,7 +82,7 @@
   align-items: center;
   justify-content: center;
   gap: 0.65rem;
-  border-radius: 0.7rem;
+  border-radius: 0.5rem;
   padding: 0.72rem 1rem;
   font-size: 0.86rem;
   font-weight: 800;
@@ -148,28 +114,21 @@
 .emptyResult {
   width: min(100%, 48rem);
   overflow: hidden;
-  border-radius: 1.15rem;
+  border-radius: 0.5rem;
   padding: clamp(1.4rem, 5vw, 3.5rem);
 }
 
 .emptyResult::after {
-  position: absolute;
-  right: -6rem;
-  bottom: -7rem;
-  width: 18rem;
-  height: 18rem;
-  border: 2.5rem solid rgba(158, 223, 240, 0.025);
-  border-radius: 50%;
-  content: "";
-  pointer-events: none;
+  display: none;
 }
 
 .emptyResult h1 {
-  max-width: 13ch;
+  max-width: 30ch;
   margin-top: 1.15rem;
-  font-size: clamp(2.25rem, 8.5vw, 4.4rem);
+  font-size: clamp(1.8rem, 3vw, 2.75rem);
+  font-weight: 700;
   letter-spacing: -0.055em;
-  line-height: 0.97;
+  line-height: 1.1;
 }
 
 .emptyResultLead {
@@ -186,19 +145,10 @@
 
 .summary {
   overflow: hidden;
-  border-radius: 1.2rem;
+  border-radius: 0.5rem;
 }
 
-.summaryGrid {
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(158, 223, 240, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(158, 223, 240, 0.045) 1px, transparent 1px);
-  background-size: 30px 30px;
-  mask-image: linear-gradient(90deg, black, transparent 88%);
-  pointer-events: none;
-}
+.summaryGrid { display: none; }
 
 .summary::after {
   position: absolute;
@@ -206,7 +156,7 @@
   bottom: 0;
   width: min(38%, 24rem);
   height: 9px;
-  background: repeating-linear-gradient(90deg, var(--ef-border-strong) 0 1px, transparent 1px 11px);
+  background: var(--ef-bg-soft);
   content: "";
   pointer-events: none;
 }
@@ -225,7 +175,7 @@
   min-width: 0;
   border-bottom: 1px solid var(--ef-border-strong);
   padding: 1rem 1.25rem;
-  background: rgba(8, 24, 30, 0.72);
+  background: var(--ef-bg-soft);
 }
 
 .savedResultNotice strong {
@@ -248,7 +198,7 @@
   margin-top: 0.8rem;
   font-size: clamp(2.15rem, 9vw, 4rem);
   letter-spacing: -0.055em;
-  line-height: 0.96;
+  line-height: 1.1;
 }
 
 .summaryLead {
@@ -287,7 +237,7 @@
 .lengthValue span {
   padding-bottom: 0.55rem;
   color: var(--ef-accent);
-  font-family: var(--font-space-grotesk), sans-serif;
+  font-family: var(--font-manrope), sans-serif;
   font-size: clamp(1rem, 4vw, 1.45rem);
   font-weight: 700;
 }
@@ -353,7 +303,7 @@
   flex: 0 0 auto;
   border-radius: 50%;
   background: currentColor;
-  box-shadow: 0 0 0 4px rgba(158, 223, 240, 0.08);
+  box-shadow: none;
 }
 
 .riskLow strong {
@@ -480,7 +430,7 @@
   gap: 1.25rem;
   min-width: 0;
   margin-top: 2rem;
-  border-radius: 1rem;
+  border-radius: 0.5rem;
   padding: 1.25rem;
 }
 
@@ -528,7 +478,7 @@
   margin-top: 0.8rem;
   font-size: clamp(2.2rem, 8vw, 4rem);
   letter-spacing: -0.055em;
-  line-height: 0.98;
+  line-height: 1.1;
 }
 
 .sectionHeader > p:last-child,
@@ -559,7 +509,7 @@
 
 .reasonRail li > span {
   color: var(--ef-accent);
-  font-family: var(--font-space-grotesk), sans-serif;
+  font-family: var(--font-manrope), sans-serif;
   font-size: 0.7rem;
   letter-spacing: 0.08em;
 }
@@ -582,11 +532,9 @@
   gap: 1.25rem;
   overflow: hidden;
   border: 1px solid var(--ef-border-strong);
-  border-radius: 1rem;
+  border-radius: 0.5rem;
   padding: 1.1rem;
-  background:
-    linear-gradient(145deg, rgba(14, 38, 47, 0.82), rgba(8, 24, 31, 0.88)),
-    var(--ef-surface);
+  background: var(--ef-bg-soft);
 }
 
 .topMatchExplanationHeader h3 {
@@ -659,7 +607,7 @@
 
 .topMatchReasons li > span {
   color: var(--ef-accent);
-  font-family: var(--font-space-grotesk), sans-serif;
+  font-family: var(--font-manrope), sans-serif;
   font-size: 0.65rem;
   letter-spacing: 0.08em;
 }
@@ -673,9 +621,9 @@
   display: grid;
   gap: 1rem;
   border: 1px solid var(--ef-border);
-  border-radius: 1rem;
+  border-radius: 0.5rem;
   padding: 1.1rem;
-  background: rgba(10, 27, 34, 0.76);
+  background: var(--ef-bg-soft);
 }
 
 .feedbackEyebrow {
@@ -704,10 +652,10 @@
 .feedbackReasons button {
   min-height: 2.75rem;
   border: 1px solid var(--ef-border-strong);
-  border-radius: 0.65rem;
+  border-radius: 0.5rem;
   padding: 0.65rem 0.85rem;
   color: var(--ef-text-soft);
-  background: rgba(8, 24, 31, 0.9);
+  background: var(--ef-bg-soft);
   font: inherit;
   font-size: 0.78rem;
   font-weight: 700;
@@ -716,7 +664,7 @@
 
 .feedbackChoices button:hover,
 .feedbackReasons button:hover {
-  border-color: rgba(158, 223, 240, 0.48);
+  border-color: rgba(36, 99, 75, 0.48);
   color: var(--ef-text);
 }
 
@@ -749,32 +697,28 @@
   flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--ef-border);
-  border-radius: 1rem;
+  border-radius: 0.5rem;
   background: var(--ef-surface);
-  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.18);
+  box-shadow: none;
 }
 
 .recommendationCardFeatured {
-  border-color: rgba(158, 223, 240, 0.42);
-  background:
-    linear-gradient(145deg, rgba(17, 48, 59, 0.98), rgba(8, 26, 33, 0.98)),
-    var(--ef-surface-raised);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+  border-color: rgba(36, 99, 75, 0.42);
+  background: var(--ef-bg-soft);
+  box-shadow: none;
 }
 
 .recommendationCardRecommended {
-  background: rgba(12, 31, 39, 0.88);
+  background: var(--ef-bg-soft);
 }
 
 .recommendationCardExtra {
-  background: rgba(10, 27, 34, 0.78);
+  background: var(--ef-bg-soft);
 }
 
 .recommendationCardCareful {
   border-color: rgba(215, 164, 94, 0.32);
-  background:
-    linear-gradient(145deg, rgba(48, 38, 25, 0.42), rgba(12, 28, 33, 0.9)),
-    var(--ef-surface);
+  background: var(--ef-bg-soft);
 }
 
 .recommendationCardHeader {
@@ -784,9 +728,7 @@
 }
 
 .recommendationCardFeatured .recommendationCardHeader {
-  background-image:
-    linear-gradient(rgba(158, 223, 240, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(158, 223, 240, 0.05) 1px, transparent 1px);
+  background: var(--ef-bg-soft);
   background-size: 25px 25px;
 }
 
@@ -796,7 +738,7 @@
   justify-content: space-between;
   gap: 0.75rem;
   color: var(--ef-muted);
-  font-family: var(--font-space-grotesk), sans-serif;
+  font-family: var(--font-manrope), sans-serif;
   font-size: 0.62rem;
   letter-spacing: 0.1em;
 }
@@ -806,7 +748,7 @@
   min-height: 1.7rem;
   align-items: center;
   border: 1px solid var(--ef-border);
-  border-radius: 0.4rem;
+  border-radius: 0.5rem;
   padding: 0.32rem 0.45rem;
   font-family: var(--font-manrope), sans-serif;
   font-size: 0.61rem;
@@ -924,7 +866,7 @@
 
 .recommendationReasons li > span {
   color: var(--ef-accent);
-  font-family: var(--font-space-grotesk), sans-serif;
+  font-family: var(--font-manrope), sans-serif;
   font-size: 0.65rem;
 }
 
@@ -1088,8 +1030,8 @@
   grid-template-rows: auto 1fr auto;
   min-width: 0;
   border: 1px solid var(--ef-border);
-  border-radius: 0.85rem;
-  background: rgba(10, 27, 34, 0.52);
+  border-radius: 0.5rem;
+  background: var(--ef-bg-soft);
 }
 
 .comparisonCandidateHeader {
@@ -1102,7 +1044,7 @@
 .comparisonBrand,
 .comparisonCue {
   color: var(--ef-accent);
-  font-family: var(--font-space-grotesk), sans-serif;
+  font-family: var(--font-manrope), sans-serif;
   font-size: 0.68rem;
   font-weight: 800;
   letter-spacing: 0.06em;
@@ -1174,10 +1116,8 @@
   gap: 2rem;
   margin-top: 5rem;
   border: 1px solid var(--ef-border-strong);
-  border-radius: 1rem;
-  background:
-    linear-gradient(145deg, rgba(16, 40, 50, 0.9), rgba(8, 24, 30, 0.94)),
-    var(--ef-surface-raised);
+  border-radius: 0.5rem;
+  background: var(--ef-bg-soft);
   padding: 1.25rem;
 }
 
@@ -1203,8 +1143,8 @@
   width: 100%;
   min-height: 3.1rem;
   border: 1px solid var(--ef-border-strong);
-  border-radius: 0.7rem;
-  background: rgba(6, 18, 23, 0.78);
+  border-radius: 0.5rem;
+  background: var(--ef-bg-soft);
   padding: 0.8rem 0.9rem;
   color: var(--ef-text);
   font: inherit;
@@ -1212,7 +1152,7 @@
 }
 
 .emailField input::placeholder {
-  color: #718b96;
+  color: var(--ef-muted);
 }
 
 .emailField input[aria-invalid="true"] {
@@ -1232,7 +1172,7 @@
   gap: 0.65rem;
   align-items: start;
   border: 1px solid var(--ef-border);
-  border-radius: 0.7rem;
+  border-radius: 0.5rem;
   padding: 0.85rem;
   color: var(--ef-text-soft);
   cursor: pointer;
@@ -1250,7 +1190,7 @@
 .formError,
 .formSuccess {
   border: 1px solid;
-  border-radius: 0.65rem;
+  border-radius: 0.5rem;
   padding: 0.75rem 0.85rem;
   font-size: 0.75rem;
   line-height: 1.55;
@@ -1258,13 +1198,13 @@
 
 .formError {
   border-color: rgba(255, 170, 163, 0.35);
-  background: rgba(129, 45, 42, 0.18);
+  background: var(--ef-bg-soft);
   color: var(--ef-danger);
 }
 
 .formSuccess {
   border-color: rgba(139, 218, 195, 0.3);
-  background: rgba(46, 115, 96, 0.16);
+  background: var(--ef-bg-soft);
   color: var(--ef-success);
 }
 
@@ -1319,7 +1259,7 @@
   border: 1px solid var(--ef-border-strong);
   border-radius: 50%;
   color: var(--ef-accent);
-  font-family: var(--font-space-grotesk), sans-serif;
+  font-family: var(--font-manrope), sans-serif;
   font-size: 1.2rem;
 }
 
@@ -1372,7 +1312,7 @@
 
 .fullExplanation li span {
   color: var(--ef-accent);
-  font-family: var(--font-space-grotesk), sans-serif;
+  font-family: var(--font-manrope), sans-serif;
   font-size: 0.65rem;
 }
 
@@ -1386,7 +1326,7 @@
   display: grid;
   gap: 1.5rem;
   border: 1px solid var(--ef-border);
-  background: rgba(15, 38, 46, 0.65);
+  background: var(--ef-bg-soft);
   padding: 1rem;
 }
 
@@ -1427,7 +1367,7 @@
 .trustSummary dd {
   margin: 0.25rem 0 0;
   color: var(--ef-text);
-  font-family: var(--font-space-grotesk), sans-serif;
+  font-family: var(--font-manrope), sans-serif;
   font-size: 1.6rem;
   font-weight: 700;
 }
@@ -1699,7 +1639,7 @@
 .focusedBoard {
   position: relative;
   overflow: hidden;
-  border-color: rgba(158, 223, 240, 0.34);
+  border-color: rgba(36, 99, 75, 0.34);
   padding: clamp(1.25rem, 3vw, 2rem);
 }
 
@@ -1753,9 +1693,9 @@
 }
 
 .focusedSize {
-  border: 1px solid rgba(158, 223, 240, 0.2);
-  border-radius: 0.8rem;
-  background: rgba(7, 19, 24, 0.45);
+  border: 1px solid rgba(36, 99, 75, 0.2);
+  border-radius: 0.5rem;
+  background: var(--ef-bg-soft);
   padding: 1rem;
 }
 
@@ -1801,7 +1741,7 @@
 }
 
 .focusedSignalGroup li {
-  border-left: 2px solid rgba(158, 223, 240, 0.35);
+  border-left: 2px solid rgba(36, 99, 75, 0.35);
   padding-left: 0.75rem;
 }
 
@@ -1822,7 +1762,7 @@
 
 .focusedAlternatives {
   margin-top: 1.5rem;
-  border-top: 1px solid rgba(158, 223, 240, 0.18);
+  border-top: 1px solid rgba(36, 99, 75, 0.18);
   padding-top: 1.25rem;
 }
 
@@ -1833,15 +1773,15 @@
 .focusedAlternatives a {
   display: grid;
   gap: 0.2rem;
-  border: 1px solid rgba(158, 223, 240, 0.22);
-  border-radius: 0.7rem;
+  border: 1px solid rgba(36, 99, 75, 0.22);
+  border-radius: 0.5rem;
   padding: 0.85rem;
   color: inherit;
   text-decoration: none;
 }
 
 .focusedAlternatives a:hover {
-  border-color: rgba(158, 223, 240, 0.55);
+  border-color: rgba(36, 99, 75, 0.55);
 }
 
 .focusedAlternatives span,
@@ -1858,5 +1798,100 @@
   .focusedSignals,
   .focusedAlternatives ul {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+/* SnowDex surface-specific density and decision hierarchy. */
+.emailField input {
+  border-color: var(--ef-control-border);
+}
+.resultShell {
+  padding-top: 2.5rem;
+  padding-bottom: 5rem;
+}
+.resultPage .summary {
+  border-radius: 8px;
+  background: #eaf0e8;
+  border: 0;
+}
+.summary::after {
+  display: none;
+}
+.summary h1 {
+  font-size: clamp(1.7rem,3vw,2.65rem);
+  line-height: 1.15;
+}
+.lengthValue strong {
+  font-size: clamp(3.5rem,8vw,6.5rem);
+}
+.summaryLayout {
+  padding: clamp(1.25rem,3vw,2.5rem);
+}
+.summaryMetrics {
+  margin-top: 1rem;
+}
+.riderProfile, .reasonSection, .recommendationSection, .decisionSection, .methodSection, .quietSection, .carefulSection, .finalActions {
+  padding-top: 3rem;
+}
+.sectionHeader h2, .emailSection h2, .finalActions h2, .riderProfileHeader h2 {
+  font-size: clamp(1.6rem,3vw,2.5rem);
+  line-height: 1.2;
+}
+.recommendationCard {
+  background: white;
+  border-radius: 6px;
+}
+.recommendationCardFeatured {
+  border: 2px solid var(--ef-accent);
+  background: white;
+}
+.recommendationCardFeatured .recommendationCardHeader {
+  background: #edf4ed;
+}
+.recommendationCardHeader h3 {
+  font-size: clamp(1.5rem,3vw,2rem);
+}
+.topMatchExplanation {
+  background: #f0f4ef;
+}
+.recommendationFeedback {
+  background: transparent;
+}
+.emailSection {
+  margin-top: 3rem;
+  background: #edf1ee;
+}
+.riskHigh strong {
+  color: var(--ef-danger);
+}
+@media(min-width:1100px) {
+  .summaryMain {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 0 3rem;
+  }
+  .summaryMain > p:first-child, .summaryMain > h1, .summaryMain > .summaryLead {
+    grid-column: 1/-1;
+  }
+  .lengthMetric {
+    grid-column: 1;
+  }
+  .summaryMetrics {
+    grid-column: 2;
+    grid-row: 4;
+    grid-template-columns: 1fr;
+    align-content: start;
+    border: 0;
+  }
+  .summaryMetric, .summaryMetric:nth-child(2), .riskMetric {
+    padding: .7rem 0;
+    border-left: 0;
+    border-top: 1px solid var(--ef-border);
+  }
+  .summaryMain > .inlineActions {
+    grid-column: 1;
+    align-self: start;
+  }
+  .fitContext {
+    grid-column: 2;
   }
 }
