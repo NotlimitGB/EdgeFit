@@ -1,0 +1,4 @@
+interface:
+  display_name: "SnowDex Frontend Design"
+  short_description: "SnowDex design, responsive UX and browser review"
+  default_prompt: "Use $snowdex-frontend-design to design and implement a coherent SnowDex experience within the task scope."

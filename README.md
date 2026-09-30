@@ -129,11 +129,14 @@ scripts                     проверка подключения и запо�
 ## Codex and design workflow
 
 - `AGENTS.md` — project-level instructions for Codex and coding agents.
-- `.agents/skills/edgefit-brand/SKILL.md` — brand and messaging workflow.
-- `.agents/skills/edgefit-ui-ux/SKILL.md` — UI/UX direction workflow.
-- `.agents/skills/edgefit-design-system/SKILL.md` — design-system workflow.
-- `.agents/skills/edgefit-ui-styling/SKILL.md` — Tailwind/React UI implementation workflow.
-- `docs/codex-skills.md` — index of local EdgeFit skills.
+- `.agents/skills/snowdex-brand/SKILL.md` — SnowDex voice and capability claims.
+- `.agents/skills/snowdex-frontend-design/SKILL.md` — autonomous design, implementation and rendered QA.
+- `.agents/skills/snowdex-design-system/SKILL.md` — reusable presentation rules and states.
+- `docs/brand-guidelines.md` — SnowDex brand boundaries and current capabilities.
+- `docs/codex-design-workflow.md` — skill routing, autonomy and design verification.
+
+SnowDex is the direction for future brand/design work. This documentation update
+does not rename the running EdgeFit application or activate new equipment categories.
 
 ## Ближайшие шаги
 

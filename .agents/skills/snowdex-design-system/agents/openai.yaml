@@ -1,0 +1,4 @@
+interface:
+  display_name: "SnowDex Design System"
+  short_description: "Reusable SnowDex UI roles, tokens and states"
+  default_prompt: "Use $snowdex-design-system to define or review the presentation rules needed for this SnowDex task."

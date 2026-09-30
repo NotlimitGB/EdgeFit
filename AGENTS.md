@@ -1,13 +1,13 @@
-# EdgeFit Agent Instructions
+# SnowDex Agent Instructions
 
 ## Project identity
 
-EdgeFit — русскоязычный сервис подбора сноуборда под рост, вес, размер
-ботинка, стиль катания и уровень райдера.
-
-Это не магазин и не обычный каталог. EdgeFit работает как snowboard fit
-advisor: собирает параметры, объясняет подходящую длину, ширину, риск boot
-drag и профиль доски, а затем показывает подходящие модели.
+SnowDex — русскоязычный продукт для осознанного выбора зимнего снаряжения.
+Текущая реализованная способность — snowboard fit advisor: параметры райдера,
+объяснённая длина и ширина, риск boot drag, модели и проверка конкретной доски.
+Другие категории — будущее направление, не доступные функции.
+Production пока может использовать прежнее имя; агентские инструкции сами
+по себе не разрешают переименование UI, host, metadata или маршрутов.
 
 ## Commercial goal
 
@@ -36,44 +36,38 @@ drag и профиль доски, а затем показывает подхо
 
 ## Design skill routing
 
-Перед любой UI/design-задачей сначала прочитать:
+Для design-задачи прочитать `docs/brand-guidelines.md` и
+`docs/codex-design-workflow.md`, затем минимальный набор repo-local skills:
 
-- `docs/brand-guidelines.md`;
-- `docs/design-direction.md`;
-- `docs/ui-system.md`;
-- `docs/codex-design-workflow.md`.
+- `.agents/skills/snowdex-brand/SKILL.md` — голос, сообщения и обещания;
+- `.agents/skills/snowdex-frontend-design/SKILL.md` — art direction, UX,
+  реализация, responsive и rendered QA;
+- `.agents/skills/snowdex-design-system/SKILL.md` — повторяемые правила и states.
 
-Затем выбрать один или несколько repo-local skills:
-
-- бренд, tone of voice, позиционирование, сообщения или визуальная личность:
-  читать `.agents/skills/edgefit-brand/SKILL.md`;
-- визуальное направление, UX, layout, палитра, типографика или CTA-иерархия:
-  читать `.agents/skills/edgefit-ui-ux/SKILL.md`;
-- токены, компоненты, варианты, состояния или дизайн-система:
-  читать `.agents/skills/edgefit-design-system/SKILL.md`;
-- реализация UI в React, Tailwind CSS и CSS:
-  читать `.agents/skills/edgefit-ui-styling/SKILL.md`.
-
-Для комплексной дизайн-задачи использовать порядок:
-
-```text
-brand → ui-ux → design-system → ui-styling → implementation
-```
-
-Не переходить к styling или implementation, пока направление и системные
-правила не определены либо уже не зафиксированы в задаче.
+Агент самостоятельно выбирает визуальные решения в пределах brief и scope.
+Одна задача может охватывать несколько публичных страниц как цельный продукт.
+Не требовать последовательных handoff или approval каждого низкоуровневого
+решения. Финальная продуктовая оценка остаётся за человеком.
 
 ## Engineering guardrails
 
 - Не менять алгоритм подбора без отдельной задачи.
+- Не менять scoring, фактический recommendation output и catalog truth contracts
+  в рамках presentation-задачи.
 - Не менять API routes и их контракты без отдельной задачи.
 - Не менять БД, схему или импорт каталога без отдельной задачи.
 - Не удалять и не переименовывать analytics events.
+- Не менять analytics payload/contracts, commercial attribution, auth или
+  internal tools без явного scope.
+- Не менять public URL structure, SEO routing, metadata/canonical contracts
+  или продуктовые возможности без явного scope.
 - Не обходить `/go/[slug]` и существующий store redirect/tracking path.
 - Не добавлять зависимости без доказанной необходимости.
 - Держать пользовательские тексты на русском; snowboard-термины использовать
   только там, где они точнее перевода.
 - Не делать generic SaaS UI, детский snow-theme или случайные AI gradients.
+- Оценивать визуальные приёмы по роли и качеству; тема, палитра и шрифты
+  не предопределены. Не придумывать данные, отзывы и продуктовые обещания.
 - Не перекрашивать страницы вне scope через глобальные токены или селекторы.
 - Переиспользовать существующие компоненты, когда их роль совпадает; не
   превращать локальную задачу в необоснованную большую дизайн-систему.
@@ -100,6 +94,10 @@ git status --short
 
 Если команда не запускается из-за окружения или существующей проблемы, не
 скрывать ошибку и отделять её от внесённых изменений.
+
+Для UI дополнительно проверять rendered states и поведение в браузере,
+ориентируясь на 390/768/1440 px, доступность и длинный русский текст.
+При недоступном tooling назвать visual QA непроверенным.
 
 ## Final report format
 

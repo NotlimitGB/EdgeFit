@@ -1,0 +1,4 @@
+interface:
+  display_name: "SnowDex Brand"
+  short_description: "SnowDex voice and honest product messaging"
+  default_prompt: "Use $snowdex-brand to write or review SnowDex product messaging."
