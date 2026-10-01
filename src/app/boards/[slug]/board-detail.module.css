@@ -692,7 +692,7 @@
   background: var(--ef-bg-soft);
 }
 .sizeTable th {
-  background: #edf1ee;
+  background: #eef1f4;
 }
 .unavailableRow td:not(:last-child) {
   color: var(--ef-muted);

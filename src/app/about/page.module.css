@@ -68,7 +68,7 @@
 }
 .boundary {
   max-width: 58rem;
-  background: #edf1ee;
+  background: #eef1f4;
   border-left: 3px solid var(--ef-accent);
   padding: clamp(1.25rem,3vw,2.5rem);
   margin-top: 1rem;

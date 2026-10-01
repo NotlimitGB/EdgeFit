@@ -2,10 +2,10 @@
   position: sticky;
   top: 0;
   z-index: 40;
-  border-bottom: 1px solid #d9e0df;
-  background: #fafcfbf5;
+  border-bottom: 1px solid #dce1e6;
+  background: #fafbfcf5;
   backdrop-filter: blur(12px);
-  color: #172723;
+  color: #20252c;
 }
 .headerInner {
   display: flex;
@@ -23,7 +23,7 @@
   margin-right: auto;
 }
 .brand svg, .brandDot {
-  color: #24634b;
+  color: #bf460c;
 }
 .desktopNav {
   display: flex;
@@ -42,7 +42,7 @@
   min-height: 44px;
   align-items: center;
   gap: 1rem;
-  background: #24634b;
+  background: #bf460c;
   color: white;
   border-radius: 6px;
   padding: .65rem 1rem;
@@ -50,7 +50,7 @@
   font-weight: 750;
 }
 .headerAction:hover {
-  background: #194c39;
+  background: #9e3508;
 }
 .mobileMenu {
   display: none;
@@ -61,20 +61,20 @@
   left: 1rem;
   padding: .75rem;
   background: white;
-  color: #172723;
+  color: #20252c;
 }
 .skipLink:focus {
   top: 0;
   z-index: 2;
 }
 .header a:focus-visible, .header summary:focus-visible, .footer a:focus-visible {
-  outline: 3px solid #24634b;
+  outline: 3px solid #bf460c;
   outline-offset: 4px;
 }
 .footer {
-  color: #34483f;
-  background: #edf1ee;
-  border-top: 1px solid #d4dfd8;
+  color: #3e4752;
+  background: #eef1f4;
+  border-top: 1px solid #dce1e6;
 }
 .footerInner {
   display: grid;
@@ -86,7 +86,7 @@
   font-size: 1.6rem;
   font-weight: 850;
   letter-spacing: -.06em;
-  color: #172723;
+  color: #20252c;
 }
 .footerCopy {
   max-width: 28ch;
@@ -114,7 +114,7 @@
 }
 .footerNote {
   grid-column: 1 / -1;
-  border-top: 1px solid #d4dfd8;
+  border-top: 1px solid #dce1e6;
   padding-top: 1.25rem;
   font-size: .75rem;
 }
@@ -146,9 +146,9 @@
     right: 0;
     display: grid;
     padding: 1rem;
-    background: #fafcfb;
-    border-bottom: 1px solid #d9e0df;
-    box-shadow: 0 12px 18px #17272312;
+    background: #fafbfc;
+    border-bottom: 1px solid #dce1e6;
+    box-shadow: 0 12px 18px #20252c12;
   }
   .mobileMenu nav a {
     padding: .85rem;

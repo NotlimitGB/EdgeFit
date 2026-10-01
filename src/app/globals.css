@@ -115,7 +115,7 @@ select {
 
 /* Public homepage: editorial layout; technical identifiers remain in domain code. */
 .snowdex-home {
-  background: #fafcfb;
+  background: #fafbfc;
 }
 .snowdex-home h1, .snowdex-home h2, .snowdex-home h3 {
   font-family: var(--font-manrope), sans-serif;
@@ -168,7 +168,7 @@ select {
 .snowdex-home .snowdex-home__result-preview {
   border-radius: 6px;
   padding: clamp(1.4rem,3vw,2.5rem);
-  background: #eaf0e8;
+  background: #eef1f4;
   border: 0;
   box-shadow: none;
 }
@@ -178,7 +178,7 @@ select {
   align-items: start;
   gap: 1rem;
   padding-bottom: 1.25rem;
-  border-bottom: 1px solid #c7d5c6;
+  border-bottom: 1px solid #cdd5de;
 }
 .snowdex-home__preview-header h2 {
   font-size: 1.2rem;
@@ -186,7 +186,7 @@ select {
 }
 .snowdex-home__coordinate {
   font-size: .65rem;
-  color: #47644d;
+  color: #596473;
   letter-spacing: .06em;
 }
 .snowdex-home__length-metric {
@@ -225,7 +225,7 @@ select {
   grid-template-columns: 1fr 1fr;
   gap: 1.25rem;
   padding-top: 1.25rem;
-  border-top: 1px solid #c7d5c6;
+  border-top: 1px solid #cdd5de;
 }
 .snowdex-home__metric--risk {
   grid-column: 1/-1;
@@ -288,7 +288,7 @@ select {
 }
 .snowdex-home__factor-rail li > span {
   font-size: .7rem;
-  color: var(--ef-accent);
+  color: var(--ef-muted);
   font-weight: 750;
   padding-top: .2rem;
 }
@@ -303,7 +303,7 @@ select {
   margin-top: .4rem;
 }
 .snowdex-home__comparison-section {
-  background: #edf1ee;
+  background: #eef1f4;
   padding-block: clamp(2.5rem,5vw,4.5rem);
 }
 .snowdex-home__comparison-intro {
@@ -320,7 +320,7 @@ select {
   grid-template-columns: .6fr 1fr 1fr;
   gap: 1rem;
   padding-block: 1rem;
-  border-bottom: 1px solid #d0dbd3;
+  border-bottom: 1px solid #dce1e6;
 }
 .snowdex-home__comparison-head {
   font-size: .75rem;
@@ -333,7 +333,7 @@ select {
   font-weight: 700;
 }
 .snowdex-home__comparison-row dd:last-child {
-  color: #24634b;
+  color: var(--ef-text);
   font-weight: 750;
 }
 .snowdex-home__comparison-row dd > span {
@@ -351,7 +351,7 @@ select {
 .snowdex-home__step-number {
   font-size: 2rem;
   font-weight: 750;
-  color: var(--ef-accent);
+  color: var(--ef-text-soft);
 }
 .snowdex-home__process-rail h3 {
   font-size: 1.1rem;
@@ -452,7 +452,7 @@ select {
   color: var(--ef-accent);
 }
 .snowdex-home__exit {
-  background: #e4ebdf;
+  background: #eef1f4;
   padding-block: 3rem;
 }
 .snowdex-home__final-cta {

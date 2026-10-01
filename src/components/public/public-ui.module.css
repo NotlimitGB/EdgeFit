@@ -1,17 +1,17 @@
 .theme {
-  --ef-bg: #fafcfb;
-  --ef-bg-soft: #edf1ee;
+  --ef-bg: #fafbfc;
+  --ef-bg-soft: #eef1f4;
   --ef-surface: #ffffff;
-  --ef-surface-raised: #f3f6f3;
+  --ef-surface-raised: #f3f5f7;
   --ef-surface-technical: #ffffff;
-  --ef-text: #172723;
-  --ef-text-soft: #34483f;
-  --ef-muted: #52645b;
-  --ef-accent: #24634b;
-  --ef-accent-strong: #194c39;
-  --ef-border: #d9e0db;
-  --ef-border-strong: #bac9be;
-  --ef-control-border: #74877b;
+  --ef-text: #20252c;
+  --ef-text-soft: #3e4752;
+  --ef-muted: #596473;
+  --ef-accent: #bf460c;
+  --ef-accent-strong: #9e3508;
+  --ef-border: #dce1e6;
+  --ef-border-strong: #bec7d1;
+  --ef-control-border: #788391;
   --ef-calm: #24634b;
   --ef-warning: #805015;
   --ef-warning-strong: #805015;
@@ -27,7 +27,7 @@
 
 .kicker,
 .microLabel {
-  color: var(--ef-accent);
+  color: var(--ef-muted);
   font-size: 0.7rem;
   font-weight: 800;
   letter-spacing: 0.09em;
@@ -44,7 +44,7 @@
 .kicker::before {
   width: 1.75rem;
   height: 1px;
-  background: var(--ef-accent);
+  background: var(--ef-border-strong);
   content: "";
   flex: 0 0 auto;
 }
@@ -114,7 +114,7 @@
   min-width: 0;
   border: 1px solid var(--ef-border-strong);
   background: var(--ef-surface);
-  box-shadow: 0 4px 18px #17272305;
+  box-shadow: 0 4px 18px #20252c05;
 }
 
 @media (prefers-reduced-motion: reduce) {

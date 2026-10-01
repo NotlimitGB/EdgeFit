@@ -85,7 +85,7 @@
 
 .focusedContext {
   grid-area: focused;
-  border: 1px solid rgba(36, 99, 75, 0.3);
+  border: 1px solid rgba(191, 70, 12, 0.3);
   border-left: 0.24rem solid var(--ef-accent);
   border-radius: 0.5rem;
   background: var(--ef-bg-soft);
@@ -200,7 +200,7 @@
 }
 
 .progressSteps li[data-state="completed"] .progressMarker {
-  border-color: rgba(36, 99, 75, 0.55);
+  border-color: rgba(191, 70, 12, 0.55);
   color: var(--ef-accent-strong);
   background: var(--ef-bg-soft);
 }
@@ -283,7 +283,7 @@
 }
 
 .numberControl input:hover {
-  border-color: rgba(36, 99, 75, 0.46);
+  border-color: rgba(191, 70, 12, 0.46);
 }
 
 .numberControl input:focus-visible {
@@ -301,7 +301,7 @@
 .numberControl > span {
   position: absolute;
   right: 1rem;
-  color: var(--ef-accent);
+  color: var(--ef-muted);
   font-size: 0.72rem;
   font-weight: 800;
   letter-spacing: 0.1em;
@@ -415,7 +415,7 @@
 }
 
 .choiceCard:hover {
-  border-color: rgba(36, 99, 75, 0.42);
+  border-color: rgba(191, 70, 12, 0.42);
   background: var(--ef-bg-soft);
 }
 
@@ -528,7 +528,7 @@
   position: absolute;
   top: 1.55rem;
   right: 0.2rem;
-  color: rgba(36, 99, 75, 0.5);
+  color: rgba(191, 70, 12, 0.5);
   font-family: var(--font-manrope), sans-serif;
   font-size: 0.62rem;
   font-weight: 700;
@@ -582,7 +582,7 @@
 
 .contextNote {
   margin-top: 1.15rem;
-  border-left: 2px solid rgba(36, 99, 75, 0.5);
+  border-left: 2px solid rgba(191, 70, 12, 0.5);
   padding-left: 0.9rem;
 }
 
@@ -792,7 +792,7 @@
   background: white;
 }
 .choiceCard[data-selected="true"] {
-  background: #edf4ed;
+  background: #fff2e9;
   border: 2px solid var(--ef-accent);
   padding: calc(.95rem - 1px);
 }

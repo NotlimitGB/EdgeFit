@@ -3,7 +3,7 @@ import styles from "./site-shell.module.css";
 
 const links = [
   { href: "/", label: "Главная" },
-  { href: "/catalog", label: "Сноуборды" },
+  { href: "/catalog", label: "Каталог" },
   { href: "/about", label: "О SnowDex" },
 ];
 

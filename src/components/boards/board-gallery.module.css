@@ -405,24 +405,24 @@
 }
 /* SnowDex surface-specific density and decision hierarchy. */
 .galleryFrame {
-  background: #edf1ee;
+  background: #eef1f4;
   border: 0;
   border-radius: 8px;
 }
 .imageCanvas, .viewerCanvas, .viewerStage {
-  background: #edf1ee;
+  background: #eef1f4;
 }
 .imageMeta {
-  background: #e5ece5;
+  background: #e5eaf0;
 }
 .viewerBackdrop {
-  background: #172723e8;
+  background: #20252ce8;
 }
 .viewerClose, .viewerArrow {
   background: white;
 }
 .viewerClose:hover, .viewerArrow:hover {
-  background: #eaf0e8;
+  background: #eef1f4;
 }
 @media(min-width:1180px) {
   .imageCanvas {

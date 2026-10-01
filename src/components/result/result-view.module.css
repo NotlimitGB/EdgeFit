@@ -664,7 +664,7 @@
 
 .feedbackChoices button:hover,
 .feedbackReasons button:hover {
-  border-color: rgba(36, 99, 75, 0.48);
+  border-color: rgba(191, 70, 12, 0.48);
   color: var(--ef-text);
 }
 
@@ -703,7 +703,7 @@
 }
 
 .recommendationCardFeatured {
-  border-color: rgba(36, 99, 75, 0.42);
+  border-color: rgba(191, 70, 12, 0.42);
   background: var(--ef-bg-soft);
   box-shadow: none;
 }
@@ -1639,7 +1639,7 @@
 .focusedBoard {
   position: relative;
   overflow: hidden;
-  border-color: rgba(36, 99, 75, 0.34);
+  border-color: rgba(191, 70, 12, 0.34);
   padding: clamp(1.25rem, 3vw, 2rem);
 }
 
@@ -1693,7 +1693,7 @@
 }
 
 .focusedSize {
-  border: 1px solid rgba(36, 99, 75, 0.2);
+  border: 1px solid rgba(191, 70, 12, 0.2);
   border-radius: 0.5rem;
   background: var(--ef-bg-soft);
   padding: 1rem;
@@ -1741,7 +1741,7 @@
 }
 
 .focusedSignalGroup li {
-  border-left: 2px solid rgba(36, 99, 75, 0.35);
+  border-left: 2px solid rgba(191, 70, 12, 0.35);
   padding-left: 0.75rem;
 }
 
@@ -1762,7 +1762,7 @@
 
 .focusedAlternatives {
   margin-top: 1.5rem;
-  border-top: 1px solid rgba(36, 99, 75, 0.18);
+  border-top: 1px solid rgba(191, 70, 12, 0.18);
   padding-top: 1.25rem;
 }
 
@@ -1773,7 +1773,7 @@
 .focusedAlternatives a {
   display: grid;
   gap: 0.2rem;
-  border: 1px solid rgba(36, 99, 75, 0.22);
+  border: 1px solid rgba(191, 70, 12, 0.22);
   border-radius: 0.5rem;
   padding: 0.85rem;
   color: inherit;
@@ -1781,7 +1781,7 @@
 }
 
 .focusedAlternatives a:hover {
-  border-color: rgba(36, 99, 75, 0.55);
+  border-color: rgba(191, 70, 12, 0.55);
 }
 
 .focusedAlternatives span,
@@ -1810,7 +1810,7 @@
 }
 .resultPage .summary {
   border-radius: 8px;
-  background: #eaf0e8;
+  background: #eef1f4;
   border: 0;
 }
 .summary::after {
@@ -1845,20 +1845,20 @@
   background: white;
 }
 .recommendationCardFeatured .recommendationCardHeader {
-  background: #edf4ed;
+  background: #fff2e9;
 }
 .recommendationCardHeader h3 {
   font-size: clamp(1.5rem,3vw,2rem);
 }
 .topMatchExplanation {
-  background: #f0f4ef;
+  background: #f3f5f7;
 }
 .recommendationFeedback {
   background: transparent;
 }
 .emailSection {
   margin-top: 3rem;
-  background: #edf1ee;
+  background: #eef1f4;
 }
 .riskHigh strong {
   color: var(--ef-danger);
