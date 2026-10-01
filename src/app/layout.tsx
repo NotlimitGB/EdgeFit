@@ -19,13 +19,13 @@ const headingFont = Space_Grotesk({
 export const metadata: Metadata = {
   metadataBase: getSiteMetadataBase(),
   title: {
-    default: "EdgeFit",
-    template: "%s | EdgeFit",
+    default: "SnowDex",
+    template: "%s | SnowDex",
   },
   description:
     "Русскоязычный сервис подбора сноуборда по росту, весу, размеру ботинка и стилю катания.",
   openGraph: {
-    title: "EdgeFit",
+    title: "SnowDex",
     description:
       "Подбор длины, ширины и подходящих моделей сноубордов без магии и перегруза.",
     type: "website",

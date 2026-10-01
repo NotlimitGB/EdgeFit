@@ -4,9 +4,9 @@ import { MountEvent } from "@/components/analytics/mount-event";
 import publicStyles from "@/components/public/public-ui.module.css";
 import { getSeoLandingPath, seoLandingPages } from "@/lib/seo-pages";
 
-const homepageTitle = "Подбор сноуборда онлайн по параметрам — EdgeFit";
+const homepageTitle = "Подбор сноуборда онлайн по параметрам — SnowDex";
 const homepageDescription =
-  "Подбери сноуборд по росту, весу, размеру ботинка, уровню и стилю катания. EdgeFit рассчитает ростовку и ширину, оценит риск зацепа ботинком и покажет подходящие модели.";
+  "Подбери сноуборд по росту, весу, размеру ботинка, уровню и стилю катания. SnowDex рассчитает ростовку и ширину, оценит риск зацепа ботинком и покажет подходящие модели.";
 
 export const metadata: Metadata = {
   title: {

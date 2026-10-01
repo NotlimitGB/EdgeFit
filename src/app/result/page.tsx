@@ -5,7 +5,7 @@ import { isSavedResultsEnabled } from "@/lib/saved-results";
 export const metadata: Metadata = {
   title: "Результат подбора",
   description:
-    "Результат квиза EdgeFit: диапазон длины, рекомендация по ширине и список подходящих моделей.",
+    "Результат квиза SnowDex: диапазон длины, рекомендация по ширине и список подходящих моделей.",
   robots: {
     index: false,
     follow: true,

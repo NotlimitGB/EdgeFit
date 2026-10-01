@@ -3,6 +3,7 @@ import { SimplePage } from "@/components/site/simple-page";
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
+  alternates: { canonical: "/privacy" },
 };
 
 export default function PrivacyPage() {

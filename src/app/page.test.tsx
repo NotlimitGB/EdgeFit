@@ -22,9 +22,9 @@ import Home, { metadata } from "@/app/page";
 
 describe("homepage metadata", () => {
   it("defines one intent-led title, canonical, and matching OpenGraph URL", () => {
-    const title = "Подбор сноуборда онлайн по параметрам — EdgeFit";
+    const title = "Подбор сноуборда онлайн по параметрам — SnowDex";
     const description =
-      "Подбери сноуборд по росту, весу, размеру ботинка, уровню и стилю катания. EdgeFit рассчитает ростовку и ширину, оценит риск зацепа ботинком и покажет подходящие модели.";
+      "Подбери сноуборд по росту, весу, размеру ботинка, уровню и стилю катания. SnowDex рассчитает ростовку и ширину, оценит риск зацепа ботинком и покажет подходящие модели.";
 
     expect(metadata).toMatchObject({
       title: { absolute: title },
@@ -32,7 +32,7 @@ describe("homepage metadata", () => {
       alternates: { canonical: "/" },
       openGraph: { title, description, url: "/" },
     });
-    expect(JSON.stringify(metadata)).not.toContain("EdgeFit | EdgeFit");
+    expect(JSON.stringify(metadata)).not.toContain("SnowDex | SnowDex");
   });
 
   it("owns the broad selection intent with one H1 and unchanged destinations", () => {

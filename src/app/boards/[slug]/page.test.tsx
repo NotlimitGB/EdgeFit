@@ -127,7 +127,7 @@ describe("canonical board metadata", () => {
     const metadata = await generateMetadata({
       params: Promise.resolve({ slug: item.slug }),
     });
-    const description = `${identity}: характеристики, ростовки и геометрия модели. Проверь подходящую ростовку и ширину по своим параметрам в EdgeFit.`;
+    const description = `${identity}: характеристики, ростовки и геометрия модели. Проверь подходящую ростовку и ширину по своим параметрам в SnowDex.`;
 
     expect(metadata).toMatchObject({
       title: identity,

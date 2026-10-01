@@ -69,7 +69,7 @@ export async function generateMetadata({
   const identity = [board.brand, board.modelName, seasonLabel]
     .filter(Boolean)
     .join(" ");
-  const description = `${identity}: характеристики, ростовки и геометрия модели. Проверь подходящую ростовку и ширину по своим параметрам в EdgeFit.`;
+  const description = `${identity}: характеристики, ростовки и геометрия модели. Проверь подходящую ростовку и ширину по своим параметрам в SnowDex.`;
   const canonicalUrl = `/boards/${board.slug}`;
 
   return {

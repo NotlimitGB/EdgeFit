@@ -31,11 +31,11 @@ function buildArticleSchema(page: SeoLandingPage) {
     inLanguage: "ru-RU",
     author: {
       "@type": "Organization",
-      name: "EdgeFit",
+      name: "SnowDex",
     },
     publisher: {
       "@type": "Organization",
-      name: "EdgeFit",
+      name: "SnowDex",
     },
     mainEntityOfPage: getAbsoluteSiteUrl(`/${page.slug}`),
   };

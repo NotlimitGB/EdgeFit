@@ -24,10 +24,10 @@ export function InlineQuizLauncher() {
       aria-labelledby="inline-calculator-title"
     >
       <div className={styles.intro}>
-        <p className={publicStyles.kicker}>EdgeFit / калькулятор</p>
+        <p className={publicStyles.kicker}>SnowDex / калькулятор</p>
         <h2 id="inline-calculator-title">Подберите длину, ширину и модели</h2>
         <p>
-          Ответьте на три коротких шага. EdgeFit учтёт параметры
+          Ответьте на три коротких шага. SnowDex учтёт параметры
           райдера, стиль катания и риск зацепа ботинком.
         </p>
 

@@ -12,7 +12,7 @@ export const revalidate = 0;
 
 export const metadata: Metadata = {
   title: "Сохранённый результат подбора",
-  description: "Сохранённый снимок персонального результата EdgeFit.",
+  description: "Сохранённый снимок персонального результата SnowDex.",
   referrer: "no-referrer",
   robots: {
     index: false,

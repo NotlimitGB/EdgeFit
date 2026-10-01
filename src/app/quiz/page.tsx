@@ -7,8 +7,9 @@ import { focusedBoardSlugSchema } from "@/lib/quiz/schema";
 
 export const metadata: Metadata = {
   title: "Квиз подбора сноуборда",
+  alternates: { canonical: "/quiz" },
   description:
-    "Пошаговый квиз EdgeFit для подбора длины, ширины и подходящих моделей сноубордов.",
+    "Пошаговый квиз SnowDex для подбора длины, ширины и подходящих моделей сноубордов.",
 };
 
 interface QuizPageProps {

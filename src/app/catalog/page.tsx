@@ -9,8 +9,9 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Каталог сноубордов",
+  alternates: { canonical: "/catalog" },
   description:
-    "Живой каталог сноубордов EdgeFit с фильтрами по бренду, стилю, форме и ширине, плюс простой сортировкой по цене.",
+    "Живой каталог сноубордов SnowDex с фильтрами по бренду, стилю, форме и ширине, плюс простой сортировкой по цене.",
 };
 
 export default async function CatalogPage() {

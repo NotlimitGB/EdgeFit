@@ -3,6 +3,7 @@ import { SimplePage } from "@/components/site/simple-page";
 
 export const metadata: Metadata = {
   title: "Контакты",
+  alternates: { canonical: "/contact" },
 };
 
 export default function ContactPage() {

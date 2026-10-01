@@ -100,7 +100,7 @@ const ridingStylePageExpectations = [
     title: "Сноуборд для карвинга: как выбрать ширину, жёсткость и прогиб",
     description:
       "Как выбрать сноуборд для карвинга: ширина и boot clearance, flex, профиль, длина и форма для трассы и чистой дуги.",
-    marker: "Что EdgeFit не рассчитывает",
+    marker: "Что SnowDex не рассчитывает",
     hasComparison: true,
   },
   {
@@ -114,6 +114,18 @@ const ridingStylePageExpectations = [
 ];
 
 describe("SEO landing registry", () => {
+  it("uses SnowDex in public narrative and existing Article schema", () => {
+    for (const page of seoLandingPages) {
+      expect(JSON.stringify(page)).not.toContain("EdgeFit");
+      const markup = renderToStaticMarkup(createElement(SeoLandingPageView, { page }));
+      expect(markup).not.toContain("EdgeFit");
+      const schemas = [...markup.matchAll(/<script type="application\/ld\+json">([^<]+)<\/script>/gu)]
+        .map((match) => JSON.parse(match[1]));
+      const article = schemas.find((schema) => schema["@type"] === "Article");
+      expect(article.author.name).toBe("SnowDex");
+      expect(article.publisher.name).toBe("SnowDex");
+    }
+  });
   it("preserves the eight existing pages and adds exactly three riding-style pages", () => {
     expect(seoLandingPages).toHaveLength(11);
     expect(seoLandingPages.map((page) => page.slug)).toEqual(
@@ -355,7 +367,7 @@ describe("riding-style SEO rendering", () => {
     expect(markup).toContain('<th scope="col"');
     expect(markup).toContain('<th scope="row"');
     expect(markup).toContain("Sidecut radius и effective edge");
-    expect(markup).toContain("EdgeFit не рассчитывает эти параметры");
+    expect(markup).toContain("SnowDex не рассчитывает эти параметры");
     expect(markup).toContain("hardboot compatibility");
     expect(markup).toContain("race/alpine geometry");
   });

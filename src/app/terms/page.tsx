@@ -3,6 +3,7 @@ import { SimplePage } from "@/components/site/simple-page";
 
 export const metadata: Metadata = {
   title: "Terms",
+  alternates: { canonical: "/terms" },
 };
 
 export default function TermsPage() {

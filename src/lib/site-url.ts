@@ -1,4 +1,5 @@
-const DEFAULT_SITE_URL = "https://edge-fit.vercel.app";
+const DEFAULT_SITE_URL = "https://snowdex.ru";
+const LEGACY_SITE_HOST = "edge-fit.vercel.app";
 
 function normalizeSiteUrl(value: string) {
   const trimmedValue = value.trim();
@@ -34,6 +35,7 @@ export function getAbsoluteSiteUrl(path = "/") {
 export function getConfiguredSiteHosts() {
   const values = [
     DEFAULT_SITE_URL,
+    LEGACY_SITE_HOST,
     process.env.NEXT_PUBLIC_SITE_URL,
     process.env.VERCEL_PROJECT_PRODUCTION_URL,
     process.env.VERCEL_URL,

@@ -3,7 +3,10 @@ import Link from "next/link";
 import publicStyles from "@/components/public/public-ui.module.css";
 import styles from "./page.module.css";
 
-export const metadata: Metadata = { title: "О проекте" };
+export const metadata: Metadata = {
+  title: "О проекте",
+  alternates: { canonical: "/about" },
+};
 
 const principles = [
   ["Параметры, а не догадки", "Вес задаёт основу длины. Ботинок и стойка помогают оценить ширину. Уровень и стиль уточняют характер доски."],
