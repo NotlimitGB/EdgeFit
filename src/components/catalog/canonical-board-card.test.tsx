@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { CanonicalCatalogItem } from "@/types/canonical-catalog";
+import { toPublicCatalogItem } from "@/lib/public-catalog-dto";
 
 vi.mock("next/link", () => ({
   default: ({
@@ -17,6 +18,7 @@ vi.mock("next/link", () => ({
     </a>
   ),
 }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ prefetch: vi.fn() }) }));
 
 vi.mock("@/components/analytics/tracked-store-link", () => ({
   TrackedStoreLink: ({
@@ -87,6 +89,11 @@ const board: CanonicalCatalogItem = {
 };
 
 describe("CanonicalBoardCard route prefetch", () => {
+  it("renders byte-identical card markup from compact and canonical data", () => {
+    const fixture = { ...board, media: ["/one.svg", "/two.svg", "/three.svg"] };
+    expect(renderToStaticMarkup(<CanonicalBoardCard board={toPublicCatalogItem(fixture)} />))
+      .toBe(renderToStaticMarkup(<CanonicalBoardCard board={fixture} />));
+  });
   it("disables prefetch on all three board links without changing the store action", () => {
     const markup = renderToStaticMarkup(<CanonicalBoardCard board={board} />);
     const boardLinks = Array.from(

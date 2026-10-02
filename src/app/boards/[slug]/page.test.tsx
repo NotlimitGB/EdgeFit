@@ -43,6 +43,12 @@ vi.mock("@/lib/canonical-catalog", () => ({
 vi.mock("@/lib/products", () => ({
   getProductBySlug: mocks.getProduct,
 }));
+vi.mock("@/lib/public-board-cache", () => ({
+  getPublicBoardBundle: async (slug: string) => {
+    const resolution = await mocks.resolve(slug);
+    return resolution ? { resolution, narrative: { scenarios: [], notIdealFor: [] } } : undefined;
+  },
+}));
 vi.mock("@/lib/board-page-load-diagnostics", () => ({
   createBoardPageDiagnostics: () => ({
     traceId: "trace-board-page",
@@ -156,11 +162,7 @@ describe("canonical board page loading", () => {
     const markup = renderToStaticMarkup(page);
 
     expect(mocks.resolve).toHaveBeenCalledWith(board.slug);
-    expect(mocks.runStage).toHaveBeenCalledWith(
-      "narrative_product_lookup",
-      expect.any(Function),
-    );
-    expect(mocks.getProduct).toHaveBeenCalledWith("brand-model-offer");
+    expect(mocks.getProduct).not.toHaveBeenCalled();
     expect(mocks.getAllItems).not.toHaveBeenCalled();
     expect(markup).toContain("Brand");
     expect(markup).toContain("Model");

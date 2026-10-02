@@ -9,7 +9,7 @@ import {
 import { createCanonicalCatalogDiagnostics } from "@/lib/catalog-load-diagnostics";
 import { получитьКлиентБазы } from "@/lib/database/client";
 import { базаНастроена } from "@/lib/database/config";
-import { getProductColumnSupport } from "@/lib/database/product-column-support";
+import { getProductColumnSupport, type ProductColumnSupport } from "@/lib/database/product-column-support";
 import type { CanonicalCatalogItem } from "@/types/canonical-catalog";
 import { resolveCanonicalBoardRoute } from "@/lib/canonical-board-route";
 
@@ -45,8 +45,8 @@ interface CanonicalBoardAliasRow {
   familySlug: string | null;
 }
 
-async function assertCanonicalCatalogSupport(sql: Sql) {
-  const support = await getProductColumnSupport(sql);
+async function assertCanonicalCatalogSupport(sql: Sql, confirmedSupport?: ProductColumnSupport) {
+  const support = confirmedSupport ?? await getProductColumnSupport(sql);
   const required = [
     support.modelFamilies,
     support.familyId,
@@ -65,8 +65,8 @@ async function assertCanonicalCatalogSupport(sql: Sql) {
   return support;
 }
 
-async function getOfferSelectFragments(sql: Sql) {
-  const support = await assertCanonicalCatalogSupport(sql);
+async function getOfferSelectFragments(sql: Sql, confirmedSupport?: ProductColumnSupport) {
+  const support = await assertCanonicalCatalogSupport(sql, confirmedSupport);
 
   return {
     seasonLabel: support.seasonLabel
@@ -96,8 +96,8 @@ async function getOfferSelectFragments(sql: Sql) {
   };
 }
 
-async function loadFamilyRows(sql: Sql, slug?: string) {
-  await assertCanonicalCatalogSupport(sql);
+async function loadFamilyRows(sql: Sql, slug?: string, confirmedSupport?: ProductColumnSupport) {
+  await assertCanonicalCatalogSupport(sql, confirmedSupport);
 
   if (slug != null) {
     return sql<CanonicalFamilySource[]>`
@@ -157,6 +157,7 @@ async function loadOfferRows(
     | { kind: "all" }
     | { kind: "family"; familyId: string }
     | { kind: "singleton"; slug: string },
+  confirmedSupport?: ProductColumnSupport,
 ) {
   const {
     seasonLabel,
@@ -167,7 +168,7 @@ async function loadOfferRows(
     sourceName,
     sourceUrl,
     sourceCheckedAt,
-  } = await getOfferSelectFragments(sql);
+  } = await getOfferSelectFragments(sql, confirmedSupport);
 
   const kind = options.kind;
   const familyId = options.kind === "family" ? options.familyId : "";
@@ -238,7 +239,7 @@ async function loadOfferRows(
   `;
 }
 
-const loadAllCanonicalCatalogItemsFromDatabase = cache(async () => {
+const loadAllCanonicalCatalogItemsFromDatabase = cache(async (confirmedSupport?: ProductColumnSupport) => {
   const sql = получитьКлиентБазы();
   const diagnostics = createCanonicalCatalogDiagnostics("all");
 
@@ -246,16 +247,16 @@ const loadAllCanonicalCatalogItemsFromDatabase = cache(async () => {
     "canonical_catalog",
     async () => {
       await diagnostics.runStage("product_column_support", () =>
-        assertCanonicalCatalogSupport(sql),
+        assertCanonicalCatalogSupport(sql, confirmedSupport),
       );
       const families = await diagnostics.runStage(
         "family_rows",
-        () => loadFamilyRows(sql),
+        () => loadFamilyRows(sql, undefined, confirmedSupport),
         { branch: "all", rowCount: (rows) => rows.length },
       );
       const offers = await diagnostics.runStage(
         "offer_rows",
-        () => loadOfferRows(sql, { kind: "all" }),
+        () => loadOfferRows(sql, { kind: "all" }, confirmedSupport),
         { branch: "all", rowCount: (rows) => rows.length },
       );
       return diagnostics.runStage(
@@ -269,17 +270,17 @@ const loadAllCanonicalCatalogItemsFromDatabase = cache(async () => {
 });
 
 const loadCanonicalCatalogItemBySlugFromDatabase = cache(
-  async (slug: string) => {
+  async (slug: string, confirmedSupport?: ProductColumnSupport) => {
     const sql = получитьКлиентБазы();
     const diagnostics = createCanonicalCatalogDiagnostics("slug");
 
     return diagnostics.runStage("canonical_catalog", async () => {
       await diagnostics.runStage("product_column_support", () =>
-        assertCanonicalCatalogSupport(sql),
+        assertCanonicalCatalogSupport(sql, confirmedSupport),
       );
       const [family] = await diagnostics.runStage(
         "family_rows",
-        () => loadFamilyRows(sql, slug),
+        () => loadFamilyRows(sql, slug, confirmedSupport),
         { branch: "slug", rowCount: (rows) => rows.length },
       );
 
@@ -290,7 +291,7 @@ const loadCanonicalCatalogItemBySlugFromDatabase = cache(
             loadOfferRows(sql, {
               kind: "family",
               familyId: family.id,
-            }),
+            }, confirmedSupport),
           { branch: "family", rowCount: (rows) => rows.length },
         );
         const [familyItem] = await diagnostics.runStage(
@@ -309,7 +310,7 @@ const loadCanonicalCatalogItemBySlugFromDatabase = cache(
           loadOfferRows(sql, {
             kind: "singleton",
             slug,
-          }),
+          }, confirmedSupport),
         { branch: "singleton", rowCount: (rows) => rows.length },
       );
       const [singletonItem] = await diagnostics.runStage(
@@ -323,13 +324,13 @@ const loadCanonicalCatalogItemBySlugFromDatabase = cache(
 );
 
 const loadCanonicalBoardAliasBySlugFromDatabase = cache(
-  async (slug: string): Promise<CanonicalBoardAliasRow | undefined> => {
+  async (slug: string, confirmedSupport?: ProductColumnSupport): Promise<CanonicalBoardAliasRow | undefined> => {
     const sql = получитьКлиентБазы();
     const diagnostics = createCanonicalCatalogDiagnostics("alias");
 
     return diagnostics.runStage("canonical_catalog", async () => {
       await diagnostics.runStage("product_column_support", () =>
-        assertCanonicalCatalogSupport(sql),
+        assertCanonicalCatalogSupport(sql, confirmedSupport),
       );
 
       return diagnostics.runStage(
@@ -421,6 +422,20 @@ export const getAllCanonicalCatalogItems = cache(async () => {
 
   return loadAllCanonicalCatalogItemsFromDatabase();
 });
+
+/** Internal public-cache entry points; do not change canonical projection. */
+export async function loadPublicCanonicalCatalog(support: ProductColumnSupport) {
+  return loadAllCanonicalCatalogItemsFromDatabase(support);
+}
+
+export async function loadPublicCanonicalBoard(slug: string, support: ProductColumnSupport) {
+  return resolveCanonicalBoardRoute({
+    requestedSlug: slug,
+    loadCanonicalItemBySlug: (requested) => loadCanonicalCatalogItemBySlugFromDatabase(requested, support),
+    loadFamilyAliasTargetBySlug: async (requested) =>
+      (await loadCanonicalBoardAliasBySlugFromDatabase(requested, support))?.familySlug ?? undefined,
+  });
+}
 
 export const getCanonicalCatalogItemBySlug = cache(async (slug: string) => {
   if (!базаНастроена()) {

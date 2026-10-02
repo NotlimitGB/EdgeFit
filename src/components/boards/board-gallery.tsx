@@ -178,6 +178,8 @@ export function BoardGallery({
               src={activeImage}
               alt={`${brand} ${modelName}`}
               loading="eager"
+              fetchPriority="high"
+              decoding="async"
               className={styles.mainImage}
               onError={() => handleImageError(activeImage)}
             />

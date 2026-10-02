@@ -9,8 +9,10 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CanonicalCatalogItem } from "@/types/canonical-catalog";
+import { toPublicCatalogItem } from "@/lib/public-catalog-dto";
 import type {
   BoardShape,
   Product,
@@ -143,7 +145,7 @@ const boards = [
     widthType: "mid-wide",
     priceFrom: 40_000,
   }),
-];
+].map(toPublicCatalogItem);
 
 function renderCatalog() {
   const view = render(<CatalogView boards={boards} />);
@@ -197,7 +199,7 @@ describe("CatalogView multiselect interactions", () => {
     view.unmount();
     navigation.currentSearch = "style=park";
     render(<CatalogView boards={boards} />);
-    expect(screen.getByText("Стиль, уровень и характеристики").closest("details")?.open).toBe(true);
+    await waitFor(() => expect(screen.getByText("Стиль, уровень и характеристики").closest("details")?.open).toBe(true));
     expect(screen.getByRole("button", { name: "Стиль park / freestyle" })).toBeTruthy();
   });
 
@@ -345,9 +347,9 @@ describe("CatalogView multiselect interactions", () => {
     navigation.currentSearch = "style=park";
     const view = renderCatalog();
 
-    expect(
+    await waitFor(() => expect(
       screen.getByRole("button", { name: "Стиль park / freestyle" }),
-    ).toBeTruthy();
+    ).toBeTruthy());
     expectOnlyBoard("park-board");
 
     navigation.currentSearch = "style=all-mountain";
@@ -363,6 +365,26 @@ describe("CatalogView multiselect interactions", () => {
 });
 
 describe("CatalogView unaffected catalog controls", () => {
+  it("server-renders controls, total count and first 24 cards independently of URL hydration", () => {
+    const corpus = Array.from({ length: 30 }, (_, id) => ({ ...boards[0], slug: `board-${id}` }));
+    const markup = renderToStaticMarkup(<CatalogView boards={corpus} />);
+    expect(markup.match(/<article /g)).toHaveLength(24);
+    expect(markup).toContain("Поиск по каталогу");
+    expect(markup).toContain("30");
+    expect(markup).toContain("Показать ещё");
+  });
+
+  it("preserves load more and session restoration with the compact payload", async () => {
+    const user = userEvent.setup();
+    const corpus = Array.from({ length: 60 }, (_, id) => ({ ...boards[0], slug: `board-${id}` }));
+    const view = render(<CatalogView boards={corpus} />);
+    expect(screen.getAllByRole("article")).toHaveLength(24);
+    await user.click(screen.getByRole("button", { name: "Показать ещё 24" }));
+    expect(screen.getAllByRole("article")).toHaveLength(48);
+    view.unmount();
+    render(<CatalogView boards={corpus} />);
+    await waitFor(() => expect(screen.getAllByRole("article")).toHaveLength(48));
+  });
   it("keeps search working", () => {
     renderCatalog();
 
@@ -416,7 +438,7 @@ describe("CatalogView unaffected catalog controls", () => {
     navigation.currentSearch = "style=park";
     renderCatalog();
 
-    await user.click(screen.getByRole("button", { name: "Сбросить всё" }));
+    await user.click(await screen.findByRole("button", { name: "Сбросить всё" }));
     expect(screen.getAllByRole("article")).toHaveLength(3);
     expect(lastReplacement()).toBe("/catalog");
     expect(screen.queryByRole("button", { name: "Сбросить всё" })).toBeNull();

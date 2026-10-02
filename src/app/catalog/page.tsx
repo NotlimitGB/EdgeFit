@@ -5,7 +5,7 @@ import publicStyles from "@/components/public/public-ui.module.css";
 import { getPublicCanonicalCatalogItems } from "@/lib/public-catalog-cache";
 import styles from "@/components/catalog/catalog.module.css";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
 
 export const metadata: Metadata = {
   title: "Каталог сноубордов",

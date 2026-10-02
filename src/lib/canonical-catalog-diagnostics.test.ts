@@ -25,6 +25,8 @@ import {
   getAllCanonicalCatalogItems,
   getCanonicalCatalogItemBySlug,
   resolveCanonicalBoardRouteBySlug,
+  loadPublicCanonicalCatalog,
+  loadPublicCanonicalBoard,
 } from "@/lib/canonical-catalog";
 import {
   buildCanonicalCatalogItems,
@@ -170,6 +172,18 @@ beforeEach(() => {
 });
 
 describe("canonical catalog diagnostic orchestration", () => {
+  it("public cache loaders use confirmed schema without the legacy schema reader", async () => {
+    const fake = createFakeSql({ familyRows: () => [family], offerRows: () => [offer] });
+    databaseMocks.getClient.mockReturnValue(fake.sql);
+    expect(await loadPublicCanonicalCatalog(completeSupport)).toEqual(buildCanonicalCatalogItems([family], [offer]));
+    expect(databaseMocks.getSupport).not.toHaveBeenCalled();
+    expect(fake.query).toHaveBeenCalledTimes(2);
+    expect((await loadPublicCanonicalBoard(family.slug, completeSupport))?.kind).toBe("render");
+    expect(databaseMocks.getSupport).not.toHaveBeenCalled();
+    expect(fake.query).toHaveBeenCalledTimes(4);
+    await expect(loadPublicCanonicalCatalog({ ...completeSupport, sizeLabel: false })).rejects.toThrow("complete model-family");
+    expect(fake.query).toHaveBeenCalledTimes(4);
+  });
   it("PASSIVE_DIAGNOSTICS_DO_NOT_RESERVE_CONNECTION: loads through the regular shared Sql client", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     vi.spyOn(console, "error").mockImplementation(() => undefined);
