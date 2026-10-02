@@ -97,6 +97,12 @@ export async function getProductColumnSupport(sql: Sql): Promise<ProductColumnSu
     return cachedColumnSupport;
   }
 
+  cachedColumnSupport = await readProductColumnSupport(sql);
+  return cachedColumnSupport;
+}
+
+/** Uncached schema read for bounded, configuration-scoped public caching. */
+export async function readProductColumnSupport(sql: Sql): Promise<ProductColumnSupport> {
   const rows = await sql<SchemaColumnRow[]>`
     select table_name, column_name
     from information_schema.columns
@@ -130,7 +136,5 @@ export async function getProductColumnSupport(sql: Sql): Promise<ProductColumnSu
       )
   `;
 
-  cachedColumnSupport = buildProductColumnSupport(rows);
-
-  return cachedColumnSupport;
+  return buildProductColumnSupport(rows);
 }

@@ -20,16 +20,16 @@ vi.mock("@/components/catalog/catalog-view", () => ({
   ),
 }));
 
-import CatalogPage, { dynamic } from "@/app/catalog/page";
+import CatalogPage, { revalidate } from "@/app/catalog/page";
 
 describe("public catalog page data source", () => {
-  it("keeps the route dynamic and reads through the public cache wrapper", async () => {
+  it("revalidates the route and reads through the public cache wrapper", async () => {
     mocks.getPublicCanonicalCatalogItems.mockResolvedValue([]);
 
     const page = await CatalogPage();
     const markup = renderToStaticMarkup(page);
 
-    expect(dynamic).toBe("force-dynamic");
+    expect(revalidate).toBe(300);
     expect(mocks.getPublicCanonicalCatalogItems).toHaveBeenCalledTimes(1);
     expect(mocks.getAllCanonicalCatalogItems).not.toHaveBeenCalled();
     expect(markup).toContain('data-catalog-board-count="0"');

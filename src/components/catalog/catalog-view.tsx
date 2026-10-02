@@ -1,13 +1,16 @@
 "use client";
 
 import {
+  Suspense,
   useDeferredValue,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { CatalogUrlSync } from "./catalog-url-sync";
+import { CatalogPrefetchProvider } from "./catalog-prefetch";
 import { CanonicalBoardCard } from "@/components/catalog/canonical-board-card";
 import publicStyles from "@/components/public/public-ui.module.css";
 import {
@@ -17,7 +20,7 @@ import {
   widthTypeLabels,
 } from "@/lib/content";
 import type { BoardShape, RidingStyle, SkillLevel } from "@/types/domain";
-import type { CanonicalCatalogItem } from "@/types/canonical-catalog";
+import type { PublicCatalogItem as CanonicalCatalogItem } from "@/lib/public-catalog-dto";
 import {
   compareCanonicalFeatured,
   compareCanonicalPriceAsc,
@@ -98,10 +101,17 @@ function writeStoredVisibleCount(stateKey: string, visibleCount: number) {
 }
 
 export function CatalogView({ boards }: CatalogViewProps) {
+  return (
+    <CatalogPrefetchProvider>
+      <CatalogViewContents boards={boards} />
+    </CatalogPrefetchProvider>
+  );
+}
+
+function CatalogViewContents({ boards }: CatalogViewProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const serializedSearchParams = searchParams.toString();
+  const [serializedSearchParams, setSerializedSearchParams] = useState("");
 
   const brandOptions = useMemo(() => {
     const brands = Array.from(
@@ -331,6 +341,9 @@ export function CatalogView({ boards }: CatalogViewProps) {
 
   return (
     <div className={styles.catalogView}>
+      <Suspense fallback={null}>
+        <CatalogUrlSync onChange={setSerializedSearchParams} />
+      </Suspense>
       <section
         className={`${publicStyles.raisedTechnicalSurface} ${styles.filters}`}
         aria-labelledby="catalog-filters-title"

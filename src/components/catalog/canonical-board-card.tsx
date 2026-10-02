@@ -11,7 +11,8 @@ import {
   ridingStyleLabels,
 } from "@/lib/content";
 import { buildStoreRedirectHref } from "@/lib/store-redirect";
-import type { CanonicalCatalogItem } from "@/types/canonical-catalog";
+import type { PublicCatalogItem as CanonicalCatalogItem } from "@/lib/public-catalog-dto";
+import { useCatalogIntentPrefetch } from "./catalog-prefetch";
 import {
   getCanonicalAvailabilityHeadline,
   getCanonicalAvailabilityPreview,
@@ -96,6 +97,7 @@ export function CanonicalBoardCard({
     (imageUrl) => !failedImageUrls.includes(imageUrl),
   );
   const modelHref = `/boards/${board.slug}`;
+  const intentPrefetch = useCatalogIntentPrefetch(modelHref);
   const availabilityHeadline = getCanonicalAvailabilityHeadline(board);
   const availabilityPreview = getCanonicalAvailabilityPreview(board);
   const price = getCanonicalPricePresentation(board.priceFrom);
@@ -131,6 +133,7 @@ export function CanonicalBoardCard({
       <Link
         href={modelHref}
         prefetch={false}
+        {...intentPrefetch}
         className={boardCardStyles.imageLink}
         aria-label={`Открыть модель ${board.brand} ${board.modelName}`}
       >
@@ -171,7 +174,7 @@ export function CanonicalBoardCard({
           <div className={boardCardStyles.identity}>
             <p>{board.brand}</p>
             <h3>
-              <Link href={modelHref} prefetch={false}>
+              <Link href={modelHref} prefetch={false} {...intentPrefetch}>
                 {board.modelName}
               </Link>
             </h3>
@@ -212,6 +215,7 @@ export function CanonicalBoardCard({
           <Link
             href={modelHref}
             prefetch={false}
+            {...intentPrefetch}
             className={`${publicStyles.secondaryAction} ${boardCardStyles.cardAction} ${
               shopHref ? "" : catalogStyles.singleCardAction
             }`}

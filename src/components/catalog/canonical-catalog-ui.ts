@@ -1,8 +1,8 @@
 import { formatMoney } from "@/lib/content";
 import type {
-  CanonicalCatalogItem,
-  CanonicalSizeVariant,
-} from "@/types/canonical-catalog";
+  PublicCatalogItem as CanonicalCatalogItem,
+  PublicCatalogSize as CanonicalSizeVariant,
+} from "@/lib/public-catalog-dto";
 import type { WidthType } from "@/types/domain";
 
 const WIDTH_ORDER: readonly WidthType[] = ["regular", "mid-wide", "wide"];
@@ -60,21 +60,21 @@ export function isKnownCanonicalPrice(
   return price != null && Number.isFinite(price) && price > 0;
 }
 
-export function getCanonicalActiveSizes(
-  board: CanonicalCatalogItem,
-): CanonicalSizeVariant[] {
+export function getCanonicalActiveSizes<T extends CanonicalSizeVariant>(
+  board: { sizes: T[] },
+): T[] {
   return board.sizes.filter((size) => size.offerIsActive);
 }
 
-export function getCanonicalAvailableSizes(
-  board: CanonicalCatalogItem,
-): CanonicalSizeVariant[] {
+export function getCanonicalAvailableSizes<T extends CanonicalSizeVariant>(
+  board: { sizes: T[] },
+): T[] {
   return getCanonicalActiveSizes(board).filter((size) => size.isAvailable);
 }
 
-export function getCanonicalFilterSizes(
-  board: CanonicalCatalogItem,
-): CanonicalSizeVariant[] {
+export function getCanonicalFilterSizes<T extends CanonicalSizeVariant>(
+  board: { sizes: T[] },
+): T[] {
   const availableSizes = getCanonicalAvailableSizes(board);
   return availableSizes.length > 0
     ? availableSizes

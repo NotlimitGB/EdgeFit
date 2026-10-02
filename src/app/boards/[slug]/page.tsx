@@ -13,16 +13,14 @@ import {
   getCanonicalBoardTrustDetails,
   getCanonicalCurrentAvailableSizes,
   getCanonicalFlexPresentation,
-  getCanonicalNarrativeOfferSlug,
   getCanonicalSizeStoreAction,
   getCanonicalSizeAvailabilityLabel,
   isCanonicalSizeCurrentlyAvailable,
 } from "@/lib/canonical-board-detail";
 import {
   getAllCanonicalBoardSlugs,
-  resolveCanonicalBoardRouteBySlug,
 } from "@/lib/canonical-catalog";
-import { createBoardPageDiagnostics } from "@/lib/board-page-load-diagnostics";
+import { getPublicBoardBundle } from "@/lib/public-board-cache";
 import {
   boardShapeLabels,
   camberProfileLabels,
@@ -30,7 +28,6 @@ import {
   skillLevelLabels,
   widthTypeLabels,
 } from "@/lib/content";
-import { getProductBySlug } from "@/lib/products";
 import { buildStoreRedirectHref } from "@/lib/store-redirect";
 import { formatRecommendedWeightRange } from "@/lib/weight-range";
 import styles from "./board-detail.module.css";
@@ -56,7 +53,7 @@ export async function generateMetadata({
   params,
 }: BoardPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const resolution = await resolveCanonicalBoardRouteBySlug(slug);
+  const resolution = (await getPublicBoardBundle(slug))?.resolution;
 
   if (!resolution) {
     return {
@@ -88,7 +85,8 @@ export async function generateMetadata({
 
 export default async function BoardPage({ params }: BoardPageProps) {
   const { slug } = await params;
-  const resolution = await resolveCanonicalBoardRouteBySlug(slug);
+  const bundle = await getPublicBoardBundle(slug);
+  const resolution = bundle?.resolution;
 
   if (!resolution) {
     notFound();
@@ -98,13 +96,7 @@ export default async function BoardPage({ params }: BoardPageProps) {
   }
 
   const board = resolution.item;
-  const narrativeOfferSlug = getCanonicalNarrativeOfferSlug(board);
-  const diagnostics = createBoardPageDiagnostics();
-  const narrativeProduct = narrativeOfferSlug
-    ? await diagnostics.runStage("narrative_product_lookup", () =>
-        getProductBySlug(narrativeOfferSlug),
-      )
-    : undefined;
+  const narrativeProduct = bundle?.narrative;
   const specs = board.canonicalSpecs;
   const trustDetails = getCanonicalBoardTrustDetails(specs);
   const flexPresentation = getCanonicalFlexPresentation(specs);
