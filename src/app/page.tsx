@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { CatalogEntryLink } from "@/components/catalog/catalog-entry-link";
 import { MountEvent } from "@/components/analytics/mount-event";
 import publicStyles from "@/components/public/public-ui.module.css";
 import { getSeoLandingPath, seoLandingPages } from "@/lib/seo-pages";
@@ -183,13 +184,11 @@ export default function Home() {
               Подобрать сноуборд
               <span aria-hidden="true">→</span>
             </Link>
-            <Link
-              href="/catalog"
-              prefetch={false}
+            <CatalogEntryLink
               className={`${publicStyles.secondaryAction} snowdex-home__cta-secondary`}
             >
               Смотреть каталог
-            </Link>
+            </CatalogEntryLink>
           </div>
         </div>
 

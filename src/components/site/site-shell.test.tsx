@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+vi.mock("next/navigation", () => ({ useRouter: () => ({ prefetch: vi.fn() }), usePathname: () => "/" }));
 vi.mock("next/link", () => ({
   default: ({ href, children, prefetch, ...props }: React.ComponentProps<"a"> & { prefetch?: boolean }) => <a href={String(href)} data-prefetch={String(prefetch)} {...props}>{children}</a>,
 }));
