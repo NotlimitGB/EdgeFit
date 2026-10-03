@@ -1,9 +1,11 @@
-import { formatMoney } from "@/lib/content";
+import { formatMoney, boardShapeLabels, ridingStyleLabels } from "@/lib/content";
 import type {
-  PublicCatalogItem as CanonicalCatalogItem,
+  PublicCatalogItem,
   PublicCatalogSize as CanonicalSizeVariant,
 } from "@/lib/public-catalog-dto";
 import type { WidthType } from "@/types/domain";
+import type { CanonicalCatalogItem as FullCanonicalItem } from "@/types/canonical-catalog";
+type CanonicalCatalogItem = PublicCatalogItem | FullCanonicalItem;
 
 const WIDTH_ORDER: readonly WidthType[] = ["regular", "mid-wide", "wide"];
 
@@ -46,7 +48,7 @@ function checkedAtValue(value: string | null) {
   return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
-function normalizeSearchValue(value: string) {
+export function normalizeCatalogSearch(value: string) {
   return value
     .toLocaleLowerCase("ru")
     .replace(/[-_]+/gu, " ")
@@ -82,12 +84,14 @@ export function getCanonicalFilterSizes<T extends CanonicalSizeVariant>(
 }
 
 export function getCanonicalAvailableSizeCount(board: CanonicalCatalogItem) {
+  if ("availableSizeCount" in board) return board.availableSizeCount;
   return getCanonicalAvailableSizes(board).length;
 }
 
 export function getCanonicalWidthTypes(
   board: CanonicalCatalogItem,
 ): WidthType[] {
+  if ("widthTypes" in board) return board.widthTypes;
   const selectedWidths = new Set(
     getCanonicalFilterSizes(board).map((size) => size.widthType),
   );
@@ -136,6 +140,8 @@ export function getCanonicalAvailabilityPreview(
   board: CanonicalCatalogItem,
   limit = 5,
 ) {
+  if ("availabilityPreview" in board && limit === 5) return board.availabilityPreview;
+  if (!("sizes" in board)) throw new Error("Custom preview limits require canonical sizes");
   const labels = getCanonicalAvailableSizes(board)
     .map((size) => size.displaySizeLabel.trim())
     .filter(Boolean);
@@ -156,19 +162,20 @@ export function matchesCanonicalCatalogSearch(
   board: CanonicalCatalogItem,
   query: string,
 ) {
-  const normalizedQuery = normalizeSearchValue(query);
+  const normalizedQuery = normalizeCatalogSearch(query);
 
   if (!normalizedQuery) {
     return true;
   }
 
+  if ("searchText" in board) return board.searchText.includes(normalizedQuery);
   const searchValues = [
     board.brand,
     board.modelName,
     board.slug,
     ...board.offers.map((offer) => offer.offerSlug),
   ];
-  const haystack = normalizeSearchValue(searchValues.join(" "));
+  const haystack = normalizeCatalogSearch(searchValues.join(" "));
 
   return haystack.includes(normalizedQuery);
 }
@@ -177,6 +184,8 @@ export function compareCanonicalPriceAsc(
   left: CanonicalCatalogItem,
   right: CanonicalCatalogItem,
 ) {
+  if ("sortRanks" in left && left.sortRanks && "sortRanks" in right && right.sortRanks)
+    return left.sortRanks.priceAsc - right.sortRanks.priceAsc;
   const leftPrice = left.priceFrom;
   const rightPrice = right.priceFrom;
   const leftKnown = isKnownCanonicalPrice(leftPrice);
@@ -197,6 +206,8 @@ export function compareCanonicalPriceDesc(
   left: CanonicalCatalogItem,
   right: CanonicalCatalogItem,
 ) {
+  if ("sortRanks" in left && left.sortRanks && "sortRanks" in right && right.sortRanks)
+    return left.sortRanks.priceDesc - right.sortRanks.priceDesc;
   const leftPrice = left.priceFrom;
   const rightPrice = right.priceFrom;
   const leftKnown = isKnownCanonicalPrice(leftPrice);
@@ -217,9 +228,11 @@ export function compareCanonicalFeatured(
   left: CanonicalCatalogItem,
   right: CanonicalCatalogItem,
 ) {
+  if ("sortRanks" in left && left.sortRanks && "sortRanks" in right && right.sortRanks)
+    return left.sortRanks.featured - right.sortRanks.featured;
   const verifiedDelta =
-    Number(right.canonicalSpecs.dataStatus === "verified") -
-    Number(left.canonicalSpecs.dataStatus === "verified");
+    Number("dataStatus" in right.canonicalSpecs && right.canonicalSpecs.dataStatus === "verified") -
+    Number("dataStatus" in left.canonicalSpecs && left.canonicalSpecs.dataStatus === "verified");
 
   if (verifiedDelta !== 0) {
     return verifiedDelta;
@@ -233,13 +246,31 @@ export function compareCanonicalFeatured(
   }
 
   const freshnessDelta =
-    checkedAtValue(right.canonicalSpecs.sourceCheckedAt) -
-    checkedAtValue(left.canonicalSpecs.sourceCheckedAt);
+    checkedAtValue("sourceCheckedAt" in right.canonicalSpecs ? right.canonicalSpecs.sourceCheckedAt : null) -
+    checkedAtValue("sourceCheckedAt" in left.canonicalSpecs ? left.canonicalSpecs.sourceCheckedAt : null);
   if (freshnessDelta !== 0) {
     return freshnessDelta;
   }
 
   return compareCanonicalPriceAsc(left, right);
+}
+
+export function getCanonicalDescription(board: CanonicalCatalogItem) {
+  const description = board.canonicalSpecs.descriptionShort?.trim();
+  if (description) return description;
+  const { boardLine, ridingStyle, shapeType, skillLevel } = board.canonicalSpecs;
+  const lines = { men: "Мужская", women: "Женская", unisex: "Универсальная" };
+  const identity = [boardLine ? lines[boardLine] : null, ridingStyle ? ridingStyleLabels[ridingStyle] : null].filter(Boolean);
+  const shape = shapeType ? boardShapeLabels[shapeType] : null;
+  const first = identity.length ? `${identity.join(" ")} доска${shape ? ` с формой ${shape}` : ""}.`
+    : shape ? `Модель с формой ${shape}.` : "";
+  const hints = {
+    beginner: "Характеристики ориентированы на первые сезоны и спокойный прогресс.",
+    intermediate: "Характеристики лучше раскрываются на среднем уровне и при уверенном базовом катании.",
+    advanced: "Характеристики рассчитаны на уверенное катание и заметную нагрузку на доску.",
+  };
+  return [first, skillLevel ? hints[skillLevel] : ""].filter(Boolean).join(" ")
+    || "Сравни геометрию, доступные размеры и характеристики модели.";
 }
 
 export function getCanonicalPricePresentation(price: number | null) {

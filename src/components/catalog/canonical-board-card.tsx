@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { TrackedStoreLink } from "@/components/analytics/tracked-store-link";
 import boardCardStyles from "@/components/boards/board-card.module.css";
 import publicStyles from "@/components/public/public-ui.module.css";
@@ -36,63 +36,13 @@ const boardLineLabels: Record<
   unisex: "Универсальная",
 };
 
-function getSkillHint(
-  skillLevel: CanonicalCatalogItem["canonicalSpecs"]["skillLevel"],
-) {
-  switch (skillLevel) {
-    case "beginner":
-      return "Характеристики ориентированы на первые сезоны и спокойный прогресс.";
-    case "intermediate":
-      return "Характеристики лучше раскрываются на среднем уровне и при уверенном базовом катании.";
-    case "advanced":
-      return "Характеристики рассчитаны на уверенное катание и заметную нагрузку на доску.";
-    default:
-      return "";
-  }
-}
-
-function buildDescription(board: CanonicalCatalogItem) {
-  const description = board.canonicalSpecs.descriptionShort?.trim();
-  if (description) {
-    return description;
-  }
-
-  const { boardLine, ridingStyle, shapeType, skillLevel } =
-    board.canonicalSpecs;
-  const identityParts = [
-    boardLine ? boardLineLabels[boardLine] : null,
-    ridingStyle ? ridingStyleLabels[ridingStyle] : null,
-  ].filter((value): value is string => value != null);
-  const shapeLabel = shapeType ? boardShapeLabels[shapeType] : null;
-  const firstSentence =
-    identityParts.length > 0
-      ? `${identityParts.join(" ")} доска${
-          shapeLabel ? ` с формой ${shapeLabel}` : ""
-        }.`
-      : shapeLabel
-        ? `Модель с формой ${shapeLabel}.`
-        : "";
-  const skillHint = getSkillHint(skillLevel);
-
-  return (
-    [firstSentence, skillHint].filter(Boolean).join(" ") ||
-    "Сравни геометрию, доступные размеры и характеристики модели."
-  );
-}
-
-function getImageCandidates(board: CanonicalCatalogItem) {
-  return Array.from(
-    new Set(board.media.map((imageUrl) => imageUrl.trim()).filter(Boolean)),
-  );
-}
-
-export function CanonicalBoardCard({
+export const CanonicalBoardCard = memo(function CanonicalBoardCard({
   board,
   storeFrom = "catalog-card",
   storePlacement = "catalog",
 }: CanonicalBoardCardProps) {
   const [failedImageUrls, setFailedImageUrls] = useState<string[]>([]);
-  const imageCandidates = getImageCandidates(board);
+  const imageCandidates = board.media;
   const activeImageUrl = imageCandidates.find(
     (imageUrl) => !failedImageUrls.includes(imageUrl),
   );
@@ -188,7 +138,7 @@ export function CanonicalBoardCard({
           </div>
         </div>
 
-        <p className={boardCardStyles.description}>{buildDescription(board)}</p>
+        <p className={boardCardStyles.description}>{board.canonicalSpecs.descriptionShort}</p>
 
         <dl className={boardCardStyles.technicalFacts}>
           {technicalFacts.map((fact) => (
@@ -238,4 +188,4 @@ export function CanonicalBoardCard({
       </div>
     </article>
   );
-}
+});

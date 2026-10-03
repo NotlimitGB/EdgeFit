@@ -432,6 +432,11 @@
   gap: 1rem;
 }
 
+/* Keep intrinsic grid sizing and focus/paint intact; no guessed off-screen heights. */
+.boardGrid > article {
+  contain: layout;
+}
+
 .singleCardAction {
   grid-column: 1 / -1;
 }

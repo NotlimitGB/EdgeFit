@@ -25,7 +25,6 @@ import {
   compareCanonicalFeatured,
   compareCanonicalPriceAsc,
   compareCanonicalPriceDesc,
-  getCanonicalFilterSizes,
   matchesCanonicalCatalogSearch,
 } from "./canonical-catalog-ui";
 import {
@@ -219,8 +218,8 @@ function CatalogViewContents({ boards }: CatalogViewProps) {
           return true;
         }
 
-        return getCanonicalFilterSizes(board).some((size) =>
-          selectedWidths.includes(size.widthType),
+        return board.widthTypes.some((widthType) =>
+          selectedWidths.includes(widthType),
         );
       })
       .sort((left, right) => {

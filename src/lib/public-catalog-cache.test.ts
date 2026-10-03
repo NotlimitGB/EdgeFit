@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CanonicalCatalogItem } from "@/types/canonical-catalog";
-import { toPublicCatalogItem } from "@/lib/public-catalog-dto";
+import { toPublicCatalogItem, toPublicCatalogItems } from "@/lib/public-catalog-dto";
 import { compareCanonicalFeatured, compareCanonicalPriceAsc, compareCanonicalPriceDesc,
   getCanonicalAvailabilityHeadline, getCanonicalAvailabilityPreview,
   getCanonicalWidthSummary, matchesCanonicalCatalogSearch } from "@/components/catalog/canonical-catalog-ui";
@@ -120,7 +120,7 @@ describe("public catalog cache", () => {
     expect(mocks.unstableCache).toHaveBeenCalledTimes(1);
     expect(mocks.unstableCache).toHaveBeenCalledWith(
       expect.any(Function),
-      ["edgefit-public-canonical-catalog-v2"],
+      ["edgefit-public-canonical-catalog-v3"],
       {
         revalidate: 300,
         tags: ["edgefit-public-canonical-catalog"],
@@ -134,7 +134,7 @@ describe("public catalog cache", () => {
     const first = await getPublicCanonicalCatalogItems();
     const second = await getPublicCanonicalCatalogItems();
 
-    expect(first).toEqual(boards.map(toPublicCatalogItem));
+    expect(first).toEqual(toPublicCatalogItems(boards));
     expect(second).toEqual(first);
     expect(mocks.getAllCanonicalCatalogItems).toHaveBeenCalledTimes(1);
     expect(mocks.getSupport).toHaveBeenCalledTimes(2);
@@ -173,11 +173,10 @@ describe("public catalog cache", () => {
       defaultOfferSlug: "brand-model-offer",
     });
     expect(roundTripped[0].canonicalSpecs.ridingStyle).toBe("all-mountain");
-    expect(roundTripped[0].offers).toHaveLength(1);
-    expect(roundTripped[0].sizes[0]).toMatchObject({
-      displaySizeLabel: "156W",
-      widthType: "wide",
-    });
+    expect(roundTripped[0].offers).toBeUndefined();
+    expect(roundTripped[0].sizes).toBeUndefined();
+    expect(roundTripped[0].widthTypes).toEqual(["wide"]);
+    expect(roundTripped[0].availabilityPreview).toBe("Отмеченные размеры: 156W.");
   });
 
   it("reduces identical-fixture bytes while preserving presentation and search", () => {
@@ -199,8 +198,9 @@ describe("public catalog cache", () => {
   it("keeps variant ordering, duplicates, fallback widths and sort tie-breaks", () => {
     const input = [boards[0], { ...boards[0], slug: "other", priceFrom: null,
       sizes: [boards[0].sizes[0], { ...boards[0].sizes[0], isAvailable: false, widthType: "regular" as const }, boards[0].sizes[0]] }];
-    const projected = input.map(toPublicCatalogItem);
-    expect(projected[1].sizes.map((size) => size.displaySizeLabel)).toEqual(["156W", "156W", "156W"]);
+    const projected = toPublicCatalogItems(input);
+    expect(projected[1].availabilityPreview).toBe("Отмеченные размеры: 156W, 156W.");
+    expect(projected[1].availableSizeCount).toBe(2);
     for (const sorter of [compareCanonicalFeatured, compareCanonicalPriceAsc, compareCanonicalPriceDesc])
       expect([...projected].sort(sorter).map((item) => item.slug))
         .toEqual([...input].sort(sorter).map((item) => item.slug));
