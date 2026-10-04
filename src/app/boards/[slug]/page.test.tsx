@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { CanonicalCatalogItem } from "@/types/canonical-catalog";
+import { resolveCanonicalBoardRoute } from "@/lib/canonical-board-route";
 
 const mocks = vi.hoisted(() => ({
   resolve: vi.fn(),
@@ -152,6 +153,30 @@ describe("canonical board metadata", () => {
 });
 
 describe("canonical board page loading", () => {
+  it("renders the published Evil Twin 25/26 with its own canonical and focused CTA", async () => {
+    const item: CanonicalCatalogItem = {
+      ...board, slug: "bataleon-evil-twin-trial-sport-3131268",
+      brand: "Bataleon", modelName: "EVIL TWIN", seasonLabel: "2025/2026",
+      defaultOfferSlug: "bataleon-evil-twin-trial-sport-3131268",
+    };
+    mocks.resolve.mockImplementation((requestedSlug: string) => resolveCanonicalBoardRoute({
+      requestedSlug,
+      loadCanonicalItemBySlug: async (slug) => slug === item.slug ? item : undefined,
+      loadFamilyAliasTargetBySlug: async () => undefined,
+    }));
+    const props = { params: Promise.resolve({ slug: item.slug }) };
+    const metadata = await generateMetadata(props);
+    expect(metadata).toMatchObject({
+      title: "Bataleon EVIL TWIN 2025/2026",
+      alternates: { canonical: `/boards/${item.slug}` },
+      openGraph: { url: `/boards/${item.slug}` },
+    });
+    const markup = renderToStaticMarkup(await BoardPage(props));
+    expect(markup).toContain("EVIL TWIN");
+    expect(markup).toContain("2025/2026");
+    expect(markup.match(new RegExp(`href="/quiz\\?board=${item.slug}"`, "gu"))).toHaveLength(2);
+  });
+
   it("keeps the primary board and narrative lookup without loading the full catalog", async () => {
     mocks.resolve.mockResolvedValue({ kind: "render", item: board });
     mocks.getProduct.mockResolvedValue(undefined);
