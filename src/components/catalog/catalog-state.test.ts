@@ -16,6 +16,21 @@ import {
 const brands = ["Burton", "YES.", "Jones"];
 
 describe("catalog state", () => {
+  it.each(["Capita", "CAPiTA", "Burton"])("keeps legacy brand=%s compatible", (brand) => {
+    expect(parseCatalogState(new URLSearchParams({ brand }), ["Capita", "CAPiTA", "Burton"]).brands)
+      .toEqual([brand === "Burton" ? "Burton" : "CAPiTA"]);
+  });
+
+  it("deduplicates, normalizes and orders brands across URL round trips and keys", () => {
+    const state = parseCatalogState(new URLSearchParams("brand=Capita&brand=Burton&brand=CAPiTA&brand=unknown&brand=all"), ["CAPiTA", "Burton"]);
+    expect(state.brands).toEqual(["Burton", "CAPiTA"]);
+    const params = buildCatalogSearchParams(new URLSearchParams("ref=x"), state);
+    expect(params.getAll("brand")).toEqual(["Burton", "CAPiTA"]);
+    expect(params.get("ref")).toBe("x");
+    expect(parseCatalogState(params, ["Capita", "Burton"])).toEqual(state);
+    expect(getCatalogStateKey({ ...state, brands: ["Capita", "Burton", "CAPiTA"] })).toBe(getCatalogStateKey(state));
+    expect(buildCatalogSearchParams(params, CATALOG_DEFAULT_STATE).getAll("brand")).toEqual([]);
+  });
   it("uses empty multi-select arrays for an empty query string", () => {
     expect(parseCatalogState(new URLSearchParams(), brands)).toEqual(
       CATALOG_DEFAULT_STATE,
@@ -75,7 +90,7 @@ describe("catalog state", () => {
   it("serializes a complete multi-filter state with repeated params", () => {
     const result = buildCatalogSearchParams(new URLSearchParams(), {
       q: "Mountain Twin",
-      brand: "YES.",
+      brands: ["YES."],
       styles: ["all-mountain", "freeride"],
       skills: ["intermediate", "advanced"],
       shapes: ["twin", "directional-twin"],
@@ -125,7 +140,7 @@ describe("catalog state", () => {
   it("round trips normalized multi-value state", () => {
     const state: CatalogUrlState = {
       q: "  Custom X  ",
-      brand: "Jones",
+      brands: ["Jones"],
       styles: ["park", "freeride"],
       skills: ["beginner", "advanced"],
       shapes: ["asym-twin", "directional"],
@@ -161,8 +176,8 @@ describe("catalog state", () => {
 
   it("requires an exact known brand", () => {
     expect(
-      parseCatalogState(new URLSearchParams("brand=yes."), brands).brand,
-    ).toBe("all");
+      parseCatalogState(new URLSearchParams("brand=yes."), brands).brands,
+    ).toEqual([]);
   });
 
   it("preserves duplicate unrelated params", () => {

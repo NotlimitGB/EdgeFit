@@ -188,6 +188,75 @@ afterEach(() => {
 });
 
 describe("CatalogView multiselect interactions", () => {
+  const brandCorpus = [
+    { ...boards[0], slug: "capita-a", brand: "Capita", canonicalSpecs: { ...boards[0].canonicalSpecs, ridingStyle: "freeride" as const } },
+    { ...boards[1], slug: "capita-b", brand: "CAPiTA", canonicalSpecs: { ...boards[1].canonicalSpecs, ridingStyle: "park" as const } },
+    { ...boards[2], slug: "burton-c", brand: "Burton" },
+    { ...boards[2], slug: "jones-d", brand: "Jones" },
+  ];
+
+  it("merges logical brands, ORs selections, ANDs style and counts one group", async () => {
+    const user = userEvent.setup();
+    const view = render(<CatalogView boards={brandCorpus} />);
+    await user.click(screen.getByRole("button", { name: "Бренд Все бренды" }));
+    expect(screen.getAllByRole("checkbox", { name: "CAPiTA" })).toHaveLength(1);
+    expect(screen.queryByRole("checkbox", { name: "Capita" })).toBeNull();
+    await user.click(screen.getByRole("checkbox", { name: "CAPiTA" }));
+    expect(screen.getAllByRole("article")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Бренд CAPiTA" })).toBeTruthy();
+    navigation.currentSearch = "brand=CAPiTA";
+    view.rerender(<CatalogView boards={brandCorpus} />);
+    await user.click(screen.getByRole("checkbox", { name: "Burton" }));
+    expect(screen.getAllByRole("article")).toHaveLength(3);
+    expect(screen.getByText("Активных фильтров: 1")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Бренд Выбрано: 2" })).toBeTruthy();
+    expect(lastReplacement()).toBe("/catalog?brand=Burton&brand=CAPiTA");
+    navigation.currentSearch = "brand=Burton&brand=CAPiTA";
+    view.rerender(<CatalogView boards={brandCorpus} />);
+    await user.click(screen.getByText("Стиль, уровень и характеристики"));
+    await user.click(screen.getByRole("button", { name: "Стиль Все стили" }));
+    await user.click(screen.getByRole("checkbox", { name: "freeride / powder" }));
+    expect(screen.getAllByRole("article").map((e) => e.dataset.testid).sort()).toEqual(["board-burton-c", "board-capita-a"]);
+    expect(brandCorpus[0].brand).toBe("Capita");
+  });
+
+  it("restores legacy and repeated brand URLs, external history and reset", async () => {
+    const user = userEvent.setup();
+    navigation.currentSearch = "brand=Capita";
+    const view = render(<CatalogView boards={brandCorpus} />);
+    await waitFor(() => expect(screen.getAllByRole("article")).toHaveLength(2));
+    expect(screen.getByRole("button", { name: "Бренд CAPiTA" })).toBeTruthy();
+    navigation.currentSearch = "brand=Burton&brand=CAPiTA";
+    view.rerender(<CatalogView boards={brandCorpus} />);
+    await waitFor(() => expect(screen.getAllByRole("article")).toHaveLength(3));
+    navigation.currentSearch = "brand=Burton";
+    view.rerender(<CatalogView boards={brandCorpus} />);
+    await waitFor(() => expectOnlyBoard("burton-c"));
+    await user.click(screen.getByRole("button", { name: "Сбросить всё" }));
+    expect(screen.getAllByRole("article")).toHaveLength(4);
+    expect(screen.getByRole("button", { name: "Бренд Все бренды" })).toBeTruthy();
+    expect(lastReplacement()).toBe("/catalog");
+  });
+
+  it("deselects one brand, resets its group and restores focus on Escape", async () => {
+    const user = userEvent.setup();
+    navigation.currentSearch = "brand=Burton&brand=CAPiTA";
+    const view = render(<CatalogView boards={brandCorpus} />);
+    await user.click(await screen.findByRole("button", { name: "Бренд Выбрано: 2" }));
+    await user.click(screen.getByRole("checkbox", { name: "Burton" }));
+    expect(screen.getAllByRole("article")).toHaveLength(2);
+    expect(lastReplacement()).toBe("/catalog?brand=CAPiTA");
+    navigation.currentSearch = "brand=CAPiTA";
+    view.rerender(<CatalogView boards={brandCorpus} />);
+    await user.click(within(screen.getByRole("group", { name: "Бренд" })).getByRole("button"));
+    expect(screen.getAllByRole("article")).toHaveLength(4);
+    expect(lastReplacement()).toBe("/catalog");
+    const trigger = screen.getByRole("button", { name: "Бренд Все бренды" });
+    if (trigger.getAttribute("aria-expanded") !== "true") await user.click(trigger);
+    await user.keyboard("{Escape}");
+    expect(document.activeElement).toBe(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  });
   it("discloses extra filters without hiding an active deep-linked selection", async () => {
     const user = userEvent.setup();
     const view = render(<CatalogView boards={boards} />);
@@ -396,14 +465,12 @@ describe("CatalogView unaffected catalog controls", () => {
     expect(lastReplacement()).toBe("/catalog?q=Park");
   });
 
-  it("keeps the brand select working", async () => {
+  it("keeps the brand checkbox working", async () => {
     const user = userEvent.setup();
     renderCatalog();
 
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: "Бренд" }),
-      "Alpha",
-    );
+    await user.click(screen.getByRole("button", { name: "Бренд Все бренды" }));
+    await user.click(screen.getByRole("checkbox", { name: "Alpha" }));
     expect(screen.getAllByRole("article")).toHaveLength(2);
     expect(lastReplacement()).toBe("/catalog?brand=Alpha");
   });

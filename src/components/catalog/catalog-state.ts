@@ -1,3 +1,4 @@
+import { getCatalogBrands, normalizeCatalogBrand } from "./catalog-brand";
 import type {
   BoardShape,
   Product,
@@ -10,7 +11,7 @@ export type CatalogSort = "default" | "price-asc" | "price-desc";
 
 export interface CatalogUrlState {
   q: string;
-  brand: string;
+  brands: string[];
   styles: readonly RidingStyle[];
   skills: readonly SkillLevel[];
   shapes: readonly BoardShape[];
@@ -21,7 +22,7 @@ export interface CatalogUrlState {
 
 export const CATALOG_DEFAULT_STATE: CatalogUrlState = {
   q: "",
-  brand: "all",
+  brands: [],
   styles: [],
   skills: [],
   shapes: [],
@@ -98,15 +99,14 @@ export function parseCatalogState(
   allowedBrands: readonly string[],
 ): CatalogUrlState {
   const q = searchParams.get("q")?.trim() ?? "";
-  const brandParam = searchParams.get("brand");
   const sortParam = searchParams.get("sort");
 
   return {
     q,
-    brand:
-      brandParam !== null && allowedBrands.includes(brandParam)
-        ? brandParam
-        : "all",
+    brands: normalizeSelectedValues(
+      searchParams.getAll("brand").map(normalizeCatalogBrand),
+      getCatalogBrands(allowedBrands),
+    ),
     styles: normalizeSelectedValues(
       searchParams.getAll("style"),
       CATALOG_RIDING_STYLES,
@@ -144,7 +144,9 @@ export function buildCatalogSearchParams(
   const normalizedQuery = state.q.trim();
 
   if (normalizedQuery) nextSearchParams.set("q", normalizedQuery);
-  if (state.brand !== "all") nextSearchParams.set("brand", state.brand);
+  for (const brand of getCatalogBrands(state.brands)) {
+    nextSearchParams.append("brand", brand);
+  }
   for (const style of normalizeSelectedValues(
     state.styles,
     CATALOG_RIDING_STYLES,

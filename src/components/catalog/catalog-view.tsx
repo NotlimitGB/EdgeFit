@@ -10,6 +10,7 @@ import {
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { CatalogUrlSync } from "./catalog-url-sync";
+import { getCatalogBrands, normalizeCatalogBrand } from "./catalog-brand";
 import { CatalogPrefetchProvider } from "./catalog-prefetch";
 import { CanonicalBoardCard } from "@/components/catalog/canonical-board-card";
 import publicStyles from "@/components/public/public-ui.module.css";
@@ -49,7 +50,7 @@ interface CatalogViewProps {
 const PAGE_SIZE = 24;
 const VISIBLE_COUNT_STORAGE_KEY = "edgefit:catalog-visible-count:v2";
 
-type MultiSelectKey = "style" | "skill" | "line" | "shape";
+type MultiSelectKey = "brand" | "style" | "skill" | "line" | "shape";
 
 interface StoredVisibleCount {
   stateKey: string;
@@ -112,18 +113,18 @@ function CatalogViewContents({ boards }: CatalogViewProps) {
   const pathname = usePathname();
   const [serializedSearchParams, setSerializedSearchParams] = useState("");
 
+  const normalizedBrands = useMemo(
+    () => new Map(boards.map((board) => [board, normalizeCatalogBrand(board.brand)])),
+    [boards],
+  );
   const brandOptions = useMemo(() => {
-    const brands = Array.from(
-      new Set(boards.map((board) => board.brand.trim()).filter(Boolean)),
-    ).sort((left, right) => left.localeCompare(right, "ru"));
-
-    return [{ value: "all", label: "Любой бренд" }, ...brands.map((value) => ({
+    return getCatalogBrands([...normalizedBrands.values()]).map((value) => ({
       value,
       label: value,
-    }))];
-  }, [boards]);
+    }));
+  }, [normalizedBrands]);
   const brandValues = useMemo(
-    () => brandOptions.slice(1).map((option) => option.value),
+    () => brandOptions.map((option) => option.value),
     [brandOptions],
   );
   const urlCatalogState = useMemo(
@@ -175,7 +176,7 @@ function CatalogViewContents({ boards }: CatalogViewProps) {
 
   const {
     q: query,
-    brand,
+    brands: selectedBrands,
     styles: selectedStyles,
     skills: selectedSkills,
     shapes: selectedShapes,
@@ -188,7 +189,8 @@ function CatalogViewContents({ boards }: CatalogViewProps) {
   const filteredBoards = useMemo(() => {
     return boards
       .filter((board) => matchesCanonicalCatalogSearch(board, deferredQuery))
-      .filter((board) => (brand === "all" ? true : board.brand === brand))
+      .filter((board) => selectedBrands.length === 0 ||
+        selectedBrands.includes(normalizedBrands.get(board) ?? ""))
       .filter((board) =>
         selectedStyles.length === 0
           ? true
@@ -235,7 +237,8 @@ function CatalogViewContents({ boards }: CatalogViewProps) {
       });
   }, [
     boards,
-    brand,
+    selectedBrands,
+    normalizedBrands,
     selectedStyles,
     selectedSkills,
     selectedShapes,
@@ -273,7 +276,7 @@ function CatalogViewContents({ boards }: CatalogViewProps) {
   const visibleBoards = filteredBoards.slice(0, visibleCount);
   const activeFilterCount = [
     query.trim().length > 0,
-    brand !== "all",
+    selectedBrands.length > 0,
     selectedStyles.length > 0,
     selectedSkills.length > 0,
     selectedShapes.length > 0,
@@ -370,10 +373,14 @@ function CatalogViewContents({ boards }: CatalogViewProps) {
             />
           </label>
 
-          <SelectField
+          <MultiSelectField<string>
+            id="brand"
             label="Бренд"
-            value={brand}
-            onChange={(value) => updateCatalogState({ brand: value })}
+            emptyLabel="Все бренды"
+            values={selectedBrands}
+            isOpen={openMultiSelect === "brand"}
+            onOpenChange={(isOpen) => changeOpenMultiSelect("brand", isOpen)}
+            onChange={(brands) => updateCatalogState({ brands })}
             options={brandOptions}
           />
           <SelectField
