@@ -513,6 +513,12 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  /* Lift the owning row, not just a panel trapped in its stacking context. */
+  .primaryFilters:has(.multiSelectFieldOpen),
+  .secondaryFilters:has(.multiSelectFieldOpen) {
+    z-index: 4;
+  }
+
   .multiSelectPanel {
     position: absolute;
     top: calc(100% + 0.4rem);
