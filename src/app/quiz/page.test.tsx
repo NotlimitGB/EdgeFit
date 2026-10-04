@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { resolveCanonicalBoardRoute } from "@/lib/canonical-board-route";
 
 const mocks = vi.hoisted(() => ({ resolve: vi.fn() }));
 
@@ -16,6 +17,24 @@ vi.mock("@/components/quiz/quiz-flow", () => ({
 import QuizPage from "@/app/quiz/page";
 
 describe("quiz focused board resolution", () => {
+  it("keeps the published Evil Twin identity when its former alias target is inactive", async () => {
+    const item = {
+      slug: "bataleon-evil-twin-trial-sport-3131268",
+      brand: "Bataleon", modelName: "EVIL TWIN", seasonLabel: "2025/2026",
+    };
+    mocks.resolve.mockImplementation((requestedSlug: string) => resolveCanonicalBoardRoute({
+      requestedSlug,
+      loadCanonicalItemBySlug: async (slug) => slug === item.slug ? item : undefined,
+      loadFamilyAliasTargetBySlug: async () => undefined,
+    }));
+    const markup = renderToStaticMarkup(await QuizPage({
+      searchParams: Promise.resolve({ board: item.slug }),
+    }));
+    expect(markup).toContain(item.slug);
+    expect(markup).toContain("EVIL TWIN");
+    expect(markup).not.toContain('data-focused="generic"');
+  });
+
   it("passes canonical readonly identity to the client flow", async () => {
     mocks.resolve.mockResolvedValue({
       kind: "redirect",

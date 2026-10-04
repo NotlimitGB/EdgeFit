@@ -6,7 +6,6 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ prefetch: vi.fn() }), us
 const sitemapBoardSlugs = vi.hoisted(() => [
   "test-board",
   "bataleon-evil-twin-trial-sport-3131268",
-  "bataleon-evil-twin",
   "nitro-team-2025-2026",
   "nitro-team",
   "ride-warpig-trial-sport-3137774",
@@ -402,15 +401,15 @@ describe("SEO indexing hygiene", () => {
 
     expect(paths).not.toContain("/result");
     expect(paths).toContain("/boards/test-board");
-    expect(paths).not.toContain(
+    expect(paths).toContain(
       "/boards/bataleon-evil-twin-trial-sport-3131268",
     );
+    expect(paths).not.toContain("/boards/bataleon-evil-twin");
     expect(paths).not.toContain("/boards/nitro-team-2025-2026");
     expect(paths).not.toContain("/boards/ride-warpig-trial-sport-3137774");
     expect(paths).not.toContain("/boards/jones-frontier");
     expect(paths).toEqual(
       expect.arrayContaining([
-        "/boards/bataleon-evil-twin",
         "/boards/nitro-team",
         "/boards/ride-warpig",
         "/boards/jones-frontier-2-0",
@@ -418,7 +417,7 @@ describe("SEO indexing hygiene", () => {
       ]),
     );
     expect(paths.filter((path) => path.startsWith("/boards/"))).toHaveLength(
-      sitemapBoardSlugs.length - 4,
+      sitemapBoardSlugs.length - 3,
     );
     for (const page of seoLandingPages) {
       expect(paths).toContain(getSeoLandingPath(page.slug));

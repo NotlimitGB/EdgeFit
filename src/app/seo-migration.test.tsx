@@ -8,7 +8,7 @@ vi.mock("@/components/analytics/site-analytics", () => ({ SiteAnalytics: () => n
 vi.mock("@/lib/public-catalog-cache", () => ({ getPublicCanonicalCatalogItems: async () => [] }));
 vi.mock("@/lib/saved-results", () => ({ isSavedResultsEnabled: () => false }));
 vi.mock("@/lib/canonical-catalog", () => ({
-  getAllCanonicalBoardSlugs: async () => ["test-board", "bataleon-evil-twin-trial-sport-3131268", "bataleon-evil-twin"],
+  getAllCanonicalBoardSlugs: async () => ["test-board", "bataleon-evil-twin-trial-sport-3131268", "nitro-team-2025-2026", "nitro-team"],
 }));
 import { metadata as root } from "./layout";
 import { metadata as home } from "./page";
@@ -47,12 +47,14 @@ describe("public SnowDex metadata migration", () => {
     expect(result.alternates).toBeUndefined();
     expect(result.description).toContain("SnowDex");
   });
-  it("changes sitemap origin, not inclusion or robots access policy", async () => {
+  it("preserves SnowDex origin and robots policy with live board routes", async () => {
     expect(robots()).toEqual({ rules: { userAgent: "*", allow: "/" }, sitemap: "https://snowdex.ru/sitemap.xml" });
     const entries = await sitemap();
-    expect(entries).toHaveLength(20);
+    expect(entries).toHaveLength(21);
     expect(entries.every(({ url }) => new URL(url).origin === "https://snowdex.ru")).toBe(true);
-    expect(entries.map(({ url }) => new URL(url).pathname)).toContain("/boards/bataleon-evil-twin");
-    expect(entries.map(({ url }) => new URL(url).pathname)).not.toContain("/boards/bataleon-evil-twin-trial-sport-3131268");
+    expect(entries.map(({ url }) => new URL(url).pathname)).toContain("/boards/bataleon-evil-twin-trial-sport-3131268");
+    expect(entries.map(({ url }) => new URL(url).pathname)).not.toContain("/boards/bataleon-evil-twin");
+    expect(entries.map(({ url }) => new URL(url).pathname)).toContain("/boards/nitro-team");
+    expect(entries.map(({ url }) => new URL(url).pathname)).not.toContain("/boards/nitro-team-2025-2026");
   });
 });

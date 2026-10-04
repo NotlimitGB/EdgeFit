@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { PublicCatalogItem } from "@/lib/public-catalog-dto";
 import {
   buildLegacyCanonicalBoardSlugAliases,
   LEGACY_CANONICAL_BOARD_SLUG_ALIASES,
@@ -11,7 +12,6 @@ interface TestItem {
 }
 
 const expectedAliases = {
-  "bataleon-evil-twin-trial-sport-3131268": "bataleon-evil-twin",
   "jones-frontier": "jones-frontier-2-0",
   "nitro-team-2025-2026": "nitro-team",
   "ride-warpig-trial-sport-3137774": "ride-warpig",
@@ -42,9 +42,9 @@ function makeResolver(options: {
 }
 
 describe("legacy canonical board slug aliases", () => {
-  it("contains exactly the four approved mappings including Jones Frontier", () => {
+  it("contains the three live mappings without the retired Bataleon target", () => {
     expect(LEGACY_CANONICAL_BOARD_SLUG_ALIASES).toEqual(expectedAliases);
-    expect(Object.keys(LEGACY_CANONICAL_BOARD_SLUG_ALIASES)).toHaveLength(4);
+    expect(Object.keys(LEGACY_CANONICAL_BOARD_SLUG_ALIASES)).toHaveLength(3);
   });
 
   it("rejects empty, duplicate, self-referential, cyclic, and chained aliases", () => {
@@ -75,6 +75,58 @@ describe("legacy canonical board slug aliases", () => {
 });
 
 describe("resolveCanonicalBoardRoute", () => {
+  it("resolves every published catalog fixture without substituting Bataleon seasons", async () => {
+    const bataleonSlug = "bataleon-evil-twin-trial-sport-3131268";
+    function publishedItem(slug: string, seasonLabel: string | null = null): PublicCatalogItem {
+      return {
+        slug, seasonLabel, brand: slug.startsWith("bataleon-") ? "Bataleon" : slug.split("-")[0],
+        modelName: slug.startsWith("bataleon-") ? "EVIL TWIN" : slug,
+        priceFrom: null, defaultOfferSlug: slug, media: [],
+        canonicalSpecs: { descriptionShort: "", ridingStyle: null, skillLevel: null,
+          boardLine: null, shapeType: null, camberProfile: null },
+        searchText: slug, availableSizeCount: 0, availabilityPreview: "", widthTypes: [],
+      };
+    }
+    // The inactive unsuffixed Bataleon target is deliberately absent. Older
+    // seasons exist but must never become a fallback for the published 25/26 item.
+    const published = [
+      publishedItem(bataleonSlug, "2025/2026"),
+      publishedItem("bataleon-evil-twin-2024-2025", "2024/2025"),
+      ...Object.entries(expectedAliases).flatMap(([source, target]) => [
+        publishedItem(source), publishedItem(target),
+      ]),
+    ];
+    const items = new Map(published.map((item) => [item.slug, item]));
+    const loadItem = vi.fn(async (slug: string) => items.get(slug));
+    const loadFamilyAlias = vi.fn(async () => undefined);
+    // Reproduce the original failure without changing the fail-closed contract.
+    await expect(resolveCanonicalBoardRoute({
+      requestedSlug: bataleonSlug, loadCanonicalItemBySlug: loadItem,
+      loadFamilyAliasTargetBySlug: loadFamilyAlias,
+      legacyAliases: { [bataleonSlug]: "bataleon-evil-twin" },
+    })).resolves.toBeUndefined();
+    loadItem.mockClear();
+    for (const item of published) {
+      const resolution = await resolveCanonicalBoardRoute({
+        requestedSlug: item.slug, loadCanonicalItemBySlug: loadItem,
+        loadFamilyAliasTargetBySlug: loadFamilyAlias,
+      });
+      expect(resolution, item.slug).toBeDefined();
+      expect(items.get(resolution!.item.slug)).toBe(resolution!.item);
+      if (resolution!.kind === "render") {
+        expect(resolution!.item).toBe(item);
+      } else {
+        expect(resolution!.canonicalSlug).toBe(expectedAliases[item.slug as keyof typeof expectedAliases]);
+      }
+      if (item.slug === bataleonSlug) {
+        expect(resolution).toEqual({ kind: "render", item });
+        expect(resolution!.item.seasonLabel).toBe("2025/2026");
+      }
+    }
+    expect(loadItem).not.toHaveBeenCalledWith("bataleon-evil-twin");
+    expect(loadFamilyAlias).not.toHaveBeenCalled();
+  });
+
   it.each(Object.entries(expectedAliases))(
     "redirects explicit alias %s even when an exact source item exists",
     async (legacySlug, canonicalSlug) => {
