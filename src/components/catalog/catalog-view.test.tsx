@@ -10,6 +10,7 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderToStaticMarkup } from "react-dom/server";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CanonicalCatalogItem } from "@/types/canonical-catalog";
 import { toPublicCatalogItem } from "@/lib/public-catalog-dto";
@@ -272,6 +273,40 @@ describe("CatalogView multiselect interactions", () => {
     expect(screen.getByRole("button", { name: "Стиль park / freestyle" })).toBeTruthy();
   });
 
+  it("keeps manual disclosure open after deselecting the last secondary filter and reset", async () => {
+    const user = userEvent.setup();
+    render(<CatalogView boards={boards} />);
+    const summary = screen.getByText("Стиль, уровень и характеристики");
+    await user.click(summary);
+    await user.click(screen.getByRole("button", { name: "Стиль Все стили" }));
+    const checkbox = screen.getByRole("checkbox", { name: "park / freestyle" });
+    await user.click(checkbox);
+    await user.click(checkbox);
+    await waitFor(() => expect(summary.closest("details")?.open).toBe(true));
+    expect((checkbox as HTMLInputElement).checked).toBe(false);
+    await user.click(checkbox);
+    await user.click(screen.getByRole("button", { name: "Сбросить всё" }));
+    expect(summary.closest("details")?.open).toBe(true);
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    await user.click(summary);
+    await waitFor(() => expect(summary.closest("details")?.open).toBe(false));
+  });
+
+  it("preserves manual close across local rerenders but reveals active filters on external history", async () => {
+    const user = userEvent.setup();
+    navigation.currentSearch = "style=park";
+    const view = render(<CatalogView boards={boards} />);
+    const summary = screen.getByText("Стиль, уровень и характеристики");
+    await waitFor(() => expect(summary.closest("details")?.open).toBe(true));
+    await user.click(summary);
+    await waitFor(() => expect(summary.closest("details")?.open).toBe(false));
+    view.rerender(<CatalogView boards={boards} />);
+    expect(summary.closest("details")?.open).toBe(false);
+    navigation.currentSearch = "style=park&skill=advanced";
+    view.rerender(<CatalogView boards={boards} />);
+    await waitFor(() => expect(summary.closest("details")?.open).toBe(true));
+  });
+
   it("selects style by clicking the public option label", async () => {
     const user = userEvent.setup();
     renderCatalog();
@@ -434,6 +469,12 @@ describe("CatalogView multiselect interactions", () => {
 });
 
 describe("CatalogView unaffected catalog controls", () => {
+  it("restores secondary disclosure after StrictMode effect replay", async () => {
+    navigation.currentSearch = "style=park";
+    const view = render(<StrictMode><CatalogView boards={boards} /></StrictMode>);
+    await waitFor(() => expect(view.container.querySelector("details")?.open).toBe(true));
+    expectOnlyBoard("park-board");
+  });
   it("server-renders controls, total count and first 24 cards independently of URL hydration", () => {
     const corpus = Array.from({ length: 30 }, (_, id) => ({ ...boards[0], slug: `board-${id}` }));
     const markup = renderToStaticMarkup(<CatalogView boards={corpus} />);

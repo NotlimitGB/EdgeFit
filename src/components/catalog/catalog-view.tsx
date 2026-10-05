@@ -140,11 +140,15 @@ function CatalogViewContents({ boards }: CatalogViewProps) {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [openMultiSelect, setOpenMultiSelect] =
     useState<MultiSelectKey | null>(null);
+  const [isRefineOpen, setIsRefineOpen] = useState(false);
   const desiredSearchRef = useRef<string | null>(null);
   const inFlightSearchRef = useRef<string | null>(null);
+  const observedSearchRef = useRef<string | null>(null);
 
   useEffect(() => {
     const inFlightSearch = inFlightSearchRef.current;
+    const isExternalRestore = inFlightSearch === null && desiredSearchRef.current === null &&
+      observedSearchRef.current !== serializedSearchParams;
 
     if (inFlightSearch !== null && serializedSearchParams !== inFlightSearch) {
       return;
@@ -168,7 +172,13 @@ function CatalogViewContents({ boards }: CatalogViewProps) {
 
     catalogStateRef.current = urlCatalogState;
     const synchronizationId = window.setTimeout(() => {
+      observedSearchRef.current = serializedSearchParams;
       setCatalogState(urlCatalogState);
+      if (isExternalRestore &&
+        urlCatalogState.styles.length + urlCatalogState.skills.length +
+        urlCatalogState.lines.length + urlCatalogState.shapes.length > 0) {
+        setIsRefineOpen(true);
+      }
     }, 0);
 
     return () => window.clearTimeout(synchronizationId);
@@ -397,9 +407,22 @@ function CatalogViewContents({ boards }: CatalogViewProps) {
 
         <details
           className={styles.refineFilters}
-          open={selectedStyles.length + selectedSkills.length + selectedLines.length + selectedShapes.length > 0}
+          open={isRefineOpen}
+          onToggle={(event) => {
+            const open = event.currentTarget.open;
+            setIsRefineOpen(open);
+            if (!open) {
+              setOpenMultiSelect((current) => current === "brand" ? current : null);
+            }
+          }}
         >
-          <summary>Стиль, уровень и характеристики <span aria-hidden="true">+</span></summary>
+          <summary onClick={(event) => {
+            event.preventDefault();
+            setIsRefineOpen(!isRefineOpen);
+            if (isRefineOpen) {
+              setOpenMultiSelect((current) => current === "brand" ? current : null);
+            }
+          }}>Стиль, уровень и характеристики <span aria-hidden="true">+</span></summary>
           <div className={styles.secondaryFilters}>
           <MultiSelectField<RidingStyle>
             id="style"
