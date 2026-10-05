@@ -120,7 +120,7 @@ describe("public catalog cache", () => {
     expect(mocks.unstableCache).toHaveBeenCalledTimes(1);
     expect(mocks.unstableCache).toHaveBeenCalledWith(
       expect.any(Function),
-      ["edgefit-public-canonical-catalog-v3"],
+      ["edgefit-public-canonical-catalog-v4"],
       {
         revalidate: 300,
         tags: ["edgefit-public-canonical-catalog"],

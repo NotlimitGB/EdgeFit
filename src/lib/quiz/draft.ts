@@ -115,7 +115,8 @@ export function createQuizV2Draft(): QuizV2Draft {
   };
 }
 
-export function loadQuizV2Draft(storage: QuizDraftStorage): QuizV2Draft {
+export function loadQuizV2Draft(storage: QuizDraftStorage | null): QuizV2Draft {
+  if (!storage) return createQuizV2Draft();
   try {
     const rawDraft = storage.getItem(QUIZ_V2_DRAFT_STORAGE_KEY);
     if (!rawDraft) {
@@ -145,9 +146,10 @@ export function loadQuizV2Draft(storage: QuizDraftStorage): QuizV2Draft {
 }
 
 export function saveQuizV2Draft(
-  storage: QuizDraftStorage,
+  storage: QuizDraftStorage | null,
   draft: QuizV2Draft,
 ) {
+  if (!storage) return false;
   try {
     const parsedDraft = quizV2DraftSchema.safeParse(draft);
     if (!parsedDraft.success) {

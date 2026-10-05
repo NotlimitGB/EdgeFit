@@ -16,6 +16,17 @@ describe("analytics API request context", () => {
     vi.clearAllMocks();
   });
 
+  it("sanitizes an unexpected persistence exception", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.saveAnalyticsEvent.mockRejectedValueOnce(new Error("audit-private-db-detail"));
+    const response = await POST(new Request("http://localhost/api/analytics", {
+      method: "POST", body: JSON.stringify({ sessionId: "session-1", eventName: "quiz_started" }),
+    }));
+    expect(response.status).toBe(500);
+    expect(await response.text()).not.toContain("audit-private-db-detail");
+    log.mockRestore();
+  });
+
   it("forwards the server request URL and preserves the public payload", async () => {
     const request = new Request("http://localhost:3000/api/analytics", {
       method: "POST",

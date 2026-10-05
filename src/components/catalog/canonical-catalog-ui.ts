@@ -1,4 +1,5 @@
-import { formatMoney, boardShapeLabels, ridingStyleLabels } from "@/lib/content";
+import { formatMoney } from "@/lib/content";
+import { getSafeCatalogDescription } from "@/lib/catalog-narrative";
 import type {
   PublicCatalogItem,
   PublicCatalogSize as CanonicalSizeVariant,
@@ -256,21 +257,8 @@ export function compareCanonicalFeatured(
 }
 
 export function getCanonicalDescription(board: CanonicalCatalogItem) {
-  const description = board.canonicalSpecs.descriptionShort?.trim();
-  if (description) return description;
-  const { boardLine, ridingStyle, shapeType, skillLevel } = board.canonicalSpecs;
-  const lines = { men: "Мужская", women: "Женская", unisex: "Универсальная" };
-  const identity = [boardLine ? lines[boardLine] : null, ridingStyle ? ridingStyleLabels[ridingStyle] : null].filter(Boolean);
-  const shape = shapeType ? boardShapeLabels[shapeType] : null;
-  const first = identity.length ? `${identity.join(" ")} доска${shape ? ` с формой ${shape}` : ""}.`
-    : shape ? `Модель с формой ${shape}.` : "";
-  const hints = {
-    beginner: "Характеристики ориентированы на первые сезоны и спокойный прогресс.",
-    intermediate: "Характеристики лучше раскрываются на среднем уровне и при уверенном базовом катании.",
-    advanced: "Характеристики рассчитаны на уверенное катание и заметную нагрузку на доску.",
-  };
-  return [first, skillLevel ? hints[skillLevel] : ""].filter(Boolean).join(" ")
-    || "Сравни геометрию, доступные размеры и характеристики модели.";
+  if ("searchText" in board) return board.canonicalSpecs.descriptionShort ?? "";
+  return getSafeCatalogDescription(board);
 }
 
 export function getCanonicalPricePresentation(price: number | null) {

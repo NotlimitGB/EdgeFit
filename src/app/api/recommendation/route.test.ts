@@ -81,6 +81,17 @@ describe("recommendation API saved-result transport", () => {
     });
   });
 
+  it("does not reflect unexpected DB errors into a public 400", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.getRecommendationCatalog.mockRejectedValueOnce(new Error("audit-private-db-detail"));
+    const response = await POST(new Request("https://example.com/api/recommendation", {
+      method: "POST", body: JSON.stringify(recommendation.input),
+    }));
+    expect(response.status).toBe(500);
+    expect(await response.text()).not.toContain("audit-private-db-detail");
+    log.mockRestore();
+  });
+
   it("returns the buyer-facing 503 message when the catalog is empty", async () => {
     mocks.getRecommendationCatalog.mockResolvedValue({
       products: [],

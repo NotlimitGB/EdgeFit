@@ -8,7 +8,7 @@ import { getPublicDatabaseNamespace, getPublicSchemaSupport } from "@/lib/public
 import { toPublicCatalogItems } from "@/lib/public-catalog-dto";
 import { measurePublicLoad } from "@/lib/public-load-diagnostics";
 
-const PUBLIC_CATALOG_CACHE_KEY = "edgefit-public-canonical-catalog-v3";
+const PUBLIC_CATALOG_CACHE_KEY = "edgefit-public-canonical-catalog-v4";
 const PUBLIC_CATALOG_CACHE_TAG = "edgefit-public-canonical-catalog";
 const PUBLIC_CATALOG_CACHE_REVALIDATE_SECONDS = 300;
 

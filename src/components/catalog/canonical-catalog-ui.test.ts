@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { getSafeCatalogDescription } from "@/lib/catalog-narrative";
+import { isUnsafeCatalogNarrative } from "@/lib/public-narrative";
 import type {
   CanonicalCatalogItem,
   CanonicalSizeVariant,
@@ -18,6 +20,26 @@ import {
   getCanonicalWidthTypes,
   matchesCanonicalCatalogSearch,
 } from "./canonical-catalog-ui";
+
+describe("safe catalog narrative", () => {
+  it.each(["универсальная универсальная модель", "Модель из каталога Триал-Спорт", "Купи со скидкой в магазине"])("replaces unsafe copy: %s", (descriptionShort) => {
+    const item = makeBoard();
+    item.canonicalSpecs.descriptionShort = descriptionShort;
+    const copy = getSafeCatalogDescription(item);
+    expect(isUnsafeCatalogNarrative(copy)).toBe(false);
+    expect(copy).toContain(item.modelName);
+    expect(copy).not.toContain("спокойный прогресс");
+  });
+  it("preserves safe stored copy and omits unknown attributes", () => {
+    const item = makeBoard();
+    item.canonicalSpecs.descriptionShort = "Короткая широкая платформа для сравнения ростовок.";
+    expect(getSafeCatalogDescription(item)).toBe(item.canonicalSpecs.descriptionShort);
+    item.canonicalSpecs.descriptionShort = "";
+    item.sizes = [];
+    item.seasonLabel = null;
+    expect(getSafeCatalogDescription(item)).toBe(`${item.brand} ${item.modelName}.`);
+  });
+});
 
 function makeSize(
   id: string,

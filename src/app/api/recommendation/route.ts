@@ -1,3 +1,4 @@
+import { publicApiError } from "@/lib/public-api-error";
 import { NextResponse } from "next/server";
 import { сохранитьРезультатКвиза } from "@/lib/quiz-results";
 import { getRecommendationCatalog } from "@/lib/products";
@@ -10,9 +11,11 @@ import { SAVED_RESULT_TOKEN_HEADER } from "@/lib/saved-result-contract";
 import { resolveCanonicalBoardRouteBySlug } from "@/lib/canonical-catalog";
 
 export async function POST(request: Request) {
+  let parsingInput = true;
   try {
     const { riderInput, purchasePreferences, focusedBoardSlug } =
       recommendationRequestSchema.parse(await request.json());
+    parsingInput = false;
     const focusedBoardResolution = focusedBoardSlug
       ? await resolveCanonicalBoardRouteBySlug(focusedBoardSlug)
       : undefined;
@@ -68,14 +71,6 @@ export async function POST(request: Request) {
 
     return response;
   } catch (error) {
-    return NextResponse.json(
-      {
-        message:
-          error instanceof Error
-            ? error.message
-            : "Невалидные данные для подбора.",
-      },
-      { status: 400 },
-    );
+    return publicApiError("recommendation", error, parsingInput, "Проверь параметры райдера и попробуй снова.");
   }
 }

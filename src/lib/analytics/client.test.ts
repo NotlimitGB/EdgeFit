@@ -32,6 +32,14 @@ afterEach(() => {
 });
 
 describe("analytics client acquisition enrichment", () => {
+  it("skips first-party requests when session storage getter is denied", async () => {
+    const { windowValue } = installBrowser("https://snowdex.ru/quiz");
+    Object.defineProperty(windowValue, "sessionStorage", { get: () => { throw new Error("SecurityError"); } });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(trackEvent("quiz_started", { quiz_version: "v2" })).resolves.toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it("keeps first touch, strips query from pagePath, and lets business fields win", () => {
     const { values, windowValue } = installBrowser(
       "https://edge-fit.vercel.app/?utm_source=yandex&utm_campaign=edgefit_023a&yclid=secret",

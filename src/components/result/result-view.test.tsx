@@ -233,6 +233,17 @@ describe("ResultView focused board check", () => {
     },
   };
 
+  it.each(["session", "saved"] as const)("uses availability tense appropriate to %s", (mode) => {
+    const item: RecommendationResult = { ...focusedRecommendation,
+      focusedBoardCheck: { ...focusedRecommendation.focusedBoardCheck!, buyability: "AVAILABLE" } };
+    const markup = renderToStaticMarkup(<ResultView initialRecommendation={item} mode={mode} />);
+    expect(markup).toContain(mode === "saved"
+      ? "На момент расчёта выбранная ростовка была отмечена в наличии."
+      : "Выбранная ростовка сейчас отмечена в наличии.");
+    if (mode === "saved") expect(markup).not.toContain("ростовка сейчас");
+    expect(markup).not.toMatch(/result-email|result-consent|Отправим этот результат|Отправить на почту/u);
+  });
+
   it("renders focused evidence high in the result without numeric scoring", () => {
     const markup = renderToStaticMarkup(
       <ResultView initialRecommendation={focusedRecommendation} mode="saved" />,
@@ -240,7 +251,7 @@ describe("ResultView focused board check", () => {
 
     expect(markup).toContain("Проверяем выбранную доску");
     expect(markup).toContain("Подходит, но есть заметные компромиссы");
-    expect(markup).toContain("Наличие 156 сейчас не подтверждено.");
+    expect(markup).toContain("На момент расчёта наличие 156 не было подтверждено.");
     expect(markup).toContain("Что подходит");
     expect(markup).toContain("Компромиссы");
     expect(markup).toContain("Что нужно уточнить");
@@ -459,7 +470,7 @@ describe("ResultView decision-oriented Top 3", () => {
     );
     const comparisonMarkup = markup.slice(
       markup.indexOf("Финальный выбор"),
-      markup.indexOf('id="email-title"'),
+      markup.indexOf('aria-label="Методика подбора"'),
     );
 
     expect(top3Markup.indexOf("Board A")).toBeLessThan(

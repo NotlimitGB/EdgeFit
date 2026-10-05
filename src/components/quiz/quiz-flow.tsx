@@ -1,5 +1,8 @@
 "use client";
 
+import { getSafeSessionStorage } from "@/lib/browser-session-storage";
+import { storeRecommendationForNavigation } from "@/lib/recommendation-session";
+
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import publicStyles from "@/components/public/public-ui.module.css";
@@ -17,7 +20,6 @@ import {
 } from "@/lib/quiz/draft";
 import { getOrCreateSessionId } from "@/lib/session-id";
 import {
-  persistRecommendationSessionState,
   SAVED_RESULT_TOKEN_HEADER,
 } from "@/lib/saved-result-contract";
 import type { RecommendationResult } from "@/types/domain";
@@ -231,7 +233,8 @@ function buildQuizEntryPayload(
   };
 }
 
-function claimQuizFirstInteraction(storage: Storage) {
+function claimQuizFirstInteraction(storage: Storage | null) {
+  if (!storage) return false;
   try {
     const sessionId = getOrCreateSessionId();
 
@@ -469,13 +472,13 @@ export function QuizFlow({
   }
 
   useEffect(() => {
-    setDraft(loadQuizV2Draft(window.sessionStorage));
+    setDraft(loadQuizV2Draft(getSafeSessionStorage()));
     setDraftHydrated(true);
   }, []);
 
   useEffect(() => {
     if (draftHydrated) {
-      saveQuizV2Draft(window.sessionStorage, draft);
+      saveQuizV2Draft(getSafeSessionStorage(), draft);
     }
   }, [draft, draftHydrated]);
 
@@ -501,7 +504,7 @@ export function QuizFlow({
     key: Key,
     value: QuizV2Draft[Key],
   ) {
-    if (claimQuizFirstInteraction(window.sessionStorage)) {
+    if (claimQuizFirstInteraction(getSafeSessionStorage())) {
       void trackEvent(
         "quiz_first_interaction",
         buildQuizEntryPayload(step, entryMode),
@@ -557,7 +560,7 @@ export function QuizFlow({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-edgefit-session-id": идентификаторСессии,
+          ...(идентификаторСессии ? { "x-edgefit-session-id": идентификаторСессии } : {}),
         },
         body: JSON.stringify(
           buildRecommendationRequestPayload(
@@ -579,11 +582,8 @@ export function QuizFlow({
       }
 
       const recommendation = (await response.json()) as RecommendationResult;
-      persistRecommendationSessionState(
-        window.sessionStorage,
-        recommendation,
-        response.headers.get(SAVED_RESULT_TOKEN_HEADER),
-        purchasePreferences,
+      storeRecommendationForNavigation(
+        recommendation, response.headers.get(SAVED_RESULT_TOKEN_HEADER), purchasePreferences,
       );
 
       void trackEvent("quiz_step_completed", buildQuizStepCompletionPayload(step));

@@ -111,6 +111,7 @@ export async function trackEvent(
     return;
   }
 
+  if (!getOrCreateSessionId()) return;
   const body = buildAnalyticsRequestBody(eventName, payload);
 
   if (options.useBeacon && typeof navigator !== "undefined" && navigator.sendBeacon) {

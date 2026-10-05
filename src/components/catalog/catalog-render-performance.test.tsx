@@ -77,10 +77,10 @@ it("preserves every normalized image fallback, lazy decoding and the final place
   expect(screen.queryByRole("img")).toBeNull(); expect(screen.getByText("Фото пока не подготовлено")).toBeTruthy();
 });
 
-it("preserves historical description and source-search normalization without leaking raw structures", () => {
+it("uses factual fallback and preserves safe description and source-search normalization", () => {
   const board = fixture(1);
   expect(toPublicCatalogItems([board])[0].canonicalSpecs.descriptionShort).toBe(
-    "Универсальная all-mountain доска с формой твин. Характеристики лучше раскрываются на среднем уровне и при уверенном базовом катании.");
+    "Beta board-001.");
   board.canonicalSpecs.descriptionShort = "  Сохранённый текст.  ";
   const [dto] = toPublicCatalogItems([board]);
   expect(dto.canonicalSpecs.descriptionShort).toBe("Сохранённый текст.");

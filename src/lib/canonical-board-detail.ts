@@ -1,3 +1,4 @@
+import { isUnsafeStoredNarrative } from "@/lib/public-narrative";
 import { isStoreSpecificationSource } from "@/lib/catalog-readiness";
 import { formatCatalogCheckedDate } from "@/lib/catalog-trust";
 import { formatMoney } from "@/lib/content";
@@ -85,25 +86,6 @@ function pluralizeSize(count: number) {
 
 function normalizeNarrativeText(value: string | null | undefined) {
   return normalizeText(value)?.replace(/\s+/gu, " ") ?? null;
-}
-
-function hasAdjacentDuplicateWord(value: string) {
-  const normalized = value.toLocaleLowerCase("ru-RU");
-  return /(?:^|[^\p{L}\p{N}])([\p{L}\p{N}]+)\s+\1(?=$|[^\p{L}\p{N}])/u.test(
-    normalized,
-  );
-}
-
-function isUnsafeStoredNarrative(value: string) {
-  const normalized = value.toLocaleLowerCase("ru-RU");
-
-  return (
-    /из\s+каталога/u.test(normalized) ||
-    /в\s+карточке\s+магазина/u.test(normalized) ||
-    /триал\s*[-–—]\s*спорт/u.test(normalized) ||
-    /траектория/u.test(normalized) ||
-    hasAdjacentDuplicateWord(normalized)
-  );
 }
 
 function compareNarrativeSizes(

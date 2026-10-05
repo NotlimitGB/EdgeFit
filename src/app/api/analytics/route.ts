@@ -1,3 +1,4 @@
+import { publicApiError } from "@/lib/public-api-error";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { saveAnalyticsEvent } from "@/lib/analytics/server";
@@ -12,9 +13,11 @@ const analyticsEventSchema = z.object({
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  let parsingInput = true;
   try {
     const payload = analyticsEventSchema.parse(await request.json());
 
+    parsingInput = false;
     await saveAnalyticsEvent({
       ...payload,
       requestUrl: request.url,
@@ -24,14 +27,6 @@ export async function POST(request: Request) {
       received: true,
     });
   } catch (error) {
-    return NextResponse.json(
-      {
-        message:
-          error instanceof Error
-            ? error.message
-            : "Не удалось сохранить событие аналитики.",
-      },
-      { status: 400 },
-    );
+    return publicApiError("analytics", error, parsingInput, "Проверь данные события аналитики.");
   }
 }

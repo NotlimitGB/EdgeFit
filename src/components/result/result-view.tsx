@@ -6,7 +6,6 @@ import {
   useEffect,
   useState,
   useSyncExternalStore,
-  type FormEvent,
 } from "react";
 import publicStyles from "@/components/public/public-ui.module.css";
 import { ProductRecommendationCard } from "@/components/result/product-recommendation-card";
@@ -26,7 +25,6 @@ import {
 } from "@/lib/content";
 import { buildRecommendationPriorityImpact } from "@/lib/recommendation/priority-impact";
 import { buildRecommendationTrustSummary } from "@/lib/recommendation/trust-summary";
-import { getOrCreateSessionId } from "@/lib/session-id";
 import { buildOutboundClickAnalyticsPayload } from "@/lib/outbound-click-analytics";
 import {
   buildStoreRedirectHrefForSize,
@@ -34,10 +32,6 @@ import {
 } from "@/lib/store-redirect";
 import {
   getSavedResultPath,
-  loadPurchasePreferencesSessionState,
-  PURCHASE_PREFERENCES_STORAGE_KEY,
-  RECOMMENDATION_RESULT_STORAGE_KEY,
-  SAVED_RESULT_TOKEN_STORAGE_KEY,
 } from "@/lib/saved-result-contract";
 import {
   EMPTY_PURCHASE_PREFERENCES,
@@ -49,14 +43,8 @@ import type {
   RecommendationMatch,
   RecommendationResult,
 } from "@/types/domain";
+import { subscribeRecommendationSession, getRecommendationSessionSnapshot, getEmptyRecommendationSessionSnapshot } from "@/lib/recommendation-session";
 import styles from "./result-view.module.css";
-
-let cachedRawRecommendation: string | null | undefined;
-let cachedRecommendation: RecommendationResult | null = null;
-let cachedRawSavedResultToken: string | null | undefined;
-let cachedSavedResultToken: string | null = null;
-let cachedRawPurchasePreferences: string | null | undefined;
-let cachedPurchasePreferences: PurchasePreferences = EMPTY_PURCHASE_PREFERENCES;
 
 const riskDescriptions: Record<RecommendationResult["bootDragRisk"], string> = {
   low: "Запас по ширине выглядит спокойным.",
@@ -88,7 +76,7 @@ const focusedVerdictCopy: Record<
   },
 };
 
-function FocusedBoardResult({ check }: { check: FocusedBoardCheck }) {
+function FocusedBoardResult({ check, mode }: { check: FocusedBoardCheck; mode: "session" | "saved" }) {
   const verdict = focusedVerdictCopy[check.verdict];
   const signalGroups = [
     { state: "positive" as const, title: "Что подходит" },
@@ -97,9 +85,9 @@ function FocusedBoardResult({ check }: { check: FocusedBoardCheck }) {
   ];
   const buyability =
     check.buyability === "AVAILABLE"
-      ? "Выбранная ростовка сейчас отмечена в наличии."
+      ? mode === "saved" ? "На момент расчёта выбранная ростовка была отмечена в наличии." : "Выбранная ростовка сейчас отмечена в наличии."
       : check.buyability === "NOT_CONFIRMED" && check.bestFitSize
-        ? `Наличие ${check.bestFitSize.sizeLabel} сейчас не подтверждено.`
+        ? mode === "saved" ? `На момент расчёта наличие ${check.bestFitSize.sizeLabel} не было подтверждено.` : `Наличие ${check.bestFitSize.sizeLabel} сейчас не подтверждено.`
         : "Сначала нужно определить подходящую ростовку.";
 
   return (
@@ -121,6 +109,7 @@ function FocusedBoardResult({ check }: { check: FocusedBoardCheck }) {
           <p className={publicStyles.microLabel}>Лучшая ростовка</p>
           <strong>{check.bestFitSize?.sizeLabel ?? "Не определена"}</strong>
           <p>{buyability}</p>
+          {mode === "saved" ? <p>Перед покупкой проверь текущее наличие выбранной ростовки у продавца.</p> : null}
         </div>
       </header>
 
@@ -255,78 +244,6 @@ export function buildResultStoreClickAction({
   };
 }
 
-interface EmailLeadResponse {
-  message: string;
-}
-
-function subscribe() {
-  return () => undefined;
-}
-
-function getRecommendationSnapshot() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const rawRecommendation = window.sessionStorage.getItem(
-    RECOMMENDATION_RESULT_STORAGE_KEY,
-  );
-
-  if (rawRecommendation === cachedRawRecommendation) {
-    return cachedRecommendation;
-  }
-
-  cachedRawRecommendation = rawRecommendation;
-
-  if (!rawRecommendation) {
-    cachedRecommendation = null;
-    return cachedRecommendation;
-  }
-
-  try {
-    cachedRecommendation = JSON.parse(rawRecommendation) as RecommendationResult;
-  } catch {
-    cachedRecommendation = null;
-  }
-
-  return cachedRecommendation;
-}
-
-function getSavedResultTokenSnapshot() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const rawToken = window.sessionStorage.getItem(SAVED_RESULT_TOKEN_STORAGE_KEY);
-
-  if (rawToken === cachedRawSavedResultToken) {
-    return cachedSavedResultToken;
-  }
-
-  cachedRawSavedResultToken = rawToken;
-  cachedSavedResultToken = rawToken && getSavedResultPath(rawToken) ? rawToken : null;
-  return cachedSavedResultToken;
-}
-
-function getPurchasePreferencesSnapshot() {
-  if (typeof window === "undefined") {
-    return EMPTY_PURCHASE_PREFERENCES;
-  }
-
-  const rawPreferences = window.sessionStorage.getItem(
-    PURCHASE_PREFERENCES_STORAGE_KEY,
-  );
-  if (rawPreferences === cachedRawPurchasePreferences) {
-    return cachedPurchasePreferences;
-  }
-
-  cachedRawPurchasePreferences = rawPreferences;
-  cachedPurchasePreferences = loadPurchasePreferencesSessionState(
-    window.sessionStorage,
-  );
-  return cachedPurchasePreferences;
-}
-
 export function buildResultAnalyticsPayload(
   recommendation: RecommendationResult,
   purchasePreferences: PurchasePreferences,
@@ -374,32 +291,18 @@ export function ResultView({
   mode = "session",
   savedResultsEnabled = false,
 }: ResultViewProps = {}) {
-  const sessionRecommendation = useSyncExternalStore(
-    subscribe,
-    getRecommendationSnapshot,
-    () => null,
+  const sessionSnapshot = useSyncExternalStore(
+    subscribeRecommendationSession,
+    mode === "saved" ? getEmptyRecommendationSessionSnapshot : getRecommendationSessionSnapshot,
+    getEmptyRecommendationSessionSnapshot,
   );
-  const savedResultToken = useSyncExternalStore(
-    subscribe,
-    getSavedResultTokenSnapshot,
-    () => null,
-  );
-  const sessionPurchasePreferences = useSyncExternalStore(
-    subscribe,
-    getPurchasePreferencesSnapshot,
-    () => EMPTY_PURCHASE_PREFERENCES,
-  );
+  const savedResultToken = sessionSnapshot?.savedResultToken ?? null;
   const purchasePreferences =
-    mode === "saved" ? initialPurchasePreferences : sessionPurchasePreferences;
+    mode === "saved" ? initialPurchasePreferences : sessionSnapshot?.purchasePreferences ?? EMPTY_PURCHASE_PREFERENCES;
   const recommendation =
     mode === "saved"
       ? initialRecommendation
-      : sessionRecommendation ?? initialRecommendation;
-  const [email, setEmail] = useState("");
-  const [consent, setConsent] = useState(false);
-  const [emailError, setEmailError] = useState("");
-  const [emailSuccess, setEmailSuccess] = useState("");
-  const [isSubmittingEmail, setIsSubmittingEmail] = useState(false);
+      : sessionSnapshot?.recommendation ?? initialRecommendation;
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">(
     "idle",
   );
@@ -507,49 +410,6 @@ export function ResultView({
       setCopyStatus("copied");
     } catch {
       setCopyStatus("error");
-    }
-  }
-
-  async function handleEmailSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    try {
-      setEmailError("");
-      setEmailSuccess("");
-      setIsSubmittingEmail(true);
-
-      const response = await fetch("/api/email-leads", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email,
-          consent,
-          source: "result-page",
-          sessionId: getOrCreateSessionId(),
-        }),
-      });
-      const payload = (await response.json()) as EmailLeadResponse;
-
-      if (!response.ok) {
-        throw new Error(payload.message || "Не удалось сохранить почту.");
-      }
-
-      setEmailSuccess(
-        "Готово. Сохранили почту, чтобы вы могли вернуться к этому результату позже.",
-      );
-
-      void trackEvent("email_submitted", {
-        source: "result-page",
-        ...buildResultAnalyticsPayload(activeRecommendation, purchasePreferences),
-      });
-    } catch (error) {
-      setEmailError(
-        error instanceof Error ? error.message : "Не удалось сохранить почту.",
-      );
-    } finally {
-      setIsSubmittingEmail(false);
     }
   }
 
@@ -689,7 +549,7 @@ export function ResultView({
         />
 
         {activeRecommendation.focusedBoardCheck ? (
-          <FocusedBoardResult check={activeRecommendation.focusedBoardCheck} />
+          <FocusedBoardResult check={activeRecommendation.focusedBoardCheck} mode={mode} />
         ) : null}
 
         {savedResultPath ? (
@@ -862,84 +722,6 @@ export function ResultView({
           })}
         />
 
-        {!isSavedMode ? (
-          <section className={styles.emailSection} aria-labelledby="email-title">
-            <div>
-              <p className={publicStyles.kicker}>Сохранить полезный результат</p>
-              <h2 id="email-title">
-                Сохрани подбор, чтобы вернуться к нему позже
-              </h2>
-              <p>
-                Отправим этот результат на указанную почту. Без обещаний «идеальной
-                доски» — только результат, к которому удобно вернуться.
-              </p>
-            </div>
-
-            <form
-              className={styles.emailForm}
-              onSubmit={handleEmailSubmit}
-              aria-busy={isSubmittingEmail}
-            >
-              <div className={styles.emailField}>
-                <label htmlFor="result-email">Почта</label>
-                <input
-                  id="result-email"
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="you@example.com"
-                  aria-invalid={emailError ? "true" : "false"}
-                  aria-describedby={
-                    emailError
-                      ? "result-email-hint result-email-error"
-                      : "result-email-hint"
-                  }
-                />
-                <p id="result-email-hint">
-                  Используем адрес только для сохранения результата и материалов
-                  по теме.
-                </p>
-              </div>
-
-              <label className={styles.consentField} htmlFor="result-consent">
-                <input
-                  id="result-consent"
-                  type="checkbox"
-                  checked={consent}
-                  onChange={(event) => setConsent(event.target.checked)}
-                />
-                <span>
-                  Согласен получить результат подбора и полезные материалы по
-                  этой теме на указанную почту.
-                </span>
-              </label>
-
-              {emailError ? (
-                <p
-                  id="result-email-error"
-                  className={styles.formError}
-                  role="alert"
-                >
-                  {emailError}
-                </p>
-              ) : null}
-
-              {emailSuccess ? (
-                <p className={styles.formSuccess} role="status">
-                  {emailSuccess}
-                </p>
-              ) : null}
-
-              <button
-                type="submit"
-                disabled={isSubmittingEmail}
-                className={`${publicStyles.primaryAction} ${styles.emailSubmitAction}`}
-              >
-                {isSubmittingEmail ? "Сохраняем..." : "Отправить на почту"}
-              </button>
-            </form>
-          </section>
-        ) : null}
 
         <section className={styles.methodSection} aria-label="Методика подбора">
           <details className={styles.methodDisclosure}>

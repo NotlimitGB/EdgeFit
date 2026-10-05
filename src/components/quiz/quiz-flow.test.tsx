@@ -16,6 +16,8 @@ import {
   QuizFlowStepFields,
 } from "@/components/quiz/quiz-flow";
 import type { QuizSubmission } from "@/lib/quiz/schema";
+import { getRecommendation } from "@/lib/recommendation/engine";
+import { ResultView } from "@/components/result/result-view";
 import {
   createQuizV2Draft,
   saveQuizV2Draft,
@@ -439,6 +441,41 @@ describe("Quiz v2 entry telemetry", () => {
       ]);
     });
     expect(analyticsCalls("quiz_step_validation_failed")).toHaveLength(0);
+  });
+
+  it.each(["getter", "getItem", "setItem"] as const)("completes quiz and renders the real result after storage %s throws", async (fault) => {
+    const recommendation = getRecommendation({ heightCm: 178, weightKg: 74, bootSizeEu: 43,
+      boardLinePreference: "any", skillLevel: "intermediate", ridingStyle: "all-mountain",
+      terrainPriority: "balanced", aggressiveness: "balanced", stanceType: "standard" }, []);
+    const fetchMock = vi.fn(async () => ({ ok: true, headers: new Headers(), json: async () => recommendation }) as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    // Clear the existing persisted ID before fault injection: no fabricated fallback ID.
+    window.sessionStorage.clear();
+    if (fault === "getter") vi.spyOn(window, "sessionStorage", "get").mockImplementation(() => { throw new DOMException("Denied", "SecurityError"); });
+    else vi.spyOn(Storage.prototype, fault).mockImplementation(() => { throw new DOMException("Denied", "SecurityError"); });
+    const quiz = render(<QuizFlow />);
+    await waitForInitialAnalytics();
+    fireEvent.click(screen.getByRole("button", { name: /Продолжить/u }));
+    expect(analyticsCalls("quiz_step_validation_failed")).toHaveLength(1);
+    fillPhysicalStep();
+    fireEvent.click(screen.getByRole("button", { name: /Продолжить/u }));
+    await screen.findByText("Теперь уточним твой опыт и сценарий катания");
+    fireEvent.click(screen.getByRole("radio", { name: /Уверенно катаюсь/u }));
+    fireEvent.click(screen.getByRole("radio", { name: /^All-mountain/u }));
+    fireEvent.click(screen.getByRole("radio", { name: /^Универсальность/u }));
+    fireEvent.click(screen.getByRole("button", { name: /Продолжить/u }));
+    await screen.findByText("Осталось уточнить характер, линейку и бюджет");
+    fireEvent.click(screen.getByRole("radio", { name: /^Сбалансированный/u }));
+    fireEvent.click(screen.getByRole("button", { name: /Получить подбор/u }));
+    await waitFor(() => expect(mocks.routerPush).toHaveBeenCalledWith("/result"));
+    expect(fetchMock.mock.calls).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledWith("/api/recommendation", expect.objectContaining({ headers: { "Content-Type": "application/json" } }));
+    quiz.unmount();
+    render(<ResultView />);
+    expect(screen.getByRole("heading", { name: "Результат подбора", level: 1 })).toBeTruthy();
+    expect(screen.queryByText("Нет сохранённого результата")).toBeNull();
+    expect(screen.queryByLabelText("Почта")).toBeNull();
+    expect(analyticsCalls("email_submitted")).toHaveLength(0);
   });
 
   it("preserves final-step completion and quiz completion", async () => {
