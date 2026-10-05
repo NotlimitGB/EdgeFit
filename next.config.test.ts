@@ -7,7 +7,7 @@ import nextConfig from "./next.config";
 describe("legacy public host migration through Next routing", () => {
   it.each(["/", "/catalog", "/boards/test-board", "/robots.txt", "/sitemap.xml",
     "/catalog?style=park&brand=Jones&sort=price", "/quiz?board=test-board&utm_source=manual",
-    "/apiary", "/governance", "/internal-guide", "/google10fccbce44c29493Xhtml",
+    "/apiary", "/governance", "/internal-guide", "/google10fccbce44c29493Xhtml", "/health-check",
   ])("permanently preserves path and query: %s", async (path) => {
     const response = await unstable_getResponseFromNextConfig({ url: `https://edge-fit.vercel.app${path}`, nextConfig });
     expect(response.status).toBe(308);
@@ -22,7 +22,7 @@ describe("legacy public host migration through Next routing", () => {
   });
   it.each(["/google10fccbce44c29493.html", "/google10fccbce44c29493.html?x=1", "/api", "/api/internal/report",
     "/api/catalog-import", "/go", "/go/test-board?sizeLabel=159W", "/internal", "/internal/login", "/internal/catalog",
-    "/_next", "/_next/static/test.js",
+    "/_next", "/_next/static/test.js", "/health", "/health?probe=1",
   ])("leaves ownership and service path %s untouched", async (path) => {
     const response = await unstable_getResponseFromNextConfig({ url: `https://edge-fit.vercel.app${path}`, nextConfig });
     expect(response.status).toBe(200);

@@ -41,7 +41,11 @@ describe("shadow deployment build contract", () => {
     expect(docker).toContain("USER snowdex");
     expect(docker).toContain("EXPOSE 3000");
     expect(docker).toContain('CMD ["node", "server.js"]');
-    expect(docker).toContain("http://127.0.0.1:3000/quiz");
+    expect(docker).toContain("http://127.0.0.1:3000/health");
+    expect(docker).toContain("AbortSignal.timeout(4000)");
+    expect(docker).toContain("redirect:'error'");
+    expect(docker).toContain("await r.text()==='ok'");
+    expect(docker).not.toContain("http://127.0.0.1:3000/quiz");
     expect(docker).not.toMatch(/ARG\s+(DATABASE_URL|RESEND_API_KEY|INTERNAL_ACCESS_SECRET)/);
     expect(docker).not.toContain("next dev");
   });
