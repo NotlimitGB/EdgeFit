@@ -10,9 +10,10 @@ import { isPrivateSavedResultPath } from "@/lib/saved-result-contract";
 
 interface SiteAnalyticsProps {
   yandexMetrikaId: number | null;
+  enableVercelTelemetry?: boolean;
 }
 
-export function SiteAnalytics({ yandexMetrikaId }: SiteAnalyticsProps) {
+export function SiteAnalytics({ yandexMetrikaId, enableVercelTelemetry = true }: SiteAnalyticsProps) {
   const pathname = usePathname();
 
   useEffect(() => {
@@ -28,8 +29,8 @@ export function SiteAnalytics({ yandexMetrikaId }: SiteAnalyticsProps) {
   return (
     <>
       {yandexMetrikaId ? <YandexMetrika counterId={yandexMetrikaId} /> : null}
-      <Analytics />
-      <SpeedInsights />
+      {enableVercelTelemetry ? <Analytics /> : null}
+      {enableVercelTelemetry ? <SpeedInsights /> : null}
     </>
   );
 }

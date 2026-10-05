@@ -4,6 +4,9 @@ import { LEGACY_CANONICAL_BOARD_SLUG_ALIASES } from "@/lib/canonical-board-route
 import { getSeoLandingPath, seoLandingPages } from "@/lib/seo-pages";
 import { getAbsoluteSiteUrl } from "@/lib/site-url";
 
+// Build without DB access; resolve the current corpus on every runtime request.
+export const dynamic = "force-dynamic";
+
 const explicitLegacyAliasSources = new Set(
   Object.keys(LEGACY_CANONICAL_BOARD_SLUG_ALIASES),
 );
@@ -24,8 +27,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   try {
     slugs = await getAllCanonicalBoardSlugs();
-  } catch (error) {
-    console.error("Не удалось собрать canonical board slugs для sitemap, отдаём только статические страницы.", error);
+  } catch {
+    console.error("sitemap: canonical-corpus-unavailable; static-routes-only");
   }
 
   return [
@@ -34,7 +37,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: route === "" ? ("weekly" as const) : ("monthly" as const),
       priority: route === "" ? 1 : 0.7,
     })),
-    ...slugs
+    ...[...new Set(slugs)]
       .filter((slug) => !explicitLegacyAliasSources.has(slug))
       .map((slug) => ({
         url: getAbsoluteSiteUrl(`/boards/${slug}`),

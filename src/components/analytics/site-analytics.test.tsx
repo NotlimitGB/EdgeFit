@@ -39,4 +39,13 @@ describe("SiteAnalytics private saved-result boundary", () => {
     expect(markup).toContain("vercel-analytics");
     expect(markup).toContain("speed-insights");
   });
+
+  it("can omit provider-only telemetry without removing Metrika", () => {
+    const markup = renderToStaticMarkup(
+      <SiteAnalytics yandexMetrikaId={123} enableVercelTelemetry={false} />,
+    );
+    expect(markup).toContain("yandex-metrika");
+    expect(markup).not.toContain("vercel-analytics");
+    expect(markup).not.toContain("speed-insights");
+  });
 });
