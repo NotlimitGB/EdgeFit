@@ -27,11 +27,30 @@ function installBrowser(url: string, referrer = "") {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
   delete process.env.NEXT_PUBLIC_YANDEX_METRIKA_ID;
 });
 
 describe("analytics client acquisition enrichment", () => {
+  it("does not create analytics context/session or emit goals/fetch/beacon on a technical host", async () => {
+    vi.stubEnv("NEXT_PUBLIC_HOSTING_PROVIDER", "timeweb");
+    vi.stubEnv("NEXT_PUBLIC_YANDEX_METRIKA_ID", "108458449");
+    const { values, ym } = installBrowser("https://notlimitgb-edgefit-0277.twc1.net/?utm_source=diagnostic");
+    const fetchMock = vi.fn(), beacon = vi.fn(); vi.stubGlobal("fetch", fetchMock); vi.stubGlobal("navigator", { sendBeacon: beacon });
+    await trackEvent("quiz_started", { quiz_version: "v2" }, { useBeacon: true });
+    expect(values.size).toBe(0); expect(document.cookie).toBe("");
+    expect(ym).not.toHaveBeenCalled(); expect(fetchMock).not.toHaveBeenCalled(); expect(beacon).not.toHaveBeenCalled();
+  });
+
+  it.each(["snowdex.ru", "www.snowdex.ru"])("preserves canonical Timeweb goals and ingestion on %s", async host => {
+    vi.stubEnv("NEXT_PUBLIC_HOSTING_PROVIDER", "timeweb"); vi.stubEnv("NEXT_PUBLIC_YANDEX_METRIKA_ID", "108458449");
+    const { ym } = installBrowser(`https://${host}/quiz`);
+    const fetchMock = vi.fn().mockResolvedValue(new Response()); vi.stubGlobal("fetch", fetchMock);
+    await trackEvent("quiz_started", { quiz_version: "v2" });
+    expect(ym).toHaveBeenCalledWith(108458449, "reachGoal", "edgefit_quiz_started", { quiz_version: "v2" });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
   it("skips first-party requests when session storage getter is denied", async () => {
     const { windowValue } = installBrowser("https://snowdex.ru/quiz");
     Object.defineProperty(windowValue, "sessionStorage", { get: () => { throw new Error("SecurityError"); } });

@@ -1,4 +1,5 @@
 import { getOrCreateSessionId } from "@/lib/session-id";
+import { isBrowserAnalyticsAllowed } from "@/lib/deployment-policy";
 import {
   getYandexGoalNames,
   type AnalyticsEventName,
@@ -46,7 +47,7 @@ function normalizeYandexParams(payload: AnalyticsPayload) {
 }
 
 function sendYandexGoal(eventName: AnalyticsEventName, payload: AnalyticsPayload) {
-  if (typeof window === "undefined") {
+  if (typeof window === "undefined" || !isBrowserAnalyticsAllowed()) {
     return;
   }
 
@@ -101,7 +102,7 @@ export async function trackEvent(
   payload: AnalyticsPayload = {},
   options: TrackEventOptions = {},
 ) {
-  if (typeof window === "undefined") {
+  if (typeof window === "undefined" || !isBrowserAnalyticsAllowed()) {
     return;
   }
 

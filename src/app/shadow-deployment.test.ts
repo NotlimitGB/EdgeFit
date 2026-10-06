@@ -9,6 +9,8 @@ afterEach(() => { vi.unstubAllEnvs(); vi.resetModules(); });
 describe("shadow deployment build contract", () => {
   it("leaves normal deployment output and headers unchanged", async () => {
     vi.stubEnv("SNOWDEX_SHADOW_MODE", "");
+    vi.stubEnv("SNOWDEX_STANDALONE", "");
+    vi.stubEnv("NEXT_PUBLIC_HOSTING_PROVIDER", "");
     const { default: config } = await import("../../next.config");
     expect(config.output).toBeUndefined();
     expect(await config.headers!()).toEqual([]);
@@ -16,6 +18,8 @@ describe("shadow deployment build contract", () => {
 
   it("opts into standalone and protects every shadow response from indexing", async () => {
     vi.stubEnv("SNOWDEX_SHADOW_MODE", "true");
+    vi.stubEnv("SNOWDEX_STANDALONE", "true");
+    vi.stubEnv("NEXT_PUBLIC_HOSTING_PROVIDER", "vercel");
     const { default: config } = await import("../../next.config");
     expect(config.output).toBe("standalone");
     expect(await config.headers!()).toEqual([{ source: "/:path*", headers: [
@@ -75,6 +79,10 @@ describe("shadow deployment build contract", () => {
     expect(source("src/lib/public-schema-cache.ts")).toContain("revalidate: 3600");
     expect(source("src/lib/recommendation/engine.ts")).toContain('"v1.6.4"');
     expect(source("next.config.ts")).toContain("_next(?:/|$)");
-    expect(source("src/app/layout.tsx")).toContain('enableVercelTelemetry={process.env.SNOWDEX_SHADOW_MODE !== "true"}');
+    expect(source("src/app/layout.tsx")).not.toContain("SNOWDEX_SHADOW_MODE");
+    expect(source("Dockerfile")).toContain("SNOWDEX_STANDALONE=true");
+    expect(source("Dockerfile")).toContain("SNOWDEX_SHADOW_MODE=false");
+    expect(source("Dockerfile")).toContain("NEXT_PUBLIC_HOSTING_PROVIDER=timeweb");
+    expect(source("Dockerfile").match(/ARG NEXT_PUBLIC_YANDEX_METRIKA_ID="108458449"/gu)).toHaveLength(2);
   });
 });

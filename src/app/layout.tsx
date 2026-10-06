@@ -52,7 +52,6 @@ export default function RootLayout({
         <SiteFooter />
         <SiteAnalytics
           yandexMetrikaId={hasYandexMetrika ? yandexMetrikaId : null}
-          enableVercelTelemetry={process.env.SNOWDEX_SHADOW_MODE !== "true"}
         />
       </body>
     </html>

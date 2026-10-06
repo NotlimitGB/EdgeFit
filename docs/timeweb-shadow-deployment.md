@@ -1,4 +1,143 @@
-# SnowDex: Timeweb shadow deployment (036D)
+# SnowDex: Timeweb production cutover package (036F)
+
+## Current authoritative configuration (036F, 2026-10-06)
+
+This package does not authorize DNS changes. The owner performs cutover only
+after exact candidate acceptance. Branch: `task/036D-timeweb-shadow-deployment`;
+036F base `d306a6ab0d6d0932a795435638dd8253e749d879`. Main stays
+`4c6c22ad7b472dc12bfadde75482136da66c8071`. Historical shadow instructions below
+are retained for provenance and are **not the production configuration**.
+
+| Independent policy | Ordinary Vercel | Timeweb production | Explicit shadow |
+| --- | --- | --- | --- |
+| SNOWDEX_STANDALONE | unset/false | true | true for Docker |
+| NEXT_PUBLIC_HOSTING_PROVIDER | unset or vercel | timeweb | timeweb |
+| SNOWDEX_SHADOW_MODE | unset/false | false | true |
+| Indexing | existing route rules | exact apex/www only | global noindex |
+| Vercel telemetry | existing behavior | disabled | disabled |
+
+Unknown provider blocks build. Flags are build-time config; runtime overrides
+cannot repair an already-built client/config. Docker production defaults are
+standalone=true, provider=timeweb, shadow=false. A shadow build must explicitly
+set the shadow build flag rather than merely changing container runtime env.
+
+All technical/lookalike/malformed hosts receive `X-Robots-Tag: noindex, nofollow,
+noarchive`, including static assets, robots and sitemap. Exact snowdex.ru/www
+receive no global noindex; private result route rules still apply. Technical
+hostname stays directly available, canonical/OG/sitemap stay https://snowdex.ru.
+Exact www public pages redirect 308 to apex, preserving path/query. Health,
+exact Google verification, api/go/internal/_next service paths are excluded.
+Legacy redirect is preserved; no public auth middleware expansion.
+
+### Analytics and environment minimum
+
+Timeweb shared event writer checks actual request Host via Next headers before
+SQL. Missing request context denies writes. Forwarded Host, caller URL and
+canonical environment URL cannot grant permission. Vercel policy is unchanged.
+Browser tracking checks actual hostname before creating session/acquisition.
+Technical hosts produce no first-party fetch/beacon or Metrika init/hits/goals.
+Timeweb SiteAnalytics waits for hydration: **no SSR no-JS Metrika image**, even
+on apex. JavaScript Metrika works on apex/www; Vercel rendering is unchanged.
+Private saved-result exclusions and event/persistence schemas remain unchanged.
+This is not a write sandbox: real recommendation POST still writes results.
+
+| Category | Names | Initial production requirement |
+| --- | --- | --- |
+| PUBLIC_BUILD_TIME / REQUIRED_NOW | NEXT_PUBLIC_SITE_URL | https://snowdex.ru, build and runtime |
+| PUBLIC_BUILD_TIME / REQUIRED_NOW | NEXT_PUBLIC_HOSTING_PROVIDER | timeweb, image default |
+| PUBLIC_BUILD_TIME / REQUIRED_NOW | NEXT_PUBLIC_YANDEX_METRIKA_ID | Docker ARG default 108458449 in builder AND runner; verify actual bundle |
+| BUILD_CONFIG / REQUIRED_NOW | SNOWDEX_STANDALONE / SNOWDEX_SHADOW_MODE | true / false, independent |
+| REQUIRED_RUNTIME / SECRET | DATABASE_URL | existing production-compatible endpoint; owner supplies privately, never ARG/layer |
+| REQUIRED_RUNTIME | SAVED_RESULTS_ENABLED | true, owner must explicitly configure |
+| REQUIRED_RUNTIME | ANALYTICS_DELIVERY_ENABLED | false on Timeweb, not an ingestion flag |
+| REQUIRED_RUNTIME | DATABASE_SSL | absent, preserving SSL-required behavior; never disable in production |
+| IMAGE_DEFAULTS | NODE_ENV / HOSTNAME / PORT / NEXT_TELEMETRY_DISABLED | production / 0.0.0.0 / 3000 / 1 |
+| KEEP_ON_VERCEL_ONLY_FOR_NOW / DEFERRED_UNTIL_CRON_MIGRATION | CRON_SECRET, RESEND_API_KEY, ANALYTICS_DELIVERY_SENDER, ANALYTICS_DELIVERY_RECIPIENT, YANDEX_METRIKA_OAUTH_TOKEN | do not copy to Timeweb |
+| KEEP_ON_VERCEL_ONLY_FOR_NOW | INTERNAL_ACCESS_PASSWORD, INTERNAL_ACCESS_SECRET | absent on Timeweb, internal paths fail closed |
+| OPTIONAL_VERCEL_ONLY | VERCEL_URL, VERCEL_PROJECT_PRODUCTION_URL, NEXT_PUBLIC_VERCEL_OBSERVABILITY_BASEPATH, NEXT_PUBLIC_VERCEL_OBSERVABILITY_CLIENT_CONFIG | do not transplant |
+
+The complete script-only inventory remains in the historical inventory below;
+those variables are not startup configuration. Keep Vercel delivery enabled and
+all its credentials unchanged. Delivery controls scheduled reports/email, NOT
+event ingestion. Default public Metrika ARG avoids assumptions about panel
+runtime-to-build substitution; override once for both Docker stages if needed.
+Runtime-only counter changes do not change the browser bundle. No secrets read.
+
+### Runtime / candidate acceptance
+
+Keep pinned Node/digest, curl, non-root, standalone assets, node server.js,
+EXPOSE 3000, HOSTNAME=0.0.0.0, no Docker HEALTHCHECK; panel path=/health.
+Current resources stay **1 vCPU / 2 GB RAM / 30 GB NVMe / Moscow / one instance**,
+not the superseded early suggestion below. No shared cache or new dependencies.
+SQL pool/SSL unchanged; allowlist/egress UNKNOWN unless separately confirmed.
+Cache remains instance-local: catalog 300s; board/schema 3600s. Vercel refresh
+updates shared DB; Timeweb sees changes via its own TTL, not immediate
+cross-provider invalidation. Failed revalidation is not a freshness guarantee.
+Sitemap is dynamic; static-only fallback is per request, never a frozen success.
+
+Require exact Timeweb deployed SHA from build/deployment logs, healthy status and
+actual runtime configuration evidence. Prior shadow 200/576 is not proof of the
+new candidate. Missing exact SHA/config/logs makes readiness PARTIAL.
+Only GET health/home/catalog/quiz/result (empty state expected), Bataleon exact,
+YES Basic, robots/sitemap/verification/icons/JS/CSS. Require 558 items, 24 SSR
+cards, 558 board / 576 total unique sitemap URLs, canonical/CTA/alias correctness.
+Large static files require completed stream, bytes/MIME/SHA256, not just 200.
+No direct DB queries, real submissions, cron calls or /go transitions.
+
+Local artifact: check apex/www/technical Host headers and static noindex, forward
+host spoof denial, query redirects. Next's experimental config-test helper
+stringifies repeated query values with commas: real HTTP must separately prove
+brand parameter preservation. Protected browser contexts block tracking, /api,
+/go/internal and all non-GET/HEAD before navigation, service workers disabled.
+Mock recommendation fixtures are client evidence, not server persistence.
+Saved flag, actual Metrika reporting and ingestion require separately authorized
+user acceptance; tests do not prove panel configuration or live writes.
+
+### Sole scheduler: Vercel
+
+Preserve UTC schedules: catalog-refresh `0 0 * * *`, analytics-weekly
+`30 6 * * 1`, analytics-retry `15 8 * * *`. No Timeweb schedules.
+Vercel documents GET to the project's **production deployment URL**, not a
+requirement that public DNS stay on Vercel. Cron does not follow redirects;
+existing /api legacy exclusions matter. Keep Vercel project/deployment/domains
+and credentials alive. Confirm actual scheduled invocations by read-only logs
+before/after cutover, never manual execution; unavailable logs are UNKNOWN.
+[Cron](https://vercel.com/docs/cron-jobs),
+[redirect/execution behavior](https://vercel.com/docs/cron-jobs/manage-cron-jobs).
+
+Future handoff requires separate authorization: inventory last run/idempotency,
+disable old scheduler before enabling new, verify first run/no overlap, preserve
+retry ownership and rollback. No scheduler changes or decommission here.
+
+### Manual cutover and rollback (owner only)
+
+1. Confirm exact candidate gates and privately configure minimal runtime env.
+2. Attach snowdex.ru and www.snowdex.ru to the existing Timeweb app; copy only
+   actual routing records from its panel, verify ownership/certificate readiness.
+3. REG.RU: preserve authoritative NS, Google/Yandex verification TXT and unrelated
+   records; change only required apex/www routing, record prior TTL/values.
+4. Verify trusted HTTPS apex; www 308 preserving path/query; HTTP→HTTPS; no loops;
+   apex indexable, technical noindex; canonical/OG/robots/sitemap/verification;
+   complete static transfers and unchanged product paths.
+5. Confirm saved capability and analytics through authorized user operations,
+   separately from automated GET/mocks. Check mobile menu/filter/history/result.
+6. Three loads each: affected iPhone, PC VPN, PC without VPN, ordinary mobile
+   network. Record actual errors and complete transfers; user-reported prior
+   improvement is context, not a new measurement by this source task.
+7. Observe **at least 48 hours**, retaining Vercel project/domains/deployments/
+   secrets/cron. Inspect errors and scheduled invocations read-only.
+
+Rollback without code mutation: restore `A @ → 216.198.79.1` and
+`CNAME www → 8536f23a3e71fdf9.vercel-dns-017.com.`; preserve NS/TXT/unrelated
+records. Verify retained Vercel production HTTPS/canonical and sole scheduler.
+DNS TTL/cache prevents instantaneous global rollback; no minute-level promise.
+Keep technical host available/noindex/no analytics. Do not delete resources.
+
+Separate follow-ups: scheduler migration, Vercel decommission, full-body/hash
+monitoring from ≥2 independent regions (update references only after verified
+deployment), analytics truth audit, partner/monetization readiness. Not executed.
+
+## Historical shadow preparation (036D–036E; superseded where noted above)
 
 This is a technical-host experiment, not a production migration. Keep
 `snowdex.ru` on Vercel. Do not attach a custom domain, alter DNS, migrate data,

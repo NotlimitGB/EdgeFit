@@ -1,4 +1,6 @@
 import "server-only";
+import { headers } from "next/headers";
+import { getHostingProvider, isCanonicalProductionHost } from "@/lib/deployment-policy";
 import { базаНастроена } from "@/lib/database/config";
 import { получитьКлиентБазы } from "@/lib/database/client";
 
@@ -13,6 +15,7 @@ export interface AnalyticsEventPayload {
 interface AnalyticsPersistencePolicyInput {
   nodeEnv: string | undefined;
   requestUrl: string;
+  requestHost?: string | null;
 }
 
 function normalizeRequestHostname(requestUrl: string) {
@@ -29,10 +32,13 @@ function normalizeRequestHostname(requestUrl: string) {
 export function shouldPersistAnalyticsEvent({
   nodeEnv,
   requestUrl,
+  requestHost,
 }: AnalyticsPersistencePolicyInput) {
   if (nodeEnv !== "production") {
     return false;
   }
+
+  if (getHostingProvider() === "timeweb") return isCanonicalProductionHost(requestHost);
 
   const hostname = normalizeRequestHostname(requestUrl);
 
@@ -56,10 +62,17 @@ export async function saveAnalyticsEvent({
   pagePath,
   payload = {},
 }: AnalyticsEventPayload) {
+  let requestHost: string | null = null;
+  if (getHostingProvider() === "timeweb") {
+    // Standalone request.url can contain the internal bind address. Use only Host,
+    // not caller payload or untrusted forwarded headers. No request context fails closed.
+    try { requestHost = (await headers()).get("host"); } catch { return; }
+  }
   if (
     !shouldPersistAnalyticsEvent({
       nodeEnv: process.env.NODE_ENV,
       requestUrl,
+      requestHost,
     })
   ) {
     return;

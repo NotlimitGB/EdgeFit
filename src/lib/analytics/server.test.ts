@@ -10,10 +10,11 @@ const mocks = vi.hoisted(() => {
 
   const getClient = vi.fn(() => sql);
 
-  return { getClient, json, query, sql };
+  return { getClient, json, query, sql, headers: vi.fn() };
 });
 
 vi.mock("server-only", () => ({}));
+vi.mock("next/headers", () => ({ headers: mocks.headers }));
 
 vi.mock("@/lib/database/config", () => ({
   базаНастроена: () => true,
@@ -105,5 +106,27 @@ describe("saveAnalyticsEvent", () => {
 
     const [, ...parameters] = mocks.query.mock.calls[0] ?? [];
     expect(parameters).toEqual(["session-2", "home_viewed", null, {}]);
+  });
+
+  it.each(["snowdex.ru", "www.snowdex.ru"])("uses actual Host %s even with an internal standalone URL", async host => {
+    vi.stubEnv("NEXT_PUBLIC_HOSTING_PROVIDER", "timeweb");
+    mocks.headers.mockResolvedValue(new Headers({ host }));
+    await saveAnalyticsEvent({ sessionId: "session-1", eventName: "product_clicked", requestUrl: "http://0.0.0.0:3000/go/yes-basic", payload: { size_label: "159W" } });
+    expect(mocks.query).toHaveBeenCalledOnce();
+    expect(mocks.json).toHaveBeenCalledWith({ size_label: "159W" });
+  });
+
+  it.each(["notlimitgb-edgefit-0277.twc1.net", "snowdex.ru.evil.test", "localhost", ""])("blocks analytics for actual Host %s regardless of forwarded URL", async host => {
+    vi.stubEnv("NEXT_PUBLIC_HOSTING_PROVIDER", "timeweb");
+    mocks.headers.mockResolvedValue(new Headers({ host, "x-forwarded-host": "snowdex.ru" }));
+    await saveAnalyticsEvent({ sessionId: "session-1", eventName: "home_viewed", requestUrl: "https://snowdex.ru/" });
+    expect(mocks.getClient).not.toHaveBeenCalled(); expect(mocks.query).not.toHaveBeenCalled();
+  });
+
+  it("fails closed outside a request context", async () => {
+    vi.stubEnv("NEXT_PUBLIC_HOSTING_PROVIDER", "timeweb");
+    mocks.headers.mockRejectedValue(new Error("no request context"));
+    await expect(saveAnalyticsEvent({ sessionId: "session-1", eventName: "home_viewed", requestUrl: "https://snowdex.ru/" })).resolves.toBeUndefined();
+    expect(mocks.getClient).not.toHaveBeenCalled();
   });
 });

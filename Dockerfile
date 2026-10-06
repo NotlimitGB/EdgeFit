@@ -11,18 +11,25 @@ FROM base AS builder
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
 # Only public settings may be build arguments. Never pass DATABASE_URL here.
-ARG NEXT_PUBLIC_YANDEX_METRIKA_ID=""
+ARG NEXT_PUBLIC_YANDEX_METRIKA_ID="108458449"
 ENV NEXT_PUBLIC_SITE_URL=https://snowdex.ru \
     NEXT_PUBLIC_YANDEX_METRIKA_ID=${NEXT_PUBLIC_YANDEX_METRIKA_ID} \
-    SNOWDEX_SHADOW_MODE=true \
+    NEXT_PUBLIC_HOSTING_PROVIDER=timeweb \
+    SNOWDEX_STANDALONE=true \
+    SNOWDEX_SHADOW_MODE=false \
     DATABASE_URL=" " \
     DATABASE_SSL=disable
 RUN npm run build
 
 FROM base AS runner
+ARG NEXT_PUBLIC_YANDEX_METRIKA_ID="108458449"
 ENV NODE_ENV=production \
-    SNOWDEX_SHADOW_MODE=true \
+    SNOWDEX_SHADOW_MODE=false \
+    SNOWDEX_STANDALONE=true \
+    NEXT_PUBLIC_HOSTING_PROVIDER=timeweb \
+    NEXT_PUBLIC_YANDEX_METRIKA_ID=${NEXT_PUBLIC_YANDEX_METRIKA_ID} \
     NEXT_PUBLIC_SITE_URL=https://snowdex.ru \
+    ANALYTICS_DELIVERY_ENABLED=false \
     HOSTNAME=0.0.0.0 \
     PORT=3000
 RUN apt-get update \
