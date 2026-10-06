@@ -46,6 +46,18 @@ describe("shadow deployment build contract", () => {
     expect(docker).not.toContain("next dev");
   });
 
+  it("installs only the HTTP probe client in the runner before dropping privileges", () => {
+    const stages = source("Dockerfile").split("FROM base AS runner");
+    expect(stages).toHaveLength(2);
+    const [buildStages, runner] = stages;
+    expect(buildStages).not.toMatch(/apt-get|curl --version/);
+    const install = "RUN apt-get update \\\n    && apt-get install -y --no-install-recommends curl \\\n    && rm -rf /var/lib/apt/lists/* \\\n    && curl --version";
+    expect(runner.replace(/\r\n/gu, "\n")).toContain(install);
+    expect(runner.indexOf("curl --version")).toBeLessThan(runner.indexOf("USER snowdex"));
+    expect(runner.match(/apt-get install/gu)).toHaveLength(1);
+    expect(runner).not.toMatch(/\b(wget|gcc|make|build-essential)\b/u);
+  });
+
   it("excludes secrets and local artifacts while retaining cron source dependencies", () => {
     const ignored = source(".dockerignore").split(/\r?\n/u);
     for (const pattern of [".env*", ".git", ".vercel", "node_modules", ".next", "reports"]) {

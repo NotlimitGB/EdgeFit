@@ -25,6 +25,10 @@ ENV NODE_ENV=production \
     NEXT_PUBLIC_SITE_URL=https://snowdex.ru \
     HOSTNAME=0.0.0.0 \
     PORT=3000
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl --version
 RUN groupadd --gid 1001 snowdex && useradd --uid 1001 --gid snowdex --no-create-home snowdex
 COPY --from=builder --chown=snowdex:snowdex /app/.next/standalone ./
 COPY --from=builder --chown=snowdex:snowdex /app/.next/static ./.next/static

@@ -189,6 +189,15 @@ returns HTTP 200 with body `ok`, executing routing without cache, DB, auth, SSR
 or external dependencies. It proves liveness only, not catalog or recommendation
 readiness. HOSTNAME, PORT, EXPOSE and the standalone start command are unchanged.
 
+The runner installs only `curl` and its required Debian dependencies, without
+recommended packages, before switching to the non-root user. Apt lists are
+removed and `curl --version` is mandatory during the Docker image build. This
+tests the compatibility hypothesis that the platform probe needs an HTTP client;
+missing curl is not a confirmed root cause. Static tests and a Next.js build do
+not prove the binary is present on Timeweb. After redeploy, record the exact SHA,
+the successful version check in Docker build logs and healthy platform status
+with `/health`. App Platform remains the sole probe owner.
+
 According to [Timeweb's healthcheck documentation](https://timeweb.cloud/docs/apps/healthcheck-path),
 the panel health path takes precedence over Dockerfile HEALTHCHECK. There is no
 image-level probe in this package, so `/health` must be set in the panel;
