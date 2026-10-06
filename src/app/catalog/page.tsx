@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import Link from "next/link";
 import { CatalogView } from "@/components/catalog/catalog-view";
 import publicStyles from "@/components/public/public-ui.module.css";
 import { getPublicCanonicalCatalogItems } from "@/lib/public-catalog-cache";
 import styles from "@/components/catalog/catalog.module.css";
-
-export const revalidate = 300;
 
 export const metadata: Metadata = {
   title: "Каталог сноубордов",
@@ -15,6 +14,8 @@ export const metadata: Metadata = {
 };
 
 export default async function CatalogPage() {
+  // Render only after a request; data caching remains in the public loader.
+  await connection();
   const boards = await getPublicCanonicalCatalogItems();
 
   return (

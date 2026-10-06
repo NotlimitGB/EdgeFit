@@ -20,7 +20,7 @@ ENV NEXT_PUBLIC_SITE_URL=https://snowdex.ru \
     SAVED_RESULTS_ENABLED=true \
     DATABASE_URL=" " \
     DATABASE_SSL=disable
-RUN npm run build && node scripts/verify-saved-result-build.mjs
+RUN npm run build && node scripts/verify-saved-result-build.mjs && node scripts/verify-catalog-build.mjs
 
 FROM base AS runner
 ARG NEXT_PUBLIC_YANDEX_METRIKA_ID="108458449"

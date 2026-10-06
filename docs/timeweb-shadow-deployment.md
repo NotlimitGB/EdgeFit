@@ -63,6 +63,22 @@ event ingestion. Default public Metrika ARG avoids assumptions about panel
 runtime-to-build substitution; override once for both Docker stages if needed.
 Runtime-only counter changes do not change the browser bundle. No secrets read.
 
+### Runtime catalog build contract (036F2)
+
+`/catalog` waits for an HTTP request via `connection()` before calling the public
+catalog loader. DB-less builds must not package static `catalog.html` or
+`catalog.rsc`; the filesystem-only `verify-catalog-build.mjs` gate checks both
+the original and standalone output after Docker build. The data cache keeps its
+existing 300-second TTL, namespace, key and tag. The first request waits for the
+runtime loader rather than serving a known-empty build snapshot. This does not
+repair missing runtime DB configuration or DB failures.
+
+After redeploy, confirm exact SHA from platform evidence before the first
+observed GET `/catalog`: require 558 items and 24 SSR cards without waiting for
+ISR recovery. Record it as first observed, not globally cold unless deployment
+logs prove that. Also check health, sitemap and a board route. No cache clearing,
+DB writes or credentials in the builder are required.
+
 ### Saved-result build contract (036F1)
 
 `/result` remains static and reads the saved-result feature flag while building.
