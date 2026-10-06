@@ -182,17 +182,18 @@ After the branch has passed source/package acceptance and been pushed:
 10. Confirm canonical/sitemap URLs still use snowdex.ru. Do not submit this host
     to search engines. Record logs without secrets and gate populated readiness.
 
-Docker HEALTHCHECK targets `/health` with a 4-second request timeout inside the
-5-second Docker timeout. It rejects redirects and requires HTTP 200 with body
-`ok`. The endpoint executes routing without cache, DB, auth, SSR or external
-dependencies. It proves liveness only, not catalog or recommendation readiness.
+The Dockerfile deliberately contains no HEALTHCHECK instruction. Timeweb App
+Platform is the sole healthcheck owner; the owner must explicitly configure
+the panel health path as `/health`. Do not leave that field empty. The endpoint
+returns HTTP 200 with body `ok`, executing routing without cache, DB, auth, SSR
+or external dependencies. It proves liveness only, not catalog or recommendation
+readiness. HOSTNAME, PORT, EXPOSE and the standalone start command are unchanged.
 
 According to [Timeweb's healthcheck documentation](https://timeweb.cloud/docs/apps/healthcheck-path),
-the panel health path takes precedence over Dockerfile HEALTHCHECK. Docker's
-check is used only when that field is empty. The owner must verify `/health` in
-the panel, or leave the field empty to use the image check; leaving `/quiz`
-configured will not automatically switch the platform probe. This task does
-not change platform settings. After redeploy, verify the exact commit, a direct
+the panel health path takes precedence over Dockerfile HEALTHCHECK. There is no
+image-level probe in this package, so `/health` must be set in the panel;
+leaving `/quiz` configured will not automatically switch the platform probe.
+This task does not change platform settings. After redeploy, verify the exact commit, a direct
 `/health` HTTP 200 and healthy platform status. Successful source checks alone
 do not establish the root cause of the earlier stuck `starting` status.
 If provisioning requires purchasing resources, the owner performs that action.
