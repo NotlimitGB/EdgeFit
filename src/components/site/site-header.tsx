@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CatalogEntryLink } from "@/components/catalog/catalog-entry-link";
+import { MobileMenu } from "./mobile-menu";
 import styles from "./site-shell.module.css";
 
 const links = [
@@ -27,15 +28,12 @@ export function SiteHeader() {
           ))}
         </nav>
         <Link href="/quiz" className={styles.headerAction}>Подобрать доску <span aria-hidden="true">→</span></Link>
-        <details className={styles.mobileMenu}>
-          <summary aria-label="Открыть навигацию">Меню <span aria-hidden="true">☰</span></summary>
-          <nav aria-label="Мобильная навигация">
+        <MobileMenu>
             {links.map((link) => link.href === "/catalog"
               ? <CatalogEntryLink key={link.href}>{link.label}</CatalogEntryLink>
               : <Link key={link.href} href={link.href}>{link.label}</Link>)}
             <Link href="/quiz">Подбор сноуборда</Link>
-          </nav>
-        </details>
+        </MobileMenu>
       </div>
     </header>
   );
