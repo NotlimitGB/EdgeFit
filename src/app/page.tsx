@@ -163,7 +163,7 @@ export default function Home() {
             Подбор сноуборда
           </p>
           <h1 id="home-title" className="snowdex-home__hero-title">
-            Подбор сноуборда по параметрам
+            Сноуборд под твой вес и стиль катания
           </h1>
           <p className="snowdex-home__hero-lead">
             Укажи рост, вес, размер ботинка, уровень и стиль катания. SnowDex
@@ -329,7 +329,7 @@ export default function Home() {
           <p className={`${publicStyles.kicker} snowdex-home__kicker`}>
             Как это работает
           </p>
-          <h2 id="process-title">От параметров — к понятному выбору</h2>
+          <h2 id="process-title">Как проходит подбор сноуборда</h2>
         </div>
 
         <ol className="snowdex-home__process-rail">
@@ -347,13 +347,13 @@ export default function Home() {
           <p className={`${publicStyles.kicker} snowdex-home__kicker`}>
             Как формируется рекомендация
           </p>
-          <h2 id="trust-title">Показываем не только результат, но и причины</h2>
+          <h2 id="trust-title">Почему тебе подходят эти параметры</h2>
         </div>
 
         <div className="snowdex-home__trust-content">
           <p>
-            В результате видно не только подходящий диапазон и модели, но и
-            какие параметры повлияли на рекомендацию.
+            Рядом с диапазоном ростовок и рекомендациями моделей ты увидишь,
+            как вес, ботинок и стиль катания повлияли на расчёт.
           </p>
           <ul>
             <li>Одинаковые вводные дают предсказуемый результат.</li>
@@ -361,8 +361,8 @@ export default function Home() {
             <li>Перед покупкой всё равно стоит проверить геометрию нужного размера.</li>
           </ul>
           <p className="snowdex-home__trust-note">
-            Рекомендация — рабочая отправная точка, а не абсолютная гарантия для
-            любой модели.
+            Используй рекомендацию, чтобы сузить выбор. Геометрию конкретной
+            ростовки стоит проверить перед покупкой.
           </p>
         </div>
       </section>
@@ -400,7 +400,7 @@ export default function Home() {
           <p className={`${publicStyles.kicker} snowdex-home__kicker`}>
             Разобраться глубже
           </p>
-          <h2 id="guides-title">Гайды по выбору сноуборда</h2>
+          <h2 id="guides-title">Статьи о выборе сноуборда</h2>
           <p>
             Короткие разборы для тех, кто хочет отдельно проверить ростовку,
             ширину или риск зацепа ботинком.
@@ -433,7 +433,7 @@ export default function Home() {
                 Следующий шаг
               </p>
               <h2 id="final-cta-title">
-                Готов понять, какая доска подходит под твои параметры?
+                Узнай подходящую ростовку и ширину
               </h2>
               <p>
                 Получишь диапазон длины, ширину и понятное объяснение выбора.

@@ -41,7 +41,7 @@ describe("homepage metadata", () => {
 
     expect(markup.match(/<h1\b/gu)).toHaveLength(1);
     expect(markup).toContain("<h1");
-    expect(markup).toContain("Подбор сноуборда по параметрам</h1>");
+    expect(markup).toContain("Сноуборд под твой вес и стиль катания</h1>");
     expect(markup).toContain("Как подобрать сноуборд по параметрам");
     expect(markup).toContain("Почему нельзя выбирать доску только по росту");
     expect(markup.match(/href="\/quiz"/gu)).toHaveLength(2);

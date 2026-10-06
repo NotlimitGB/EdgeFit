@@ -27,25 +27,24 @@ export default async function CatalogPage() {
           <div className={styles.heroCopy}>
             <p className={publicStyles.kicker}>SnowDex / сноуборды</p>
             <h1 id="catalog-title" className={styles.heroTitle}>
-              Найди доску. Разберись в деталях.
+              Сноуборды и их характеристики
             </h1>
             <p className={styles.heroLead}>
-              Фильтруй модели по стилю, форме и ширине, сравнивай
-              характеристики, данные о доступности и ориентир цены. Каталог
-              показывает данные досок, а персональную рекомендацию можно
-              получить в квизе.
+              Найди модели по бренду, стилю катания и ширине. На странице
+              каждой доски можно изучить размеры, геометрию и цены из каталога.
+              Для выбора под твои параметры пройди подбор.
             </p>
             <Link
               href="/quiz"
               className={`${publicStyles.secondaryAction} ${styles.heroAction}`}
             >
-              Подобрать под себя
+              Подобрать сноуборд
             </Link>
           </div>
 
           <aside className={styles.heroGuide} aria-label="Как читать каталог">
             <p className={publicStyles.microLabel}>
-              Каталог показывает модели, квиз подбирает под тебя
+              На что смотреть при выборе
             </p>
             <dl className={styles.heroGuideList}>
               <div>

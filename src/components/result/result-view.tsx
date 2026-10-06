@@ -559,7 +559,7 @@ export function ResultView({
           >
             <div>
               <p className={publicStyles.kicker}>Сохранить результат</p>
-              <h2 id="save-result-title">Вернись к этому расчёту по ссылке</h2>
+              <h2 id="save-result-title">Ссылка на твой результат</h2>
               <p>
                 Ссылка открывает именно этот результат и подборку, даже после
                 закрытия браузера или на другом устройстве.
@@ -869,10 +869,10 @@ export function ResultView({
         <section className={styles.finalActions} aria-labelledby="final-action-title">
           <div>
             <p className={publicStyles.kicker}>Следующий шаг</p>
-            <h2 id="final-action-title">Хочешь изменить вводные или посмотреть шире?</h2>
+            <h2 id="final-action-title">Уточни подбор или изучи другие модели</h2>
             <p>
-              Пересчитай подбор или перейди к каталогу — персональные модели выше
-              останутся главным ориентиром.
+              Измени параметры, чтобы получить новую рекомендацию, или
+              посмотри характеристики других досок в каталоге.
             </p>
           </div>
           <div className={styles.inlineActions}>
