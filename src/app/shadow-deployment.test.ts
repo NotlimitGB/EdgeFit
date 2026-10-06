@@ -7,6 +7,21 @@ const source = (path: string) => readFileSync(resolve(process.cwd(), path), "utf
 afterEach(() => { vi.unstubAllEnvs(); vi.resetModules(); });
 
 describe("shadow deployment build contract", () => {
+  it("enables saved results in builder and runner and verifies actual build artifacts", () => {
+    const docker = source("Dockerfile");
+    const builder = docker.split("FROM base AS builder")[1].split("FROM base AS runner")[0];
+    const runner = docker.split("FROM base AS runner")[1];
+    expect(builder).toContain("SAVED_RESULTS_ENABLED=true");
+    expect(runner).toContain("SAVED_RESULTS_ENABLED=true");
+    expect(builder).toContain('DATABASE_URL=" "');
+    expect(builder).toContain("RUN npm run build && node scripts/verify-saved-result-build.mjs");
+    expect(docker).not.toMatch(/ARG\s+SAVED_RESULTS_ENABLED/u);
+    for (const secret of ["CRON_SECRET", "INTERNAL_ACCESS_SECRET", "INTERNAL_ACCESS_PASSWORD", "RESEND_API_KEY", "YANDEX_METRIKA_OAUTH_TOKEN"]) {
+      expect(builder).not.toContain(secret);
+      expect(runner).not.toContain(secret);
+    }
+    expect(source("src/app/result/page.tsx")).not.toContain("force-dynamic");
+  });
   it("leaves normal deployment output and headers unchanged", async () => {
     vi.stubEnv("SNOWDEX_SHADOW_MODE", "");
     vi.stubEnv("SNOWDEX_STANDALONE", "");

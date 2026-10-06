@@ -48,7 +48,7 @@ This is not a write sandbox: real recommendation POST still writes results.
 | PUBLIC_BUILD_TIME / REQUIRED_NOW | NEXT_PUBLIC_YANDEX_METRIKA_ID | Docker ARG default 108458449 in builder AND runner; verify actual bundle |
 | BUILD_CONFIG / REQUIRED_NOW | SNOWDEX_STANDALONE / SNOWDEX_SHADOW_MODE | true / false, independent |
 | REQUIRED_RUNTIME / SECRET | DATABASE_URL | existing production-compatible endpoint; owner supplies privately, never ARG/layer |
-| REQUIRED_RUNTIME | SAVED_RESULTS_ENABLED | true, owner must explicitly configure |
+| BUILD + RUNTIME / REQUIRED_NOW | SAVED_RESULTS_ENABLED | true in builder and runner; owner must not override to false |
 | REQUIRED_RUNTIME | ANALYTICS_DELIVERY_ENABLED | false on Timeweb, not an ingestion flag |
 | REQUIRED_RUNTIME | DATABASE_SSL | absent, preserving SSL-required behavior; never disable in production |
 | IMAGE_DEFAULTS | NODE_ENV / HOSTNAME / PORT / NEXT_TELEMETRY_DISABLED | production / 0.0.0.0 / 3000 / 1 |
@@ -62,6 +62,26 @@ all its credentials unchanged. Delivery controls scheduled reports/email, NOT
 event ingestion. Default public Metrika ARG avoids assumptions about panel
 runtime-to-build substitution; override once for both Docker stages if needed.
 Runtime-only counter changes do not change the browser bundle. No secrets read.
+
+### Saved-result build contract (036F1)
+
+`/result` remains static and reads the saved-result feature flag while building.
+Therefore `SAVED_RESULTS_ENABLED=true` is explicitly set in both builder and
+runner. This is a non-secret production feature setting, not a new public flag.
+Runtime override `false` is incompatible with the enabled static artifact;
+rebuild and reaccept the full contract before deliberately changing capability.
+Do not fix a disabled build merely by setting runtime true or force-dynamic.
+
+After the DB-less Docker build, `node scripts/verify-saved-result-build.mjs`
+must succeed before runner packaging. It checks prerendered `/result`, enabled
+props in actual HTML/RSC and the standalone copies/server. Disabled, missing or
+conflicting props and missing artifacts fail the image build. The verifier reads
+only build files; it never loads application code, environment secrets or DB.
+Ordinary Vercel builds retain their existing production environment semantics.
+
+Source/build success is not runtime persistence evidence. Require the exact
+deployed SHA, `/result` HTTP 200 and enabled prop in its actual response, plus
+the remaining corpus/transfer/browser gates. No synthetic saved-result creation.
 
 ### Runtime / candidate acceptance
 
