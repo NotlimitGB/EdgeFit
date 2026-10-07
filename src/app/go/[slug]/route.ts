@@ -1,4 +1,6 @@
 import { cookies, headers } from "next/headers";
+import { randomUUID } from "node:crypto";
+import { withDbDiagnosticContext, withDbDiagnosticStage } from "@/lib/database/lifecycle-diagnostics";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { saveAnalyticsEvent } from "@/lib/analytics/server";
@@ -53,8 +55,12 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ slug: string }> },
 ) {
+  return withDbDiagnosticContext({ scope: "outbound", stage: "request", traceId: randomUUID() }, () => handleGet(request, params));
+}
+
+async function handleGet(request: Request, params: Promise<{ slug: string }>) {
   const { slug } = await params;
-  const product = await getProductBySlug(slug);
+  const product = await withDbDiagnosticStage("product_lookup", () => getProductBySlug(slug));
   const destinationUrl = product ? resolveProductStoreUrl(product) : null;
 
   if (!product || !destinationUrl) {

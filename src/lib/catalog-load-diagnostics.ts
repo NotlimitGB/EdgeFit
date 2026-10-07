@@ -1,6 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
+import { withDbDiagnosticContext } from "@/lib/database/lifecycle-diagnostics";
 
 export type CanonicalCatalogLoadKind = "all" | "slug" | "alias";
 
@@ -126,7 +127,7 @@ export function createCanonicalCatalogDiagnostics(
       emitCatalogDiagnostic(logger, "info", { ...baseEvent, event: "start" });
 
       try {
-        const value = await operation();
+        const value = await withDbDiagnosticContext({ scope: "canonical_catalog", traceId, stage }, operation);
         let rowCount: number | undefined;
         try {
           rowCount = ROW_COUNT_STAGES.has(stage)

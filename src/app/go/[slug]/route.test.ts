@@ -233,3 +233,4 @@ describe("store click provenance", () => {
     errorSpy.mockRestore();
   });
 });
+vi.mock("server-only", () => ({}));

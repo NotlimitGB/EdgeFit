@@ -282,3 +282,4 @@ describe("recommendation API saved-result transport", () => {
     );
   });
 });
+vi.mock("server-only", () => ({}));
