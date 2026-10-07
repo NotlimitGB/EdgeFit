@@ -114,6 +114,34 @@ const board: CanonicalCatalogItem = {
   defaultOfferSlug: "brand-model-offer",
 };
 
+describe("legacy offer presentation", () => {
+  it.each([true, false])("renders EVIL TWIN + as stored data (marks=%s)", async (marked) => {
+    const fixture: CanonicalCatalogItem = {
+      ...board, slug: "bataleon-evil-twin-plus", brand: "Bataleon", modelName: "EVIL TWIN +",
+      seasonLabel: "2025/2026", priceFrom: marked ? 41_745 : null,
+      canonicalSpecs: { ...board.canonicalSpecs, sourceCheckedAt: null },
+      defaultOfferSlug: "bataleon-evil-twin-plus",
+      sizes: ["156W", "159", "159W"].map((label, index) => ({
+        sourceSizeId: String(index), offerId: "offer-1", offerSlug: "bataleon-evil-twin-plus",
+        memberRole: null, offerIsActive: true, rawSizeLabel: label, displaySizeLabel: label,
+        sizeLabel: label, sizeCm: Number.parseInt(label), waistWidthMm: 260,
+        recommendedWeightMin: 60, recommendedWeightMax: 90,
+        widthType: label.endsWith("W") ? "wide" : "regular", isAvailable: marked,
+      })),
+    };
+    mocks.resolve.mockResolvedValue({ kind: "exact", item: fixture });
+    const markup = renderToStaticMarkup(await BoardPage({ params: Promise.resolve({ slug: fixture.slug }) }));
+    expect(markup).toContain("Сохранённая цена от");
+    expect(markup).toContain(marked ? "41 745 ₽" : "нет данных");
+    expect(markup).toContain(marked ? "Ранее отмечено: 3 размера" : "Доступность не подтверждена");
+    if (marked) expect(markup).toContain("Ранее отмеченные размеры: 156W, 159, 159W");
+    expect(markup).toContain("Проверить в магазине");
+    expect(markup).toContain("/go/bataleon-evil-twin-plus?");
+    expect(markup).not.toMatch(/Есть отметки в каталоге|в наличии сейчас|Сейчас в наличии|проверено недавно/u);
+    expect(fixture.sizes.every((size) => size.isAvailable === marked)).toBe(true);
+  });
+});
+
 describe("canonical board metadata", () => {
   it.each([
     { seasonLabel: null, identity: "Brand Model" },

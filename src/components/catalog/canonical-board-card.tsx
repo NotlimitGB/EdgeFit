@@ -181,7 +181,7 @@ export const CanonicalBoardCard = memo(function CanonicalBoardCard({
               }}
               className={`${publicStyles.primaryAction} ${boardCardStyles.cardAction}`}
             >
-              В магазин
+              Проверить в магазине
             </TrackedStoreLink>
           ) : null}
         </div>

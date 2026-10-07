@@ -262,15 +262,12 @@
 }
 
 .availability span {
-  display: -webkit-box;
+  display: block;
   min-height: 2.8rem;
   margin-top: 0.3rem;
-  overflow: hidden;
   color: var(--ef-muted);
   font-size: 0.7rem;
   line-height: 1.45;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
 }
 
 .price strong {

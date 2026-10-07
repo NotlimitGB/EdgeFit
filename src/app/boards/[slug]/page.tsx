@@ -223,7 +223,7 @@ export default async function BoardPage({ params }: BoardPageProps) {
                     }
                   >
                     {hasAvailableSizes
-                      ? "Есть отметки в каталоге"
+                      ? "Сохранённые отметки"
                       : "Нужно уточнить"}
                   </span>
                 </div>
@@ -249,7 +249,7 @@ export default async function BoardPage({ params }: BoardPageProps) {
                   }}
                   className={`${publicStyles.primaryAction} ${styles.heroAction}`}
                 >
-                  Перейти в магазин
+                  Проверить в магазине
                 </TrackedStoreLink>
               ) : null}
               <Link
@@ -356,7 +356,7 @@ export default async function BoardPage({ params }: BoardPageProps) {
                                 analyticsPayload={storeAction.analyticsPayload}
                                 className={`${publicStyles.secondaryAction} ${styles.sizeStoreAction}`}
                               >
-                                В магазин
+                                Проверить в магазине
                               </TrackedStoreLink>
                             ) : (
                               <span className={styles.noSizeAction}>—</span>

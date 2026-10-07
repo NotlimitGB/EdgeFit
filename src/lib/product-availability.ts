@@ -38,10 +38,10 @@ export function getAvailabilityHeadline(product: Pick<Product, "sizes">) {
   const sizeCount = getAvailableSizeCount(product);
 
   if (sizeCount === 0) {
-    return "Сейчас нет доступных размеров";
+    return "Наличие не подтверждено";
   }
 
-  return `В наличии ${sizeCount} ${pluralizeSize(sizeCount)}`;
+  return `Ранее отмечено: ${sizeCount} ${pluralizeSize(sizeCount)}`;
 }
 
 export function getAvailabilitySizePreview(
@@ -68,12 +68,12 @@ export function getAvailabilityDescription(product: Pick<Product, "sizes">) {
   const allSizeCount = getAllSizeCount(product);
 
   if (sizeCount === 0) {
-    return "Модель можно оставить в закладках, но доступные размеры в магазине сейчас не подтверждены.";
+    return "В сохранённых данных нет отметок доступности. Наличие проверь в магазине.";
   }
 
   if (allSizeCount <= sizeCount) {
-    return `Сейчас в наличии: ${getAvailabilitySizePreview(product)}.`;
+    return `Ранее отмеченные размеры: ${getAvailabilitySizePreview(product)}. Текущее наличие проверь в магазине.`;
   }
 
-  return `Показываем полную размерную сетку модели и отдельно отмечаем, что реально доступно сейчас. В наличии: ${getAvailabilitySizePreview(product)}.`;
+  return `В размерной сетке сохранены отметки доступности: ${getAvailabilitySizePreview(product)}. Текущее наличие проверь в магазине.`;
 }

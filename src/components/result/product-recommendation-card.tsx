@@ -95,19 +95,19 @@ export function ProductRecommendationCard({
     commercialPresentation.mode === "saved"
       ? `Наличие размера ${sizeLabel} нужно проверить в магазине`
       : offerIntelligence.status === "confirmed_available"
-        ? `По данным каталога размер ${sizeLabel} отмечен доступным — актуальное наличие проверь в ${merchantLocationLabel}`
+        ? `Размер ${sizeLabel} ранее отмечался доступным. Текущее наличие проверь в ${merchantLocationLabel}`
         : offerIntelligence.status === "search_only"
           ? `Точного предложения по размеру ${sizeLabel} пока нет`
           : `Наличие размера ${sizeLabel} не подтверждено`;
   const budgetLabel =
     budgetRelation === "within_catalog_estimate"
       ? resultMode === "saved"
-        ? "По ориентиру каталога на момент подбора цена была не выше указанного бюджета."
-        : "По ориентиру каталога цена не выше указанного бюджета."
+        ? "На момент подбора сохранённая цена была не выше указанного бюджета."
+        : "Сохранённая цена не выше указанного бюджета."
       : budgetRelation === "over_catalog_estimate"
         ? resultMode === "saved"
-          ? "По ориентиру каталога на момент подбора цена была выше указанного бюджета."
-          : "По ориентиру каталога цена выше указанного бюджета."
+          ? "На момент подбора сохранённая цена была выше указанного бюджета."
+          : "Сохранённая цена выше указанного бюджета."
         : budgetRelation === "price_unknown"
           ? "Нет надёжного ценового ориентира для сравнения с бюджетом."
           : null;

@@ -92,7 +92,7 @@ export function RecommendationComparison({
                   : missingCatalogValue,
               },
               {
-                label: "Ориентир цены",
+                label: "Сохранённая цена",
                 value: formatMoney(match.product.priceFrom),
               },
             ];
@@ -141,7 +141,7 @@ export function RecommendationComparison({
       </div>
 
       <p className={styles.comparisonPriceNote}>
-        Цена — ориентир из каталога, а не подтверждённая текущая цена конкретной
+        Цена сохранена в данных SnowDex. Это не текущая цена конкретной
         ростовки. Актуальную цену проверяй в магазине.
       </p>
     </section>

@@ -120,7 +120,7 @@ describe("public catalog cache", () => {
     expect(mocks.unstableCache).toHaveBeenCalledTimes(1);
     expect(mocks.unstableCache).toHaveBeenCalledWith(
       expect.any(Function),
-      ["edgefit-public-canonical-catalog-v4"],
+      ["edgefit-public-canonical-catalog-v5"],
       {
         revalidate: 300,
         tags: ["edgefit-public-canonical-catalog"],
@@ -176,7 +176,7 @@ describe("public catalog cache", () => {
     expect(roundTripped[0].offers).toBeUndefined();
     expect(roundTripped[0].sizes).toBeUndefined();
     expect(roundTripped[0].widthTypes).toEqual(["wide"]);
-    expect(roundTripped[0].availabilityPreview).toBe("Отмеченные размеры: 156W.");
+    expect(roundTripped[0].availabilityPreview).toBe("Ранее отмеченные размеры: 156W. Проверь наличие у продавца.");
   });
 
   it("reduces identical-fixture bytes while preserving presentation and search", () => {
@@ -199,7 +199,7 @@ describe("public catalog cache", () => {
     const input = [boards[0], { ...boards[0], slug: "other", priceFrom: null,
       sizes: [boards[0].sizes[0], { ...boards[0].sizes[0], isAvailable: false, widthType: "regular" as const }, boards[0].sizes[0]] }];
     const projected = toPublicCatalogItems(input);
-    expect(projected[1].availabilityPreview).toBe("Отмеченные размеры: 156W, 156W.");
+    expect(projected[1].availabilityPreview).toBe("Ранее отмеченные размеры: 156W, 156W. Проверь наличие у продавца.");
     expect(projected[1].availableSizeCount).toBe(2);
     for (const sorter of [compareCanonicalFeatured, compareCanonicalPriceAsc, compareCanonicalPriceDesc])
       expect([...projected].sort(sorter).map((item) => item.slug))

@@ -219,7 +219,7 @@ describe("canonical Catalog UI helpers", () => {
 
     expect(getCanonicalAvailableSizeCount(board)).toBe(1);
     expect(getCanonicalAvailabilityHeadline(board)).toBe(
-      "В данных SnowDex отмечено: 1 размер",
+      "Ранее отмечено: 1 размер",
     );
   });
 
@@ -236,7 +236,7 @@ describe("canonical Catalog UI helpers", () => {
     });
 
     expect(getCanonicalAvailabilityPreview(board)).toBe(
-      "Отмеченные размеры: 151, 156, 159, 161W, 164W + ещё 1.",
+      "Ранее отмеченные размеры: 151, 156, 159, 161W, 164W + ещё 1. Проверь наличие у продавца.",
     );
   });
 
@@ -398,14 +398,14 @@ describe("canonical Catalog UI helpers", () => {
 
   it("never formats missing or invalid prices as zero rubles", () => {
     expect(getCanonicalPricePresentation(null)).toEqual({
-      label: "Ориентир цены",
+      label: "Сохранённая цена от",
       value: "нет данных",
     });
     expect(getCanonicalPricePresentation(Number.NaN).value).toBe(
       "нет данных",
     );
     expect(getCanonicalPricePresentation(36_300)).toEqual({
-      label: "Ориентир цены",
+      label: "Сохранённая цена от",
       value: "36 300 ₽",
     });
   });

@@ -40,10 +40,10 @@ describe("store redirect helpers", () => {
   });
 
   it.each([
-    ["https://traektoria.ru/product/1_board/", "Траектория", "Открыть в Траектории"],
-    ["https://www.traektoria.ru/product/1_board/", "Траектория", "Открыть в Траектории"],
-    ["https://trial-sport.ru/goods/1.html", "Trial Sport", "Открыть в Trial Sport"],
-    ["https://www.trial-sport.ru/goods/1.html", "Trial Sport", "Открыть в Trial Sport"],
+    ["https://traektoria.ru/product/1_board/", "Траектория", "Проверить в Траектории"],
+    ["https://www.traektoria.ru/product/1_board/", "Траектория", "Проверить в Траектории"],
+    ["https://trial-sport.ru/goods/1.html", "Trial Sport", "Проверить в Trial Sport"],
+    ["https://www.trial-sport.ru/goods/1.html", "Trial Sport", "Проверить в Trial Sport"],
   ])(
     "presents supported destination %s as a direct merchant link",
     (affiliateUrl, merchantLabel, actionLabel) => {
@@ -51,7 +51,7 @@ describe("store redirect helpers", () => {
         mode: "direct",
         merchantLabel,
         actionLabel,
-        priceLabel: "Ориентир цены",
+        priceLabel: "Сохранённая цена",
         note: "Актуальные цену и наличие проверь в магазине.",
       });
     },
@@ -67,7 +67,7 @@ describe("store redirect helpers", () => {
       mode: "fallback-search",
       merchantLabel: "Trial Sport",
       actionLabel: "Искать в Trial Sport",
-      priceLabel: "Ориентир цены",
+      priceLabel: "Сохранённая цена",
       note: "Откроется поиск модели в магазине. Актуальные цену и наличие проверь там.",
     });
   });
@@ -82,7 +82,7 @@ describe("store redirect helpers", () => {
       mode: "saved",
       merchantLabel: null,
       actionLabel: "Проверить в магазине",
-      priceLabel: "Ориентир цены",
+      priceLabel: "Сохранённая цена",
     });
   });
 

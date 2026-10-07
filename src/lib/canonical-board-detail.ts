@@ -21,7 +21,7 @@ const FLEX_REVIEW_CAPTION =
   "Пока нет подтверждённых данных о жёсткости этой модели.";
 
 export interface CanonicalPricePresentation {
-  label: "Ориентир цены";
+  label: "Сохранённая цена от";
   value: string;
 }
 
@@ -247,7 +247,7 @@ export function getCanonicalBoardAvailabilityHeadline(
 
   return count === 0
     ? "Доступность не подтверждена"
-    : `В данных SnowDex отмечено: ${count} ${pluralizeSize(count)}`;
+    : `Ранее отмечено: ${count} ${pluralizeSize(count)}`;
 }
 
 export function getCanonicalBoardAvailabilityDescription(
@@ -266,15 +266,15 @@ export function getCanonicalBoardAvailabilityDescription(
   const remainder = labels.length - limit;
 
   return remainder > 0
-    ? `Отмеченные размеры: ${preview} + ещё ${remainder}. Актуальную доступность проверяй в магазине.`
-    : `Отмеченные размеры: ${preview}. Актуальную доступность проверяй в магазине.`;
+    ? `Ранее отмеченные размеры: ${preview} + ещё ${remainder}. Текущие цену и наличие проверь в магазине.`
+    : `Ранее отмеченные размеры: ${preview}. Текущие цену и наличие проверь в магазине.`;
 }
 
 export function getCanonicalSizeAvailabilityLabel(
   size: CanonicalSizeVariant,
 ) {
   return isCanonicalSizeCurrentlyAvailable(size)
-    ? "отмечен доступным"
+    ? "ранее отмечен доступным"
     : "доступность не подтверждена";
 }
 
@@ -282,8 +282,8 @@ export function getCanonicalBoardPricePresentation(
   price: number | null,
 ): CanonicalPricePresentation {
   return price != null && Number.isFinite(price) && price > 0
-    ? { label: "Ориентир цены", value: formatMoney(price) }
-    : { label: "Ориентир цены", value: "нет данных" };
+    ? { label: "Сохранённая цена от", value: formatMoney(price) }
+    : { label: "Сохранённая цена от", value: "нет данных" };
 }
 
 export function getCanonicalBoardLineLabel(

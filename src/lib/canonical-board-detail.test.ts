@@ -315,19 +315,19 @@ describe("canonical Board Detail helpers", () => {
 
   it("pluralizes one available size", () => {
     expect(getCanonicalBoardAvailabilityHeadline(boardWithAvailableSizeCount(1))).toBe(
-      "В данных SnowDex отмечено: 1 размер",
+      "Ранее отмечено: 1 размер",
     );
   });
 
   it("pluralizes two available sizes", () => {
     expect(getCanonicalBoardAvailabilityHeadline(boardWithAvailableSizeCount(2))).toBe(
-      "В данных SnowDex отмечено: 2 размера",
+      "Ранее отмечено: 2 размера",
     );
   });
 
   it("pluralizes five available sizes", () => {
     expect(getCanonicalBoardAvailabilityHeadline(boardWithAvailableSizeCount(5))).toBe(
-      "В данных SnowDex отмечено: 5 размеров",
+      "Ранее отмечено: 5 размеров",
     );
   });
 
@@ -340,13 +340,13 @@ describe("canonical Board Detail helpers", () => {
     });
 
     expect(getCanonicalBoardAvailabilityDescription(board)).toBe(
-      "Отмеченные размеры: 161W, 164W. Актуальную доступность проверяй в магазине.",
+      "Ранее отмеченные размеры: 161W, 164W. Текущие цену и наличие проверь в магазине.",
     );
   });
 
   it("uses stored-data labels for size availability", () => {
     expect(getCanonicalSizeAvailabilityLabel(makeSize("available"))).toBe(
-      "отмечен доступным",
+      "ранее отмечен доступным",
     );
     expect(
       getCanonicalSizeAvailabilityLabel(
@@ -357,14 +357,14 @@ describe("canonical Board Detail helpers", () => {
 
   it("formats a known positive canonical price", () => {
     expect(getCanonicalBoardPricePresentation(36_300)).toEqual({
-      label: "Ориентир цены",
+      label: "Сохранённая цена от",
       value: "36 300 ₽",
     });
   });
 
   it("does not present a null price as zero", () => {
     expect(getCanonicalBoardPricePresentation(null)).toEqual({
-      label: "Ориентир цены",
+      label: "Сохранённая цена от",
       value: "нет данных",
     });
   });

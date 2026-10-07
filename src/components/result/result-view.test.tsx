@@ -238,9 +238,10 @@ describe("ResultView focused board check", () => {
       focusedBoardCheck: { ...focusedRecommendation.focusedBoardCheck!, buyability: "AVAILABLE" } };
     const markup = renderToStaticMarkup(<ResultView initialRecommendation={item} mode={mode} />);
     expect(markup).toContain(mode === "saved"
-      ? "На момент расчёта выбранная ростовка была отмечена в наличии."
-      : "Выбранная ростовка сейчас отмечена в наличии.");
-    if (mode === "saved") expect(markup).not.toContain("ростовка сейчас");
+      ? "На момент расчёта в сохранённых данных была отметка доступности выбранной ростовки."
+      : "Выбранная ростовка ранее отмечалась доступной в данных SnowDex.");
+    expect(markup).not.toContain("ростовка сейчас");
+    expect(markup).toContain("Перед покупкой проверь текущее наличие выбранной ростовки у продавца.");
     expect(markup).not.toMatch(/result-email|result-consent|Отправим этот результат|Отправить на почту/u);
   });
 
@@ -524,7 +525,7 @@ describe("ResultView decision-oriented Top 3", () => {
     expect(markup).toContain("Почему именно эта модель");
     expect(markup).not.toContain("Помогла рекомендация принять решение?");
     expect(markup.includes("Сравнить варианты")).toBe(count >= 2);
-    expect(markup.match(/Ориентир цены/g) ?? []).toHaveLength(
+    expect(markup.match(/Сохранённая цена/g) ?? []).toHaveLength(
       count >= 2 ? count * 2 : count,
     );
   });

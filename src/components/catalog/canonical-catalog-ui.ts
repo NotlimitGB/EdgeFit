@@ -134,7 +134,7 @@ export function getCanonicalAvailabilityHeadline(
     return "Доступность не подтверждена";
   }
 
-  return `В данных SnowDex отмечено: ${sizeCount} ${pluralizeSize(sizeCount)}`;
+  return `Ранее отмечено: ${sizeCount} ${pluralizeSize(sizeCount)}`;
 }
 
 export function getCanonicalAvailabilityPreview(
@@ -155,8 +155,8 @@ export function getCanonicalAvailabilityPreview(
   const remainder = labels.length - limit;
 
   return remainder > 0
-    ? `Отмеченные размеры: ${preview} + ещё ${remainder}.`
-    : `Отмеченные размеры: ${preview}.`;
+    ? `Ранее отмеченные размеры: ${preview} + ещё ${remainder}. Проверь наличие у продавца.`
+    : `Ранее отмеченные размеры: ${preview}. Проверь наличие у продавца.`;
 }
 
 export function matchesCanonicalCatalogSearch(
@@ -263,6 +263,6 @@ export function getCanonicalDescription(board: CanonicalCatalogItem) {
 
 export function getCanonicalPricePresentation(price: number | null) {
   return isKnownCanonicalPrice(price)
-    ? { label: "Ориентир цены", value: formatMoney(price) }
-    : { label: "Ориентир цены", value: "нет данных" };
+    ? { label: "Сохранённая цена от", value: formatMoney(price) }
+    : { label: "Сохранённая цена от", value: "нет данных" };
 }

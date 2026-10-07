@@ -213,7 +213,7 @@ function CatalogBoardCard({
             <span>{availabilitySizePreview}</span>
           </div>
           <div className={styles.price}>
-            <p className={publicStyles.microLabel}>Цена от</p>
+            <p className={publicStyles.microLabel}>Сохранённая цена от</p>
             <strong>{formatMoney(product.priceFrom)}</strong>
           </div>
         </div>
@@ -230,7 +230,7 @@ function CatalogBoardCard({
             analyticsPayload={shopAnalyticsPayload}
             className={`${publicStyles.primaryAction} ${styles.cardAction}`}
           >
-            В магазин
+            Проверить в магазине
           </TrackedStoreLink>
         </div>
       </div>
@@ -381,7 +381,7 @@ export function BoardCard({
             ))}
 
             <div className="col-span-2 rounded-[1rem] bg-white/12 px-4 py-2">
-              <p className="text-white/58">Цена от</p>
+              <p className="text-white/58">Сохранённая цена от</p>
               <p className="mt-1 text-lg font-semibold leading-6 text-white">
                 {formatMoney(product.priceFrom)}
               </p>
@@ -415,7 +415,7 @@ export function BoardCard({
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <div className="rounded-[1.1rem] border border-[var(--color-border)] bg-[var(--color-paper-soft)] px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-muted)]">
-              Цена от
+              Сохранённая цена от
             </p>
             <p className="mt-2 text-lg font-bold text-[var(--color-ink)]">
               {formatMoney(product.priceFrom)}
@@ -423,7 +423,7 @@ export function BoardCard({
           </div>
           <div className="rounded-[1.1rem] border border-[var(--color-border)] bg-[var(--color-paper-soft)] px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-muted)]">
-              В наличии
+              Сохранённые размеры
             </p>
             <p className="mt-2 text-base font-bold text-[var(--color-ink)]">
               {availabilityHeadline}
@@ -481,7 +481,7 @@ export function BoardCard({
           analyticsPayload={resolvedShopAnalyticsPayload}
           className="inline-flex flex-1 items-center justify-center rounded-full bg-[var(--color-pine)] px-4 py-3 text-sm font-bold text-white hover:-translate-y-0.5 hover:bg-[var(--color-sky-deep)]"
         >
-          В магазин
+          Проверить в магазине
         </TrackedStoreLink>
       </div>
     </article>

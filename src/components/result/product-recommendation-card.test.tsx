@@ -158,7 +158,7 @@ describe("ProductRecommendationCard commercial presentation", () => {
 
     const cueIndex = markup.indexOf("Альтернатива · больше стабильности");
     const reasonsIndex = markup.indexOf("Почему подходит");
-    const commerceIndex = markup.indexOf("Ориентир цены");
+    const commerceIndex = markup.indexOf("Сохранённая цена");
 
     expect(cueIndex).toBeGreaterThanOrEqual(0);
     expect(cueIndex).toBeLessThan(reasonsIndex);
@@ -216,11 +216,11 @@ describe("ProductRecommendationCard commercial presentation", () => {
   it("shows a supported direct merchant with cautious price semantics", () => {
     const markup = renderCard("https://traektoria.ru/product/1_board/");
 
-    expect(markup).toContain("Открыть в Траектории");
-    expect(markup).toContain("Ориентир цены");
+    expect(markup).toContain("Проверить в Траектории");
+    expect(markup).toContain("Сохранённая цена");
     expect(markup).toContain("Актуальные цену и наличие проверь в магазине.");
     expect(markup).toContain(
-      "По данным каталога размер 156 отмечен доступным — актуальное наличие проверь в Траектории",
+      "Размер 156 ранее отмечался доступным. Текущее наличие проверь в Траектории",
     );
     expect(markup).not.toContain("в наличии сейчас");
     expect(markup).not.toContain("доступен сейчас");
@@ -249,7 +249,7 @@ describe("ProductRecommendationCard commercial presentation", () => {
     );
 
     expect(markup).toContain(
-      "По данным каталога размер 156 отмечен доступным — актуальное наличие проверь в Trial Sport",
+      "Размер 156 ранее отмечался доступным. Текущее наличие проверь в Trial Sport",
     );
   });
 
@@ -302,11 +302,11 @@ describe("ProductRecommendationCard commercial presentation", () => {
   it.each([
     [
       "within_catalog_estimate",
-      "По ориентиру каталога цена не выше указанного бюджета.",
+      "Сохранённая цена не выше указанного бюджета.",
     ],
     [
       "over_catalog_estimate",
-      "По ориентиру каталога цена выше указанного бюджета.",
+      "Сохранённая цена выше указанного бюджета.",
     ],
     [
       "price_unknown",
@@ -331,6 +331,6 @@ describe("ProductRecommendationCard commercial presentation", () => {
       "saved",
       "within_catalog_estimate",
     );
-    expect(markup).toContain("на момент подбора");
+    expect(markup).toContain("На момент подбора сохранённая цена была");
   });
 });

@@ -71,8 +71,8 @@ function buildItem(
     commercialPresentation: {
       mode: "direct",
       merchantLabel: "Траектория",
-      actionLabel: "Открыть в Траектории",
-      priceLabel: "Ориентир цены",
+      actionLabel: "Проверить в Траектории",
+      priceLabel: "Сохранённая цена",
     },
   };
 }
@@ -141,9 +141,9 @@ describe("RecommendationComparison", () => {
     expect(markup).toContain("направленная");
     expect(markup).toContain("гибридный camber");
     expect(markup).toContain("63 741 ₽");
-    expect(markup).toContain("Ориентир цены");
-    expect(markup).toContain("ориентир из каталога");
-    expect(markup).toContain("не подтверждённая текущая цена конкретной ростовки");
+    expect(markup).toContain("Сохранённая цена");
+    expect(markup).toContain("Цена сохранена в данных SnowDex");
+    expect(markup).toContain("не текущая цена конкретной ростовки");
     expect(markup).not.toContain("можно купить за");
     expect(markup).not.toContain("цена этой ростовки");
   });

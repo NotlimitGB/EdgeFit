@@ -35,7 +35,7 @@ export interface StoreDestinationPresentation {
   mode: StoreDestinationMode;
   merchantLabel: SupportedStoreDestination["merchantLabel"] | null;
   actionLabel: string;
-  priceLabel: "Ориентир цены";
+  priceLabel: "Сохранённая цена";
   note?: string;
 }
 
@@ -45,22 +45,22 @@ const SUPPORTED_STORE_DESTINATIONS: Readonly<
   "trial-sport.ru": {
     storeCode: "trial-sport",
     merchantLabel: "Trial Sport",
-    actionLabel: "Открыть в Trial Sport",
+    actionLabel: "Проверить в Trial Sport",
   },
   "www.trial-sport.ru": {
     storeCode: "trial-sport",
     merchantLabel: "Trial Sport",
-    actionLabel: "Открыть в Trial Sport",
+    actionLabel: "Проверить в Trial Sport",
   },
   "traektoria.ru": {
     storeCode: "traektoria",
     merchantLabel: "Траектория",
-    actionLabel: "Открыть в Траектории",
+    actionLabel: "Проверить в Траектории",
   },
   "www.traektoria.ru": {
     storeCode: "traektoria",
     merchantLabel: "Траектория",
-    actionLabel: "Открыть в Траектории",
+    actionLabel: "Проверить в Траектории",
   },
 };
 
@@ -103,7 +103,7 @@ export function getStoreDestinationPresentation(
       mode: "saved",
       merchantLabel: null,
       actionLabel: "Проверить в магазине",
-      priceLabel: "Ориентир цены",
+      priceLabel: "Сохранённая цена",
     };
   }
 
@@ -113,7 +113,7 @@ export function getStoreDestinationPresentation(
       mode: "direct",
       merchantLabel: supportedDestination.merchantLabel,
       actionLabel: supportedDestination.actionLabel,
-      priceLabel: "Ориентир цены",
+      priceLabel: "Сохранённая цена",
       note: "Актуальные цену и наличие проверь в магазине.",
     };
   }
@@ -122,7 +122,7 @@ export function getStoreDestinationPresentation(
     mode: "fallback-search",
     merchantLabel: "Trial Sport",
     actionLabel: "Искать в Trial Sport",
-    priceLabel: "Ориентир цены",
+    priceLabel: "Сохранённая цена",
     note: "Откроется поиск модели в магазине. Актуальные цену и наличие проверь там.",
   };
 }
