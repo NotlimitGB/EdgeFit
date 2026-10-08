@@ -9,6 +9,9 @@ import type { ProductColumnSupport } from "@/lib/database/product-column-support
 import { getPublicDatabaseNamespace, getPublicSchemaSupport } from "@/lib/public-schema-cache";
 import { measurePublicLoad } from "@/lib/public-load-diagnostics";
 import { createBoardPageDiagnostics } from "@/lib/board-page-load-diagnostics";
+import { withOperationDeadline } from "@/lib/operation-deadline";
+import { randomUUID } from "node:crypto";
+import { withDbDiagnosticContext } from "@/lib/database/lifecycle-diagnostics";
 
 class UnresolvedBoard extends Error {}
 
@@ -43,6 +46,12 @@ const loadBoard = unstable_cache(
 );
 
 export const getPublicBoardBundle = cache(async (slug: string) => {
+  return withOperationDeadline(() => withDbDiagnosticContext(
+    { scope: "canonical_catalog", stage: "public_board_loading", traceId: randomUUID() },
+    () => loadPublicBoardBundle(slug)), 15_000);
+});
+
+async function loadPublicBoardBundle(slug: string) {
   if (!базаНастроена()) return undefined;
   const namespace = getPublicDatabaseNamespace();
   const support = await getPublicSchemaSupport(namespace);
@@ -52,4 +61,4 @@ export const getPublicBoardBundle = cache(async (slug: string) => {
     if (error instanceof UnresolvedBoard) return undefined;
     throw error;
   }
-});
+}

@@ -12,6 +12,9 @@ type Context = {
 const context = new AsyncLocalStorage<Context>();
 const processId = randomUUID();
 
+// Public-flow protection only; do not add deadlines to scheduler/import work.
+export function isPublicDbFlow() { return context.getStore() != null; }
+
 export function withDbDiagnosticContext<T>(value: Context, operation: () => T): T {
   const parent = context.getStore();
   return context.run({ ...value, ...(parent && parent.traceId !== value.traceId
@@ -49,6 +52,7 @@ function safeError(error: unknown) {
   // Never emit arbitrary error names/codes, which can themselves contain secrets.
   let code: unknown;
   try { code = (error as { code?: unknown })?.code; } catch { /* hostile getter */ }
+  if (code === "OPERATION_DEADLINE") return { category: "operation_deadline" };
   if (typeof code === "string" && /^[0-9A-Z]{5}$/.test(code)) {
     return { category: "postgres", sqlstate: code };
   }
@@ -196,5 +200,6 @@ export function createDbLifecycleDiagnostics(
         correlation: "matched", beforeDriverExecutionMs: Math.max(0, Math.round(performance.now() - entry.started)) });
     } catch { /* fail open, including driver callbacks */ }
   }
-  return { wrap, debug };
+  return { wrap, debug, recovery: (event: "client_retired" | "client_recovery_ready" | "client_recovery_failed") =>
+    emit({ event, category: "operation_deadline" }) };
 }

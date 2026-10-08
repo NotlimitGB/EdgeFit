@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CanonicalBoardRouteResolution } from "@/lib/canonical-catalog";
 vi.mock("server-only", () => ({}));
 vi.mock("react", () => ({ cache: (operation: unknown) => operation }));
@@ -29,6 +29,7 @@ vi.mock("next/cache", () => ({
 }));
 import { getPublicBoardBundle, loadPublicBoardNarrative } from "./public-board-cache";
 const resolution = { kind: "render", item: { slug: "board" } } as CanonicalBoardRouteResolution;
+afterEach(() => vi.useRealTimers());
 beforeEach(() => {
   mocks.entries.clear(); mocks.resolve.mockReset(); mocks.sql.mockReset(); mocks.schema.mockReset();
   mocks.schema.mockResolvedValue({ modelFamilies: true });
@@ -37,6 +38,14 @@ beforeEach(() => {
   mocks.time = 0; mocks.namespace = "one"; mocks.configured = true;
 });
 describe("public board data cache", () => {
+  it("bounds a stalled canonical lookup without turning it into a missing identity", async () => {
+    vi.useFakeTimers(); mocks.resolve.mockImplementation(() => new Promise(() => undefined));
+    const pending = getPublicBoardBundle("board").catch(e => e);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect((await pending).code).toBe("OPERATION_DEADLINE");
+    mocks.resolve.mockResolvedValue(resolution);
+    expect((await getPublicBoardBundle("board"))?.resolution).toBe(resolution);
+  });
   it("caches canonical resolution and narrow narrative, expires, and isolates slugs/configuration", async () => {
     expect(mocks.cacheOptions).toEqual([{ revalidate: 3600, tags: ["edgefit-public-canonical-catalog"] }]);
     const first = await getPublicBoardBundle("board");

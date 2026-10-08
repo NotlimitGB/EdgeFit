@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RecommendationResult } from "@/types/domain";
 
 const mocks = vi.hoisted(() => ({
@@ -61,6 +61,32 @@ const recommendation: RecommendationResult = {
   recommendedBoards: [],
   avoidBoards: [],
 };
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+describe("recommendation bounded recovery", () => {
+  it("returns the completed recommendation without a token when snapshot persistence stalls", async () => {
+    vi.useFakeTimers(); vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.getRecommendationCatalog.mockResolvedValue({ products: [{}], familyKeyByProductId: {} });
+    mocks.getRecommendation.mockReturnValue(recommendation);
+    mocks.save.mockImplementation(() => new Promise(() => undefined));
+    const pending = POST(new Request("https://example.com/api/recommendation", { method: "POST", body: JSON.stringify(recommendation.input) }));
+    await vi.advanceTimersByTimeAsync(2_000);
+    const response = await pending;
+    expect(response.status).toBe(200); expect(await response.json()).toEqual(recommendation);
+    expect(response.headers.get(SAVED_RESULT_TOKEN_HEADER)).toBeNull();
+  });
+  it("returns a bounded 503 and never saves after a stalled catalog eventually completes", async () => {
+    vi.useFakeTimers(); vi.spyOn(console, "error").mockImplementation(() => undefined);
+    let finish!: (value: unknown) => void;
+    mocks.save.mockReset();
+    mocks.getRecommendationCatalog.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const pending = POST(new Request("https://example.com/api/recommendation", { method: "POST", body: JSON.stringify(recommendation.input) }));
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect((await pending).status).toBe(503);
+    finish({ products: [{}], familyKeyByProductId: {} }); await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.save).not.toHaveBeenCalled();
+  });
+});
 
 describe("recommendation API saved-result transport", () => {
   beforeEach(() => {

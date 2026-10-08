@@ -2,6 +2,7 @@
 
 import { getSafeSessionStorage } from "@/lib/browser-session-storage";
 import { storeRecommendationForNavigation } from "@/lib/recommendation-session";
+import { requestRecommendation } from "@/lib/recommendation-request";
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -19,9 +20,6 @@ import {
   type QuizV2DraftErrors,
 } from "@/lib/quiz/draft";
 import { getOrCreateSessionId } from "@/lib/session-id";
-import {
-  SAVED_RESULT_TOKEN_HEADER,
-} from "@/lib/saved-result-contract";
 import type { RecommendationResult } from "@/types/domain";
 import type { PurchasePreferences } from "@/lib/purchase-preferences";
 import {
@@ -454,12 +452,17 @@ export function QuizFlow({
   const [submissionError, setSubmissionError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [navigationRecovery, setNavigationRecovery] = useState(false);
+  const submittedResult = useRef(false);
+  const activeRequest = useRef<AbortController | null>(null);
+  const navigationTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const mounted = useRef(true);
   const stepHeadingRef = useRef<HTMLHeadingElement>(null);
   const isInitialStep = useRef(true);
   const questionHelpTrackerRef = useRef<ReturnType<
     typeof createQuizQuestionHelpTracker
   > | null>(null);
-  const isBusy = isSubmitting || isPending;
+  const isBusy = isSubmitting || (isPending && !navigationRecovery);
   const currentStep = stepDetails[step];
   const entryMode: QuizEntryMode = focusedBoard ? "focused" : "generic";
 
@@ -470,6 +473,15 @@ export function QuizFlow({
       },
     );
   }
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      activeRequest.current?.abort();
+      clearTimeout(navigationTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     setDraft(loadQuizV2Draft(getSafeSessionStorage()));
@@ -504,6 +516,13 @@ export function QuizFlow({
     key: Key,
     value: QuizV2Draft[Key],
   ) {
+    if (submittedResult.current) {
+      submittedResult.current = false;
+      setNavigationRecovery(false);
+      setSubmissionError("");
+      clearTimeout(navigationTimer.current);
+      setIsSubmitting(false);
+    }
     if (claimQuizFirstInteraction(getSafeSessionStorage())) {
       void trackEvent(
         "quiz_first_interaction",
@@ -535,9 +554,10 @@ export function QuizFlow({
   }
 
   async function handleSubmit() {
-    if (isBusy) {
+    if (isBusy || activeRequest.current) {
       return;
     }
+    if (submittedResult.current) { openCompletedResult(); return; }
 
     if (!validateCurrentStep()) {
       return;
@@ -553,10 +573,12 @@ export function QuizFlow({
 
     setSubmissionError("");
     setIsSubmitting(true);
+    const controller = new AbortController();
+    activeRequest.current = controller;
 
     try {
       const идентификаторСессии = getOrCreateSessionId();
-      const response = await fetch("/api/recommendation", {
+      const { recommendation, savedToken } = await requestRecommendation({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -569,22 +591,12 @@ export function QuizFlow({
             focusedBoard,
           ),
         ),
-      });
-
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as
-          | { message?: string }
-          | null;
-        throw new Error(
-          payload?.message ||
-            "Не удалось получить рекомендацию. Попробуйте ещё раз чуть позже.",
-        );
-      }
-
-      const recommendation = (await response.json()) as RecommendationResult;
+      }, controller.signal);
+      if (!mounted.current || controller.signal.aborted) return;
       storeRecommendationForNavigation(
-        recommendation, response.headers.get(SAVED_RESULT_TOKEN_HEADER), purchasePreferences,
+        recommendation, savedToken, purchasePreferences,
       );
+      submittedResult.current = true;
 
       void trackEvent("quiz_step_completed", buildQuizStepCompletionPayload(step));
       void trackEvent(
@@ -596,17 +608,32 @@ export function QuizFlow({
         ),
       );
 
-      startTransition(() => {
-        router.push("/result");
-      });
+      openCompletedResult();
     } catch (error) {
+      if (!mounted.current) return;
       setSubmissionError(
         error instanceof Error
           ? error.message
           : "Сервис временно недоступен. Попробуйте ещё раз.",
       );
       setIsSubmitting(false);
+    } finally {
+      if (activeRequest.current === controller) activeRequest.current = null;
     }
+  }
+
+  function openCompletedResult() {
+    setSubmissionError("");
+    setNavigationRecovery(false);
+    setIsSubmitting(true);
+    clearTimeout(navigationTimer.current);
+    navigationTimer.current = setTimeout(() => {
+      if (!mounted.current) return;
+      setIsSubmitting(false);
+      setNavigationRecovery(true);
+      setSubmissionError("Подбор готов, но страница результата не открылась. Попробуй открыть результат ещё раз.");
+    }, 10_000);
+    startTransition(() => { router.push("/result"); });
   }
 
   function nextStep() {
@@ -762,7 +789,7 @@ export function QuizFlow({
             aria-busy={isBusy}
             className={`${publicStyles.primaryAction} ${styles.navigationAction}`}
           >
-            {isBusy ? "Подбираем доски…" : "Получить подбор"}
+            {isBusy ? "Подбираем доски…" : navigationRecovery ? "Открыть результат" : "Получить подбор"}
             {!isBusy ? <span aria-hidden="true">→</span> : null}
           </button>
         )}

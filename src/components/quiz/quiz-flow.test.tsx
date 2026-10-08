@@ -2,6 +2,7 @@
 
 import {
   cleanup,
+  act,
   fireEvent,
   render,
   screen,
@@ -72,6 +73,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -485,10 +487,9 @@ describe("Quiz v2 entry telemetry", () => {
         ({
           ok: true,
           headers: new Headers(),
-          json: async () => ({
-            recommendedWidthType: "regular",
-            bootDragRisk: "low",
-          }),
+          json: async () => getRecommendation({ heightCm: 178, weightKg: 74, bootSizeEu: 43,
+            boardLinePreference: "any", skillLevel: "intermediate", ridingStyle: "all-mountain",
+            terrainPriority: "balanced", aggressiveness: "balanced", stanceType: "standard" }, []),
         }) as Response,
       ),
     );
@@ -516,5 +517,43 @@ describe("Quiz v2 entry telemetry", () => {
       expect(mocks.routerPush).toHaveBeenCalledWith("/result");
     });
     expect(analyticsCalls("quiz_step_validation_failed")).toHaveLength(0);
+  });
+});
+
+async function readyToSubmit() {
+  render(<QuizFlow />); await waitForInitialAnalytics(); fillPhysicalStep();
+  fireEvent.click(screen.getByRole("button", { name: /Продолжить/u }));
+  await screen.findByText("Теперь уточним твой опыт и сценарий катания");
+  fireEvent.click(screen.getByRole("radio", { name: /Уверенно катаюсь/u }));
+  fireEvent.click(screen.getByRole("radio", { name: /^All-mountain/u }));
+  fireEvent.click(screen.getByRole("radio", { name: /^Универсальность/u }));
+  fireEvent.click(screen.getByRole("button", { name: /Продолжить/u }));
+  await screen.findByText("Осталось уточнить характер, линейку и бюджет");
+  fireEvent.click(screen.getByRole("radio", { name: /^Сбалансированный/u }));
+}
+describe("quiz completion recovery", () => {
+  it("bounds pending submission, keeps answers and blocks a double click", async () => {
+    const fetcher = vi.fn(() => new Promise(() => undefined)); vi.stubGlobal("fetch", fetcher);
+    await readyToSubmit(); vi.useFakeTimers();
+    const button = screen.getByRole("button", { name: /Получить подбор/u });
+    fireEvent.click(button); fireEvent.click(button);
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(fetcher).toHaveBeenCalledTimes(1); expect(mocks.routerPush).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert").textContent).toContain("не завершился вовремя");
+    expect(screen.getByRole("button", { name: /Получить подбор/u }).hasAttribute("disabled")).toBe(false);
+    expect((screen.getByRole("radio", { name: /^Сбалансированный/u }) as HTMLInputElement).checked).toBe(true);
+  });
+  it("retries navigation to the same completed snapshot without a second POST or completion event", async () => {
+    const recommendation = getRecommendation({ heightCm: 178, weightKg: 74, bootSizeEu: 43,
+      boardLinePreference: "any", skillLevel: "intermediate", ridingStyle: "all-mountain",
+      terrainPriority: "balanced", aggressiveness: "balanced", stanceType: "standard" }, []);
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(recommendation))); vi.stubGlobal("fetch", fetcher);
+    await readyToSubmit(); vi.useFakeTimers();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /Получить подбор/u })); await vi.advanceTimersByTimeAsync(0); });
+    expect(mocks.routerPush).toHaveBeenCalledOnce();
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    fireEvent.click(screen.getByRole("button", { name: /Открыть результат/u }));
+    expect(mocks.routerPush).toHaveBeenCalledTimes(2); expect(fetcher).toHaveBeenCalledOnce();
+    expect(analyticsCalls("quiz_completed")).toHaveLength(1);
   });
 });

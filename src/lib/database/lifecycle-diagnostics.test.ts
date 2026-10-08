@@ -3,6 +3,7 @@ import postgres, { type Sql } from "postgres";
 import { createServer } from "node:net";
 import { readFileSync } from "node:fs";
 import { createDbLifecycleDiagnostics, withDbDiagnosticContext, withDbDiagnosticStage } from "./lifecycle-diagnostics";
+import { boundDatabaseOperations } from "./operation-boundary";
 
 vi.mock("server-only", () => ({}));
 afterEach(() => { vi.useRealTimers(); });
@@ -191,7 +192,7 @@ it("postgres.js 3.4.9 actual wire execution: query, parameters and transaction r
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const port = (server.address() as { port: number }).port;
   const driver = postgres({ host: "127.0.0.1", port, max: 1, prepare: false, fetch_types: false, debug: diagnostics.debug });
-  const sql = diagnostics.wrap(driver);
+  const sql = diagnostics.wrap(boundDatabaseOperations(driver, () => { void driver.end({ timeout: 0 }); }));
   try {
     expect((await sql`select ${"secret parameter"} as value`)[0].value).toBe("ok");
     await sql.begin(async tx => { expect((await tx.unsafe("select 1"))[0].value).toBe("ok"); });

@@ -7,6 +7,9 @@ import type { ProductColumnSupport } from "@/lib/database/product-column-support
 import { getPublicDatabaseNamespace, getPublicSchemaSupport } from "@/lib/public-schema-cache";
 import { toPublicCatalogItems } from "@/lib/public-catalog-dto";
 import { measurePublicLoad } from "@/lib/public-load-diagnostics";
+import { withOperationDeadline } from "@/lib/operation-deadline";
+import { randomUUID } from "node:crypto";
+import { withDbDiagnosticContext } from "@/lib/database/lifecycle-diagnostics";
 
 const PUBLIC_CATALOG_CACHE_KEY = "edgefit-public-canonical-catalog-v5";
 const PUBLIC_CATALOG_CACHE_TAG = "edgefit-public-canonical-catalog";
@@ -28,6 +31,12 @@ const loadCachedPublicCatalog = unstable_cache(
 );
 
 export async function getPublicCanonicalCatalogItems() {
+  return withOperationDeadline(() => withDbDiagnosticContext(
+    { scope: "canonical_catalog", stage: "public_catalog_loading", traceId: randomUUID() },
+    loadPublicCatalog), 15_000);
+}
+
+async function loadPublicCatalog() {
   if (!базаНастроена()) return [];
   const namespace = getPublicDatabaseNamespace();
   const support = await getPublicSchemaSupport(namespace);

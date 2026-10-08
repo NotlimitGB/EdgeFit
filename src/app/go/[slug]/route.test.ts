@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Product } from "@/types/domain";
 
 const mocks = vi.hoisted(() => ({
   canonicalLookup: vi.fn(),
   saveAnalyticsEvent: vi.fn(),
+  productLookup: vi.fn(),
 }));
 
 const product: Product = {
@@ -47,7 +48,7 @@ vi.mock("next/headers", () => ({
   headers: async () => ({ get: () => null }),
 }));
 vi.mock("@/lib/products", () => ({
-  getProductBySlug: async () => product,
+  getProductBySlug: () => mocks.productLookup(),
 }));
 vi.mock("@/lib/canonical-catalog", () => ({
   getCanonicalOfferIdentityBySlug: (...parameters: unknown[]) =>
@@ -59,6 +60,28 @@ vi.mock("@/lib/analytics/server", () => ({
 }));
 
 import { GET } from "@/app/go/[slug]/route";
+beforeEach(() => mocks.productLookup.mockResolvedValue(product));
+afterEach(() => { vi.useRealTimers(); mocks.productLookup.mockReset(); mocks.saveAnalyticsEvent.mockReset(); vi.restoreAllMocks(); });
+
+describe("outbound bounded recovery", () => {
+  it("does not let a stalled non-essential write block the exact merchant", async () => {
+    vi.useFakeTimers(); vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.canonicalLookup.mockResolvedValue(undefined);
+    mocks.saveAnalyticsEvent.mockImplementation(() => new Promise(() => undefined));
+    const pending = GET(new Request("https://example.com/go/test-board?from=board-page"), { params: Promise.resolve({ slug: "test-board" }) });
+    await vi.advanceTimersByTimeAsync(500);
+    const response = await pending; expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(product.affiliateUrl);
+  });
+  it("bounds a stalled destination lookup without inventing a merchant", async () => {
+    vi.useFakeTimers(); vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.productLookup.mockImplementation(() => new Promise(() => undefined));
+    const pending = GET(new Request("https://example.com/go/test-board"), { params: Promise.resolve({ slug: "test-board" }) });
+    await vi.advanceTimersByTimeAsync(8_000);
+    const response = await pending; expect(response.status).toBe(503);
+    expect(response.headers.get("location")).toBeNull(); expect(response.headers.get("cache-control")).toBe("no-store");
+  });
+});
 
 describe("saved-result store redirect privacy", () => {
   beforeEach(() => {
@@ -227,7 +250,6 @@ describe("store click provenance", () => {
       "Outbound click analytics persistence failed.",
       {
         category: "outbound_click_analytics_failed",
-        errorName: "Error",
       },
     );
     errorSpy.mockRestore();

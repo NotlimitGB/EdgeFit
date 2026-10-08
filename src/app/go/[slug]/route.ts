@@ -11,6 +11,7 @@ import { getProductBySlug } from "@/lib/products";
 import { isSavedResultStoreSource } from "@/lib/saved-result-contract";
 import { getBudgetRelation } from "@/lib/purchase-preferences";
 import { SESSION_COOKIE_NAME } from "@/lib/session-id";
+import { withOperationDeadline } from "@/lib/operation-deadline";
 import {
   getStoreDestinationProvenance,
   resolveProductStoreUrl,
@@ -55,12 +56,21 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ slug: string }> },
 ) {
-  return withDbDiagnosticContext({ scope: "outbound", stage: "request", traceId: randomUUID() }, () => handleGet(request, params));
+  const controller = new AbortController();
+  try {
+    return await withOperationDeadline(() => withDbDiagnosticContext(
+      { scope: "outbound", stage: "request", traceId: randomUUID() }, () => handleGet(request, params, controller.signal)), 12_000, () => controller.abort());
+  } catch {
+    console.error(JSON.stringify({ event: "outbound_failure", category: "lookup_unavailable" }));
+    return new Response('<!doctype html><html lang="ru"><meta charset="utf-8"><title>Магазин временно недоступен</title><h1>Не удалось открыть магазин</h1><p>Попробуй ещё раз или вернись к каталогу.</p><p><a href="">Попробовать снова</a></p><a href="/catalog">Вернуться в каталог</a></html>',
+      { status: 503, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Robots-Tag": "noindex" } });
+  }
 }
 
-async function handleGet(request: Request, params: Promise<{ slug: string }>) {
+async function handleGet(request: Request, params: Promise<{ slug: string }>, signal: AbortSignal) {
   const { slug } = await params;
-  const product = await withDbDiagnosticStage("product_lookup", () => getProductBySlug(slug));
+  const product = await withOperationDeadline(() => withDbDiagnosticStage("product_lookup", () => getProductBySlug(slug)), 8_000);
+  signal.throwIfAborted();
   const destinationUrl = product ? resolveProductStoreUrl(product) : null;
 
   if (!product || !destinationUrl) {
@@ -70,6 +80,7 @@ async function handleGet(request: Request, params: Promise<{ slug: string }>) {
   const searchParams = Object.fromEntries(new URL(request.url).searchParams.entries());
   const payload = outboundClickQuerySchema.safeParse(searchParams);
   const cookieStore = await cookies();
+  signal.throwIfAborted();
   const sessionId = cookieStore.get(SESSION_COOKIE_NAME)?.value?.trim();
 
   if (
@@ -83,16 +94,15 @@ async function handleGet(request: Request, params: Promise<{ slug: string }>) {
     };
 
     try {
-      const resolvedIdentity = await getCanonicalOfferIdentityBySlug(product.slug);
+      const resolvedIdentity = await withOperationDeadline(() => getCanonicalOfferIdentityBySlug(product.slug), 500);
       if (resolvedIdentity) {
         canonicalIdentity = resolvedIdentity;
       }
-    } catch (error) {
+    } catch {
       console.error(
         "Canonical offer identity lookup failed; using exact offer fallback.",
         {
-          offerSlug: product.slug,
-          errorName: error instanceof Error ? error.name : "UnknownError",
+          category: "canonical_offer_lookup_unavailable",
         },
       );
     }
@@ -111,12 +121,17 @@ async function handleGet(request: Request, params: Promise<{ slug: string }>) {
       recommendedSize,
     });
 
+    const analyticsController = new AbortController();
     try {
-      await saveAnalyticsEvent({
+      await withOperationDeadline(async () => {
+        const pagePath = await getPagePathFromRequest(payload.data.from);
+        analyticsController.signal.throwIfAborted();
+        signal.throwIfAborted();
+        return saveAnalyticsEvent({
         sessionId,
         eventName: "product_clicked",
         requestUrl: request.url,
-        pagePath: await getPagePathFromRequest(payload.data.from),
+        pagePath,
         payload: buildOutboundClickAnalyticsPayload({
           boardSlug: canonicalIdentity.boardSlug,
           offerSlug: canonicalIdentity.offerSlug,
@@ -144,11 +159,11 @@ async function handleGet(request: Request, params: Promise<{ slug: string }>) {
             payload.data.budgetMaxRub ?? null,
           ),
         }),
-      });
-    } catch (error) {
+        });
+      }, 500, () => analyticsController.abort());
+    } catch {
       console.error("Outbound click analytics persistence failed.", {
         category: "outbound_click_analytics_failed",
-        errorName: error instanceof Error ? error.name : "UnknownError",
       });
     }
   }
