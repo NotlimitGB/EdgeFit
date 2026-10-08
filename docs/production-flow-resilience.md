@@ -1,73 +1,123 @@
-# 039E: bounded public flows
+# 039E / 039G: bounded public flows and conservative DB lifecycle
 
-Recovered from stash `6b5820e4ad9e8128d898b2910b034887652e73f3`, based on
-`24feb061301783302e0d008418eb02d6066630e2`, onto approved main `48b8f13…`.
-The recovery stash is retained. The original production incident's root cause
-remains unproven; improvement after redeploy is not root-cause evidence.
+039E was recovered from stash `6b5820e4ad9e8128d898b2910b034887652e73f3`
+(base `24feb061…`) onto `48b8f13…`. The stash and original candidate `a5609ad…`
+remain recovery points. 039G corrects the independent review's lifecycle findings.
+The original production incident's root cause remains unproven.
 
-## Budgets and outcomes
+## Caller budgets (not SQL cancellation)
 
-| Boundary | Budget | Failure outcome |
+| Boundary | Budget | Caller outcome |
 | --- | --- | --- |
-| Started public-flow Query (including queue/connect time) | 10 seconds | Reject, retire owned client generation |
-| Public-flow transaction acquisition/callback/commit | 10 seconds total | Reject, retire generation; no retry |
-| Recommendation request | 20 seconds | Safe 503; no late calculation/persistence initiation |
-| Optional result persistence after computation | 2 seconds | Exact recommendation, without saved token |
-| Board/catalog public load | 15 seconds | Error boundary, not fabricated board or cached missing identity |
-| Outbound destination lookup | 8 seconds | No-store 503 recovery page, no invented merchant |
-| Optional outbound identity / analytics | 500 ms each | Existing identity fallback / same merchant redirect |
-| Entire outbound request | 12 seconds | No-store recovery response |
-| Browser POST + complete body | 30 seconds | Abort waiting, retain current answers, manual retry only |
-| Navigation to completed result | 10 seconds | Retry navigation to existing snapshot, no second POST |
+| Recommendation API | 20 seconds | Safe 503; no new continuation SQL after abandonment |
+| Optional result persistence | 2 seconds | Completed recommendation without an unacknowledged token |
+| Board/catalog load | 15 seconds | Recoverable error, not fabricated/missing identity |
+| Outbound destination lookup | 8 seconds | No-store recovery response; no invented merchant |
+| Optional outbound identity / analytics | 500 ms each | Existing identity fallback / correct merchant redirect |
+| Entire outbound handler | 12 seconds | No-store recovery response |
+| Browser POST and complete body | 30 seconds | Abort waiting, preserve answers, no automatic POST retry |
+| Result navigation | 10 seconds | Retry navigation to existing snapshot without recalculation |
 
-Budgets are conservative initial safeguards, not measured SLOs. All timers are
-cleared on settlement/unmount; server timers are unref'd. Repeated successful
-requests retain current data, destination, event payload and token semantics.
-Editing answers after navigation recovery permits a new explicit calculation.
+Timers are cleaned on settlement/unmount. Server timers are unref'd. Budgets are
+initial safeguards, not measured SLOs. Healthy results, token format, events,
+destinations, historical offer presentation and scoring remain unchanged.
 
-## Resource recovery and limitations
+## One application client; admission rather than destructive recovery
 
-Lazy postgres.js 3.4.9 Query handlers are adapted without changing SQL, fragments,
-helpers, parameters or execution count. Transaction callbacks retain wrapped SQL.
-On expiry, `sql.end({ timeout: 0 })` closes only this process's owned client and
-rejects its pending queue. Retained old clients fail closed. New generations are
-created only after teardown settles; teardown failure leaves access fail-closed.
-No `cancel`, reserved connections, automatic SQL retries or database administrative
-commands are used. `max=1`, SSL, prepare, idle/connect timeouts remain unchanged.
+There is one shared postgres.js 3.4.9 application client per process. Public
+timeouts NEVER call `end`, `cancel`, `reserve`, create another generation or
+restart the process. `end({timeout:0})` is not proof of physical socket closure.
+The driver's native connection lifecycle is unchanged, including `max=1`, SSL,
+prepare, idle/connect timeouts and its own reconnect behavior. This policy prevents
+application-induced replacement overlap; it does not assert control over every
+physical connection on the network or PostgreSQL's backend lifetime.
 
-Generation retirement can fail other operations sharing that client, including
-already-started writes. Closing a client or aborting HTTP is **not proof that an
-INSERT did not commit**. The response exposes a saved token only after acknowledged
-snapshot persistence; a late successful save may remain unexposed. Existing rows,
-snapshot format and token hashing are unchanged. Deadlines apply only in existing
-public canonical/recommendation/outbound contexts (including the public schema
-load). Unscoped scheduler/import SQL does not receive a new deadline. Retirement
-may still interrupt another operation sharing the same unhealthy client; no
-automatic retry is allowed for writes with unknown commit state.
+Separate AsyncLocalStorage public-work context carries critical/optional kind
+and an AbortSignal, never user input. Nested work inherits parent abandonment.
+An expired caller prevents subsequent SQL from that context. Already admitted
+queries, including driver-queued queries, can still execute/commit later.
 
-Loopback tests with the installed driver cover unresponsive startup, dispatch
-without reply, queued queries and peer closure. They prove local driver teardown,
-not Supabase server cancellation or the original production root cause.
+Admission capacity is **32 unfinished public units per shared client**. Query,
+transaction acquisition/callback/commit and nested savepoint calls consume units;
+nested public queries also count. A slot is released only at original settlement,
+never at caller timeout or diagnostic tracking expiry. Internal driver commit/
+rollback statements are not admission-blocked. No public transaction is converted
+to success because its caller stopped waiting.
 
-## Diagnostics and review
+At saturation, new public units fail before driver execution/acquisition. Existing
+operations continue. Settlement permits fresh admission on the SAME client.
+Unscoped scheduler/reporting work is neither capped nor interrupted; a diagnostic
+trace alone never enables admission policy. Public count is not pool occupancy.
+This does not isolate natural contention on the existing single-connection pool.
 
-039C events remain operational. `operation_deadline`, `client_retired`,
-`client_recovery_ready` and `client_recovery_failed` use bounded asynchronous
-diagnostics with process/client IDs. No SQL, DSN, parameters, exception text or
-tokens are logged. Dispatch remains an attempt, not proof of PostgreSQL receipt.
-Counters remain tracked operations, not exact pool occupancy.
+## Observability and operator recovery
 
-Local acceptance uses the Timeweb-mode production build with DB sentinel values,
-not production persistence. WebKit at 390/768/1440 px intercepts the recommendation
-POST with a deterministic fixture and blocks other API, outbound, internal,
-tracking and mutating requests before navigation. Success, pending-response
-recovery and delayed-navigation recovery must each produce only one fixture POST.
-Timers are advanced for failure scenarios; this proves recovery behavior, not
-real network latency. No browser fixture is evidence of a Supabase write.
+039C diagnostics keep bounded queues/registries and static error categories. A
+10-second observation distinguishes dispatch attempt observed / not observed /
+uncorrelated. No observed dispatch can mean queue, connect or preparation; it is
+NOT proof of pool queueing. Dispatch is not proof of socket write/server execution.
+The original 60-second diagnostic tracking expiry remains separate from admission.
+Counters may become incomplete; admission does not silently free pending units.
 
-After separately authorized integration/deployment, verify exact active SHA and
-inspect sanitized logs for deadline rates and recovery failures. Perform one
-authorized real quiz flow; board GET and outbound verification require their own
-bounded protocol. No deployment, DB access, cron or merchant transition is part
-of local acceptance. Unexpected timeout rates require review of measurements,
-not automatic pool enlargement or retry of potentially committed writes.
+Each unfinished admitted public unit emits one `operator_action_required` event
+at 60 seconds. Caller timeout, admission saturation/availability, abandoned
+context and driver/network failure remain distinct. Caller events without a DB
+client have a process ID, not a fabricated client ID. No SQL, parameters, DSN,
+exception text, session IDs or tokens are logged. Failure logs use bounded queues;
+healthy logging remains the existing lifecycle instrumentation.
+
+Operational states:
+
+- Capacity available: new public work may proceed.
+- Suspected latency: 10-second observation, not a declaration of broken connection.
+- Persistent unresolved work: 60-second operator observation; other work may still
+  succeed, so this alone does not authorize a restart.
+- Saturated: fail-closed for new public units, existing/unscoped work untouched.
+- Capacity restored: genuine settlement, same application client.
+- Automatic retirement/release confirmation/recovery-ready: deliberately absent.
+  Failed or pending teardown cannot latch recovery because timeout never invokes it.
+
+Operator procedure (requires separate authorization; no automated restart):
+
+1. Confirm active deployment SHA/status and sanitized UTC window. Group by
+   process/client IDs; account for dropped events, expiry and unknown correlation.
+2. Compare persistent observations with genuine completions and repeated critical
+   flow failures. Successful neighboring requests mean a slow optional unit is
+   not sufficient evidence to restart. Health is liveness, not DB readiness.
+3. If critical flows keep failing and the same client shows no progress, preserve
+   sanitized evidence, record unknown-commit writes and request owner approval
+   for a process restart. Do not replay requests or issue PostgreSQL administrative
+   cancellation. Do not change pool/configuration based only on a timeout.
+4. Before replacement, the owner/platform must establish termination of the OLD
+   application process. A rolling deployment is not evidence that it stopped.
+   If process termination cannot be verified, recovery is not confirmed.
+5. After the separately authorized restart, verify new process ID, deployment SHA,
+   `/health`, bounded board/catalog GETs and a separately authorized real quiz.
+   Verify progress/completions and absence of saturation. Capture further stalls
+   instead of repeating restarts indefinitely.
+
+A timeout, socket closure or process termination NEVER proves that a write did
+not commit. Tokens are exposed only after acknowledged snapshot persistence;
+a late save can remain unexposed. No automatic write retries exist. A manual new
+quiz submission may create another record after an unknown-commit timeout;
+navigation-only retry never submits a new recommendation.
+
+## Local acceptance and limitations
+
+Installed-driver loopback tests cover a deliberately half-open peer, repeated
+caller timeout cycles, healthy completion on the same client, parameters/fragments,
+transaction callbacks, nested savepoints, rollback and delayed commit. Controlled
+tests cover admission saturation, late continuation rejection, unscoped work and
+unused rejecting/never-settling teardown mocks. They need no PostgreSQL.
+
+Local Timeweb-mode production artifact uses DB sentinel values. WebKit at
+390/768/1440 px blocks tracking, external, API, outbound, internal and mutating
+requests before navigation, except a locally fulfilled recommendation fixture.
+Success, request timeout and delayed navigation use one fixture POST each. Clock
+advancement proves state recovery, not network latency or production persistence.
+
+Stalled original work may remain retained up to the admission cap until settlement
+or owner-authorized process termination. This is an explicit observable safety/
+availability tradeoff, not automatic recovery or proven SQL cancellation.
+Production DB, scheduler, merchant transitions and deployment are outside local
+acceptance. Main integration requires independent exact-SHA review and authorization.

@@ -12,8 +12,29 @@ type Context = {
 const context = new AsyncLocalStorage<Context>();
 const processId = randomUUID();
 
-// Public-flow protection only; do not add deadlines to scheduler/import work.
-export function isPublicDbFlow() { return context.getStore() != null; }
+// Caller events have no fabricated client ID when no DB client was acquired.
+const callerEvents: Record<string, unknown>[] = [];
+let callerDrainScheduled = false, callerDropped = 0;
+function drainCallers() {
+  callerDrainScheduled = false;
+  for (const event of callerEvents.splice(0, 32)) {
+    try { console.info(JSON.stringify({ ...event, droppedEvents: callerDropped })); } catch { /* fail open */ }
+  }
+  if (callerEvents.length) scheduleCallers();
+}
+function scheduleCallers() {
+  if (callerDrainScheduled) return;
+  callerDrainScheduled = true; setImmediate(drainCallers).unref();
+}
+export function reportPublicCallerTimeout(kind: "critical" | "optional") {
+  try {
+    if (callerEvents.length >= 256) { callerDropped++; return; }
+    const current = context.getStore();
+    callerEvents.push({ scope: "public_db_work", event: "caller_timeout", utc: new Date().toISOString(), processId,
+      workKind: kind, requestScope: current?.scope, stage: current?.stage, traceId: current?.traceId });
+    scheduleCallers();
+  } catch { /* diagnostics cannot affect the response */ }
+}
 
 export function withDbDiagnosticContext<T>(value: Context, operation: () => T): T {
   const parent = context.getStore();
@@ -53,6 +74,8 @@ function safeError(error: unknown) {
   let code: unknown;
   try { code = (error as { code?: unknown })?.code; } catch { /* hostile getter */ }
   if (code === "OPERATION_DEADLINE") return { category: "operation_deadline" };
+  if (code === "PUBLIC_DB_SATURATED") return { category: "admission_saturation" };
+  if (code === "PUBLIC_DB_ABANDONED") return { category: "abandoned_context" };
   if (typeof code === "string" && /^[0-9A-Z]{5}$/.test(code)) {
     return { category: "postgres", sqlstate: code };
   }
@@ -200,6 +223,9 @@ export function createDbLifecycleDiagnostics(
         correlation: "matched", beforeDriverExecutionMs: Math.max(0, Math.round(performance.now() - entry.started)) });
     } catch { /* fail open, including driver callbacks */ }
   }
-  return { wrap, debug, recovery: (event: "client_retired" | "client_recovery_ready" | "client_recovery_failed") =>
-    emit({ event, category: "operation_deadline" }) };
+  return { wrap, debug, boundary: (event: { event: "admission_saturated" | "admission_available" | "abandoned_context" | "operator_action_required" | "transaction_observation";
+    publicInFlight: number; limit: number; workKind?: "critical" | "optional"; unit?: "query" | "transaction"; publicWorkId?: string; status?: "DISPATCH_CORRELATION_UNKNOWN" }) => {
+    const current = context.getStore();
+    emit({ ...event, requestScope: current?.scope, stage: current?.stage, traceId: current?.traceId });
+  } };
 }

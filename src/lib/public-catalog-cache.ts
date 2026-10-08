@@ -7,7 +7,7 @@ import type { ProductColumnSupport } from "@/lib/database/product-column-support
 import { getPublicDatabaseNamespace, getPublicSchemaSupport } from "@/lib/public-schema-cache";
 import { toPublicCatalogItems } from "@/lib/public-catalog-dto";
 import { measurePublicLoad } from "@/lib/public-load-diagnostics";
-import { withOperationDeadline } from "@/lib/operation-deadline";
+import { runPublicDbWork } from "@/lib/database/public-work";
 import { randomUUID } from "node:crypto";
 import { withDbDiagnosticContext } from "@/lib/database/lifecycle-diagnostics";
 
@@ -31,9 +31,9 @@ const loadCachedPublicCatalog = unstable_cache(
 );
 
 export async function getPublicCanonicalCatalogItems() {
-  return withOperationDeadline(() => withDbDiagnosticContext(
+  return withDbDiagnosticContext(
     { scope: "canonical_catalog", stage: "public_catalog_loading", traceId: randomUUID() },
-    loadPublicCatalog), 15_000);
+    () => runPublicDbWork("critical", 15_000, loadPublicCatalog));
 }
 
 async function loadPublicCatalog() {

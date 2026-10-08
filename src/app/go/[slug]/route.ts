@@ -11,7 +11,7 @@ import { getProductBySlug } from "@/lib/products";
 import { isSavedResultStoreSource } from "@/lib/saved-result-contract";
 import { getBudgetRelation } from "@/lib/purchase-preferences";
 import { SESSION_COOKIE_NAME } from "@/lib/session-id";
-import { withOperationDeadline } from "@/lib/operation-deadline";
+import { runPublicDbWork } from "@/lib/database/public-work";
 import {
   getStoreDestinationProvenance,
   resolveProductStoreUrl,
@@ -56,10 +56,10 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ slug: string }> },
 ) {
-  const controller = new AbortController();
   try {
-    return await withOperationDeadline(() => withDbDiagnosticContext(
-      { scope: "outbound", stage: "request", traceId: randomUUID() }, () => handleGet(request, params, controller.signal)), 12_000, () => controller.abort());
+    return await withDbDiagnosticContext(
+      { scope: "outbound", stage: "request", traceId: randomUUID() },
+      () => runPublicDbWork("critical", 12_000, signal => handleGet(request, params, signal)));
   } catch {
     console.error(JSON.stringify({ event: "outbound_failure", category: "lookup_unavailable" }));
     return new Response('<!doctype html><html lang="ru"><meta charset="utf-8"><title>Магазин временно недоступен</title><h1>Не удалось открыть магазин</h1><p>Попробуй ещё раз или вернись к каталогу.</p><p><a href="">Попробовать снова</a></p><a href="/catalog">Вернуться в каталог</a></html>',
@@ -69,7 +69,7 @@ export async function GET(
 
 async function handleGet(request: Request, params: Promise<{ slug: string }>, signal: AbortSignal) {
   const { slug } = await params;
-  const product = await withOperationDeadline(() => withDbDiagnosticStage("product_lookup", () => getProductBySlug(slug)), 8_000);
+  const product = await withDbDiagnosticStage("product_lookup", () => runPublicDbWork("critical", 8_000, () => getProductBySlug(slug)));
   signal.throwIfAborted();
   const destinationUrl = product ? resolveProductStoreUrl(product) : null;
 
@@ -94,7 +94,7 @@ async function handleGet(request: Request, params: Promise<{ slug: string }>, si
     };
 
     try {
-      const resolvedIdentity = await withOperationDeadline(() => getCanonicalOfferIdentityBySlug(product.slug), 500);
+      const resolvedIdentity = await runPublicDbWork("optional", 500, () => getCanonicalOfferIdentityBySlug(product.slug));
       if (resolvedIdentity) {
         canonicalIdentity = resolvedIdentity;
       }
@@ -121,11 +121,10 @@ async function handleGet(request: Request, params: Promise<{ slug: string }>, si
       recommendedSize,
     });
 
-    const analyticsController = new AbortController();
     try {
-      await withOperationDeadline(async () => {
+      await runPublicDbWork("optional", 500, async analyticsSignal => {
         const pagePath = await getPagePathFromRequest(payload.data.from);
-        analyticsController.signal.throwIfAborted();
+        analyticsSignal.throwIfAborted();
         signal.throwIfAborted();
         return saveAnalyticsEvent({
         sessionId,
@@ -160,7 +159,7 @@ async function handleGet(request: Request, params: Promise<{ slug: string }>, si
           ),
         }),
         });
-      }, 500, () => analyticsController.abort());
+      });
     } catch {
       console.error("Outbound click analytics persistence failed.", {
         category: "outbound_click_analytics_failed",

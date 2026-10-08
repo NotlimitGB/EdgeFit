@@ -11,16 +11,17 @@ import {
 import { recommendationRequestSchema } from "@/lib/quiz/schema";
 import { SAVED_RESULT_TOKEN_HEADER } from "@/lib/saved-result-contract";
 import { resolveCanonicalBoardRouteBySlug } from "@/lib/canonical-catalog";
-import { OperationDeadlineError, withOperationDeadline } from "@/lib/operation-deadline";
+import { OperationDeadlineError } from "@/lib/operation-deadline";
+import { runPublicDbWork } from "@/lib/database/public-work";
+import { PublicDbUnavailableError } from "@/lib/database/operation-boundary";
 
 export async function POST(request: Request) {
-  const controller = new AbortController();
   try {
-    return await withOperationDeadline(() => withDbDiagnosticContext(
+    return await withDbDiagnosticContext(
       { scope: "recommendation", stage: "request", traceId: randomUUID() },
-      () => handlePost(request, controller.signal)), 20_000, () => controller.abort());
+      () => runPublicDbWork("critical", 20_000, signal => handlePost(request, signal)));
   } catch (error) {
-    if (error instanceof OperationDeadlineError) {
+    if (error instanceof OperationDeadlineError || error instanceof PublicDbUnavailableError) {
       console.error(JSON.stringify({ event: "public_api_failure", endpoint: "recommendation", category: "operation_deadline" }));
       return NextResponse.json({ message: "Подбор занял слишком много времени. Попробуй ещё раз немного позже." }, { status: 503 });
     }
@@ -81,12 +82,12 @@ async function handlePost(request: Request, signal: AbortSignal) {
     // a useful result into a failure; expose a token only after acknowledgement.
     let savedResultToken: string | null = null;
     try {
-      savedResultToken = await withOperationDeadline(() => withDbDiagnosticStage("result_persistence", () => сохранитьРезультатКвиза({
+      savedResultToken = await withDbDiagnosticStage("result_persistence", () => runPublicDbWork("optional", 2_000, () => сохранитьРезультатКвиза({
       вход: riderInput,
       результат: responseRecommendation,
       purchasePreferences,
       идентификаторСессии: request.headers.get("x-edgefit-session-id"),
-      })), 2_000);
+      })));
     } catch {
       console.error(JSON.stringify({ event: "public_api_failure", endpoint: "recommendation", category: "result_persistence_unavailable" }));
     }
@@ -101,7 +102,7 @@ async function handlePost(request: Request, signal: AbortSignal) {
 
     return response;
   } catch (error) {
-    if (error instanceof OperationDeadlineError) {
+    if (error instanceof OperationDeadlineError || error instanceof PublicDbUnavailableError) {
       return NextResponse.json({ message: "Сервис временно недоступен. Попробуй ещё раз немного позже." }, { status: 503 });
     }
     return publicApiError("recommendation", error, parsingInput, "Проверь параметры райдера и попробуй снова.");

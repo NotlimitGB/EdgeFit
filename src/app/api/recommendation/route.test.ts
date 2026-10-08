@@ -29,6 +29,7 @@ vi.mock("@/lib/quiz-results", () => ({
 }));
 
 import { POST } from "@/app/api/recommendation/route";
+import { PublicDbUnavailableError } from "@/lib/database/operation-boundary";
 import {
   SAVED_RESULT_TOKEN_HEADER,
   isSavedResultToken,
@@ -64,6 +65,11 @@ const recommendation: RecommendationResult = {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("recommendation bounded recovery", () => {
+  it("returns safe unavailable response for admission saturation", async () => {
+    mocks.getRecommendationCatalog.mockRejectedValueOnce(new PublicDbUnavailableError("PUBLIC_DB_SATURATED"));
+    const response = await POST(new Request("https://example.com/api/recommendation", { method: "POST", body: JSON.stringify(recommendation.input) }));
+    expect(response.status).toBe(503); expect(await response.json()).toEqual({ message: "Сервис временно недоступен. Попробуй ещё раз немного позже." });
+  });
   it("returns the completed recommendation without a token when snapshot persistence stalls", async () => {
     vi.useFakeTimers(); vi.spyOn(console, "error").mockImplementation(() => undefined);
     mocks.getRecommendationCatalog.mockResolvedValue({ products: [{}], familyKeyByProductId: {} });

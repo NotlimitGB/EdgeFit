@@ -9,7 +9,7 @@ import type { ProductColumnSupport } from "@/lib/database/product-column-support
 import { getPublicDatabaseNamespace, getPublicSchemaSupport } from "@/lib/public-schema-cache";
 import { measurePublicLoad } from "@/lib/public-load-diagnostics";
 import { createBoardPageDiagnostics } from "@/lib/board-page-load-diagnostics";
-import { withOperationDeadline } from "@/lib/operation-deadline";
+import { runPublicDbWork } from "@/lib/database/public-work";
 import { randomUUID } from "node:crypto";
 import { withDbDiagnosticContext } from "@/lib/database/lifecycle-diagnostics";
 
@@ -46,9 +46,9 @@ const loadBoard = unstable_cache(
 );
 
 export const getPublicBoardBundle = cache(async (slug: string) => {
-  return withOperationDeadline(() => withDbDiagnosticContext(
+  return withDbDiagnosticContext(
     { scope: "canonical_catalog", stage: "public_board_loading", traceId: randomUUID() },
-    () => loadPublicBoardBundle(slug)), 15_000);
+    () => runPublicDbWork("critical", 15_000, () => loadPublicBoardBundle(slug)));
 });
 
 async function loadPublicBoardBundle(slug: string) {
