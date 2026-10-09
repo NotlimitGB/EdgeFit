@@ -40,7 +40,8 @@ const FAMILY_ID = "3a90a4b3-907e-478a-8987-6ba19f6c87a1";
 const BASE_OFFER_ID = "a68f7552-5301-4e8f-ac3b-58d1e2764ab1";
 const WIDE_OFFER_ID = "93415852-0c09-47fa-8e45-5d739abc1018";
 const NOW = new Date("2026-09-25T12:00:00.000Z");
-const POLICY = { freshThroughMs: 6 * 60 * 60 * 1000, staleAfterMs: 24 * 60 * 60 * 1000 };
+const METRIC_POLICY = { version: "fixture-only-v1", freshThroughMs: 6 * 60 * 60 * 1000, staleAfterMs: 24 * 60 * 60 * 1000 };
+const POLICY = { price: METRIC_POLICY, availability: METRIC_POLICY };
 
 function canonicalSize(overrides: Partial<CanonicalSizeVariant> = {}): CanonicalSizeVariant {
   const displaySizeLabel = overrides.displaySizeLabel ?? "159";
@@ -156,10 +157,16 @@ function offer(
     sourceStatus: "ACTIVE",
     sourceKind: "PARTNER_FEED",
     commercialRightsStatus: "AUTHORIZED",
-    sourceIdentityKey: "sku:159",
-    merchantSizeSku: "159",
+    rightsEvidenceRef: "fixture-permission",
+    merchantProductId: "merchant-product-a",
+    merchantProductKey: "source-product-a",
+    sourceIdentityKey: `sku:${identity.displaySizeLabel}`,
+    merchantSizeSku: identity.displaySizeLabel,
     identity,
     availabilityStatus: "IN_STOCK",
+    availability: { scope: "EXACT_SIZE", observedAt: new Date("2026-09-25T11:30:00.000Z"),
+      ingestedAt: NOW, merchantUpdatedAt: null, evidenceRef: "fixture-stock",
+      sourceUrl: "https://merchant.example/stock" },
     merchantProductUrl: "https://merchant.example/board",
     merchantSizeUrl: null,
     sourceUrl: "https://merchant.example/feed/board",
@@ -175,6 +182,8 @@ function offer(
       amount: 49_990,
       currency: "RUB",
       scope: "EXACT_SIZE",
+      evidenceRef: "fixture-price",
+      ingestedAt: NOW,
       observedAt: new Date("2026-09-25T11:30:00.000Z"),
       feedGeneratedAt: new Date("2026-09-25T10:00:00.000Z"),
       merchantUpdatedAt: new Date("2026-09-25T10:30:00.000Z"),
@@ -262,7 +271,7 @@ describe("merchant offer contract", () => {
         NOW,
         POLICY,
       ).displayEligible,
-    ).toBe(false);
+    ).toBe(true);
     expect(
       evaluateCurrentExactSizeOffer(
         offer(regular159, { availabilityStatus: "UNKNOWN" }),
@@ -274,10 +283,10 @@ describe("merchant offer contract", () => {
   });
 
   it("separates display eligibility from a fresh current-availability claim", () => {
-    expect(classifyOfferFreshness(null, NOW, POLICY)).toBe("UNKNOWN");
-    expect(classifyOfferFreshness(new Date("2026-09-24T11:00:00.000Z"), NOW, POLICY)).toBe("STALE");
-    expect(classifyOfferFreshness(new Date("2026-09-25T06:00:01.000Z"), NOW, POLICY)).toBe("FRESH");
-    expect(classifyOfferFreshness(new Date("2026-09-25T04:00:00.000Z"), NOW, POLICY)).toBe("AGING");
+    expect(classifyOfferFreshness(null, NOW, METRIC_POLICY)).toBe("UNKNOWN");
+    expect(classifyOfferFreshness(new Date("2026-09-24T11:00:00.000Z"), NOW, METRIC_POLICY)).toBe("STALE");
+    expect(classifyOfferFreshness(new Date("2026-09-25T06:00:01.000Z"), NOW, METRIC_POLICY)).toBe("FRESH");
+    expect(classifyOfferFreshness(new Date("2026-09-25T04:00:00.000Z"), NOW, METRIC_POLICY)).toBe("AGING");
     const fresh = evaluateCurrentExactSizeOffer(offer(), regular159, NOW, POLICY);
     expect(fresh).toMatchObject({
       displayEligible: true,
@@ -287,7 +296,7 @@ describe("merchant offer contract", () => {
     });
 
     const agingAvailability = evaluateCurrentExactSizeOffer(
-      offer(regular159, { observedAt: new Date("2026-09-25T04:00:00.000Z") }),
+      offer(regular159, { availability: { ...offer().availability!, observedAt: new Date("2026-09-25T04:00:00.000Z") } }),
       regular159,
       NOW,
       POLICY,
@@ -314,12 +323,12 @@ describe("merchant offer contract", () => {
 
     for (const observedAt of [null, new Date("2026-09-24T11:00:00.000Z")]) {
       const unavailable = evaluateCurrentExactSizeOffer(
-        offer(regular159, { observedAt }),
+        offer(regular159, { availability: { ...offer().availability!, observedAt } }),
         regular159,
         NOW,
         POLICY,
       );
-      expect(unavailable.displayEligible).toBe(false);
+      expect(unavailable.displayEligible).toBe(true);
       expect(unavailable.currentAvailabilityEligible).toBe(false);
     }
 
@@ -332,8 +341,9 @@ describe("merchant offer contract", () => {
       POLICY,
     );
     expect(unknownPrice.reasonCodes).toContain("PRICE_UNKNOWN");
-    expect(unknownPrice.displayEligible).toBe(false);
-    expect(unknownPrice.currentAvailabilityEligible).toBe(false);
+    expect(unknownPrice.displayEligible).toBe(true);
+    expect(unknownPrice.currentAvailabilityEligible).toBe(true);
+    expect(unknownPrice.purchaseReady).toBe(false);
   });
 
   it("does not turn legacy imports, unauthorized sources, or price alone into current offers", () => {
@@ -342,7 +352,6 @@ describe("merchant offer contract", () => {
       { commercialRightsStatus: "UNKNOWN" as const },
       { sourceStatus: "UNKNOWN" as const },
       { merchantStatus: "INACTIVE" as const },
-      { price: null },
     ]) {
       expect(
         evaluateCurrentExactSizeOffer(offer(regular159, overrides), regular159, NOW, POLICY)
@@ -477,14 +486,24 @@ describe("merchant offer contract", () => {
       offer(jones159W, { id: "b-159w", merchantSlug: "merchant-b", sourceIdentityKey: "sku:B-159W", merchantSizeSku: "B-159W", availabilityStatus: "OUT_OF_STOCK" }),
     ];
     expect(selectCurrentExactSizeOffers(fixtureOffers, jones159, NOW, POLICY).displayEligible.map((entry) => entry.offer.id).sort()).toEqual(["a-159", "b-159"]);
-    expect(selectCurrentExactSizeOffers(fixtureOffers, jones159W, NOW, POLICY).displayEligible.map((entry) => entry.offer.id)).toEqual(["a-159w"]);
-    expect(selectCurrentExactSizeOffers(fixtureOffers, jones159W, NOW, POLICY).currentAvailabilityEligible.map((entry) => entry.offer.id)).toEqual(["a-159w"]);
+    expect(selectCurrentExactSizeOffers(fixtureOffers, jones159W, NOW, POLICY).displayEligible.map((entry) => entry.offer.id)).toEqual(["a-159w", "b-159w"]);
+    expect(selectCurrentExactSizeOffers(fixtureOffers, jones159W, NOW, POLICY).currentAvailabilityEligible.map((entry) => entry.offer.id)).toEqual(["a-159w", "b-159w"]);
+    expect(selectCurrentExactSizeOffers(fixtureOffers, jones159W, NOW, POLICY).displayEligible.filter((entry) => entry.purchaseReady).map((entry) => entry.offer.id)).toEqual(["a-159w"]);
     expect(fixtureOffers.find((entry) => entry.id === "b-159w")?.availabilityStatus).toBe("OUT_OF_STOCK");
   });
 
   it("loads exact-size matches and preserves product-level price provenance separately", async () => {
     const row = {
       id: "db-offer",
+      merchantProductId: "product-fixture",
+      merchantProductKey: "source-fixture",
+      rightsEvidenceRef: "permission-fixture",
+      availabilityObservedAt: new Date("2026-09-25T09:30:00.000Z"),
+      availabilityEvidenceRef: "stock-fixture",
+      availabilityIngestedAt: NOW,
+      availabilityMerchantUpdatedAt: null,
+      availabilitySourceUrl: "https://merchant.example/stock-evidence",
+      priceEvidenceRef: "price-fixture",
       merchantSlug: "merchant-a",
       merchantStatus: "ACTIVE",
       sourceStatus: "ACTIVE",
@@ -534,8 +553,16 @@ describe("merchant offer contract", () => {
       sourceUrl: "https://merchant.example/product-feed",
     });
     expect(result[0]?.observedAt).toBe(row.observedAt);
+    expect(result[0]?.availability).toMatchObject({
+      scope: "EXACT_SIZE", observedAt: row.availabilityObservedAt,
+      evidenceRef: row.availabilityEvidenceRef, ingestedAt: NOW,
+    });
+    expect(result[0]?.price?.evidenceRef).toBe(row.priceEvidenceRef);
+    expect(result[0]?.merchantProductKey).toBe(row.merchantProductKey);
     const queryCall = databaseMocks.query.mock.calls[0] as unknown as [TemplateStringsArray, ...unknown[]];
     expect(queryCall[0].join(" ")).toContain("reconciliation_status = 'MATCHED'");
+    expect(queryCall[0].join(" ")).toContain("offer.price_observed_at else product_offer.price_observed_at");
+    expect(queryCall[0].join(" ")).not.toContain('then offer.observed_at else product_offer.observed_at');
     expect(queryCall.slice(1)).toContain(regular159.identityKey);
   });
 

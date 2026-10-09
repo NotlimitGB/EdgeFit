@@ -11,6 +11,15 @@ interface MerchantOfferRow {
   sourceStatus: ExactSizeMerchantOfferSnapshot["sourceStatus"];
   sourceKind: ExactSizeMerchantOfferSnapshot["sourceKind"];
   commercialRightsStatus: ExactSizeMerchantOfferSnapshot["commercialRightsStatus"];
+  rightsEvidenceRef: string | null;
+  merchantProductId: string;
+  merchantProductKey: string;
+  availabilityObservedAt: Date | null;
+  availabilityEvidenceRef: string | null;
+  availabilityIngestedAt: Date | null;
+  availabilityMerchantUpdatedAt: Date | null;
+  availabilitySourceUrl: string | null;
+  priceEvidenceRef: string | null;
   sourceIdentityKey: string;
   merchantSizeSku: string | null;
   canonicalBoardKind: CanonicalSizeIdentity["boardKind"];
@@ -56,6 +65,14 @@ export async function getMerchantOffersForCanonicalSize(
       product.source_status as "sourceStatus",
       product.source_kind as "sourceKind",
       product.commercial_rights_status as "commercialRightsStatus",
+      product.rights_evidence_ref as "rightsEvidenceRef",
+      product.id::text as "merchantProductId",
+      product.source_product_key as "merchantProductKey",
+      offer.availability_observed_at as "availabilityObservedAt",
+      offer.availability_evidence_ref as "availabilityEvidenceRef",
+      offer.availability_ingested_at as "availabilityIngestedAt",
+      offer.availability_source_updated_at as "availabilityMerchantUpdatedAt",
+      offer.availability_source_url as "availabilitySourceUrl",
       offer.source_identity_key as "sourceIdentityKey",
       offer.merchant_size_sku as "merchantSizeSku",
       offer.canonical_board_kind as "canonicalBoardKind",
@@ -83,15 +100,17 @@ export async function getMerchantOffersForCanonicalSize(
       case when offer.price_amount is not null
         then offer.price_scope else product_offer.price_scope end as "priceScope",
       case when offer.price_amount is not null
-        then offer.observed_at else product_offer.observed_at end as "priceObservedAt",
+        then offer.price_observed_at else product_offer.price_observed_at end as "priceObservedAt",
+      case when offer.price_amount is not null
+        then offer.price_evidence_ref else product_offer.price_evidence_ref end as "priceEvidenceRef",
       case when offer.price_amount is not null
         then offer.feed_generated_at else product_offer.feed_generated_at end as "priceFeedGeneratedAt",
       case when offer.price_amount is not null
-        then offer.merchant_updated_at else product_offer.merchant_updated_at end as "priceMerchantUpdatedAt",
+        then offer.price_source_updated_at else product_offer.price_source_updated_at end as "priceMerchantUpdatedAt",
       case when offer.price_amount is not null
-        then offer.source_received_at else product_offer.source_received_at end as "priceSourceReceivedAt",
+        then offer.price_ingested_at else product_offer.price_ingested_at end as "priceSourceReceivedAt",
       case when offer.price_amount is not null
-        then offer.source_url else product_offer.source_url end as "priceSourceUrl"
+        then offer.price_source_url else product_offer.price_source_url end as "priceSourceUrl"
     from merchant_offers offer
     join merchant_products product
       on product.id = offer.merchant_product_id
@@ -118,6 +137,9 @@ export async function getMerchantOffersForCanonicalSize(
     sourceStatus: row.sourceStatus,
     sourceKind: row.sourceKind,
     commercialRightsStatus: row.commercialRightsStatus,
+    rightsEvidenceRef: row.rightsEvidenceRef,
+    merchantProductId: row.merchantProductId,
+    merchantProductKey: row.merchantProductKey,
     sourceIdentityKey: row.sourceIdentityKey,
     merchantSizeSku: row.merchantSizeSku,
     identity: {
@@ -129,6 +151,14 @@ export async function getMerchantOffersForCanonicalSize(
       identityKey: row.canonicalSizeIdentityKey,
     },
     availabilityStatus: row.availabilityStatus,
+    availability: {
+      scope: "EXACT_SIZE",
+      observedAt: row.availabilityObservedAt,
+      evidenceRef: row.availabilityEvidenceRef,
+      ingestedAt: row.availabilityIngestedAt,
+      merchantUpdatedAt: row.availabilityMerchantUpdatedAt,
+      sourceUrl: row.availabilitySourceUrl ?? "",
+    },
     merchantProductUrl: row.merchantProductUrl,
     merchantSizeUrl: row.merchantSizeUrl,
     sourceUrl: row.sourceUrl,
@@ -151,7 +181,9 @@ export async function getMerchantOffersForCanonicalSize(
             feedGeneratedAt: row.priceFeedGeneratedAt,
             merchantUpdatedAt: row.priceMerchantUpdatedAt,
             sourceReceivedAt: row.priceSourceReceivedAt,
-            sourceUrl: row.priceSourceUrl ?? row.sourceUrl,
+            ingestedAt: row.priceSourceReceivedAt,
+            evidenceRef: row.priceEvidenceRef,
+            sourceUrl: row.priceSourceUrl ?? "",
           },
   }));
 }

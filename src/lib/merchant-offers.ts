@@ -132,12 +132,14 @@ export function normalizeAvailabilityStatus(value: unknown): MerchantAvailabilit
 }
 
 export interface FreshnessPolicy {
+  version: string;
   freshThroughMs: number;
   staleAfterMs: number;
 }
 
 function assertFreshnessPolicy(policy: FreshnessPolicy) {
   if (
+    !policy.version?.trim() ||
     !Number.isFinite(policy.freshThroughMs) ||
     !Number.isFinite(policy.staleAfterMs) ||
     policy.freshThroughMs < 0 ||
@@ -149,7 +151,7 @@ function assertFreshnessPolicy(policy: FreshnessPolicy) {
 
 function timestampMs(value: string | Date | null | undefined) {
   if (value instanceof Date) return value.getTime();
-  if (typeof value !== "string" || !value.trim()) return Number.NaN;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/u.test(value)) return Number.NaN;
   return Date.parse(value);
 }
 
@@ -180,6 +182,44 @@ export interface MerchantOfferPriceSnapshot {
   merchantUpdatedAt: string | Date | null;
   sourceReceivedAt: string | Date | null;
   sourceUrl: string;
+  evidenceRef?: string | null;
+  ingestedAt?: string | Date | null;
+}
+
+export interface MerchantAvailabilityObservation {
+  scope: OfferScope;
+  observedAt: string | Date | null;
+  evidenceRef: string | null;
+  sourceUrl: string;
+  merchantUpdatedAt: string | Date | null;
+  ingestedAt: string | Date | null;
+}
+
+/** No production default: source cadence and authorization must be agreed first. */
+export interface MerchantFreshnessPolicies {
+  price: FreshnessPolicy | null;
+  availability: FreshnessPolicy | null;
+}
+
+function publicSourceUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return ["https:", "http:"].includes(url.protocol) && !url.username && !url.password;
+  } catch { return false; }
+}
+
+function metricFreshness(
+  metric: { observedAt: string | Date | null; ingestedAt: string | Date | null;
+    evidenceRef: string | null; sourceUrl: string } | null | undefined,
+  now: Date, policy: FreshnessPolicy | null, eligible: boolean,
+): FreshnessStatus {
+  if (policy) assertFreshnessPolicy(policy);
+  if (!policy || !eligible || !metric?.evidenceRef?.trim() || !publicSourceUrl(metric.sourceUrl))
+    return "UNKNOWN";
+  const observed = timestampMs(metric.observedAt);
+  const ingested = timestampMs(metric.ingestedAt);
+  if (!Number.isFinite(ingested) || ingested < observed || ingested > now.getTime()) return "UNKNOWN";
+  return classifyOfferFreshness(metric.observedAt, now, policy);
 }
 
 export interface ExactSizeMerchantOfferSnapshot {
@@ -189,10 +229,14 @@ export interface ExactSizeMerchantOfferSnapshot {
   sourceStatus: MerchantSourceStatus;
   sourceKind: MerchantSourceKind;
   commercialRightsStatus: CommercialRightsStatus;
+  rightsEvidenceRef?: string | null;
+  merchantProductId?: string | null;
+  merchantProductKey?: string | null;
   sourceIdentityKey: string;
   merchantSizeSku: string | null;
   identity: CanonicalSizeIdentity;
   availabilityStatus: MerchantAvailabilityStatus;
+  availability?: MerchantAvailabilityObservation | null;
   merchantProductUrl: string;
   merchantSizeUrl: string | null;
   sourceUrl: string;
@@ -217,6 +261,8 @@ export interface EvaluatedMerchantOffer {
   displayEligible: boolean;
   /** Display-eligible with a FRESH availability observation, not merely AGING. */
   currentAvailabilityEligible: boolean;
+  currentPriceEligible: boolean;
+  purchaseReady: boolean;
   reasonCodes: string[];
   availabilityFreshness: FreshnessStatus;
   priceFreshness: FreshnessStatus;
@@ -226,16 +272,14 @@ export function evaluateCurrentExactSizeOffer(
   offer: ExactSizeMerchantOfferSnapshot,
   requestedIdentity: CanonicalSizeIdentity,
   now: Date,
-  policy: FreshnessPolicy,
+  policies: MerchantFreshnessPolicies | null,
 ): EvaluatedMerchantOffer {
   const reasonCodes: string[] = [];
-  const availabilityFreshness = classifyOfferFreshness(offer.observedAt, now, policy);
-  const priceFreshness = classifyOfferFreshness(offer.price?.observedAt, now, policy);
-
-  if (offer.identity.identityKey !== requestedIdentity.identityKey) {
+  if ((Object.keys(requestedIdentity) as (keyof CanonicalSizeIdentity)[])
+    .some((key) => offer.identity[key] !== requestedIdentity[key])) {
     reasonCodes.push("CANONICAL_SIZE_IDENTITY_MISMATCH");
   }
-  if (offer.reconciliationStatus !== "MATCHED") {
+  if (offer.reconciliationStatus !== "MATCHED" || offer.reconciliationCodes.length > 0) {
     reasonCodes.push("RECONCILIATION_NOT_MATCHED");
   }
   if (offer.merchantStatus !== "ACTIVE") reasonCodes.push("MERCHANT_NOT_ACTIVE");
@@ -243,35 +287,43 @@ export function evaluateCurrentExactSizeOffer(
   if (offer.commercialRightsStatus !== "AUTHORIZED") {
     reasonCodes.push("COMMERCIAL_RIGHTS_NOT_AUTHORIZED");
   }
-  if (offer.sourceKind === "LEGACY_IMPORT") {
+  if (!offer.rightsEvidenceRef?.trim()) reasonCodes.push("AUTHORIZATION_EVIDENCE_MISSING");
+  if (!offer.merchantProductId?.trim() || !offer.merchantProductKey?.trim() ||
+      !offer.merchantSlug.trim() || !offer.sourceIdentityKey.trim()) {
+    reasonCodes.push("MERCHANT_IDENTITY_MISSING");
+  }
+  if (!["PARTNER_API", "PARTNER_FEED", "AFFILIATE_FEED", "MANUAL_VERIFIED"].includes(offer.sourceKind)) {
     reasonCodes.push("LEGACY_SOURCE_NOT_CURRENT_ELIGIBLE");
   }
-  if (offer.availabilityStatus !== "IN_STOCK") {
-    reasonCodes.push(`AVAILABILITY_${offer.availabilityStatus}`);
-  }
-  if (availabilityFreshness === "STALE" || availabilityFreshness === "UNKNOWN") {
+  const identityEligible = reasonCodes.length === 0;
+  const availabilityFreshness = metricFreshness(offer.availability, now,
+    policies?.availability ?? null, identityEligible && offer.availability?.scope === "EXACT_SIZE" &&
+      ["IN_STOCK", "OUT_OF_STOCK", "PREORDER", "UNKNOWN"].includes(offer.availabilityStatus));
+  const validPrice = Boolean(offer.price && Number.isFinite(offer.price.amount) &&
+    offer.price.amount > 0 && /^[A-Z]{3}$/u.test(offer.price.currency) &&
+    ["PRODUCT", "EXACT_SIZE"].includes(offer.price.scope));
+  const priceFreshness = metricFreshness(offer.price ? {
+    ...offer.price, ingestedAt: offer.price.ingestedAt ?? null,
+    evidenceRef: offer.price.evidenceRef ?? null,
+  } : null, now, policies?.price ?? null, identityEligible && validPrice);
+  if (availabilityFreshness === "UNKNOWN" || availabilityFreshness === "STALE")
     reasonCodes.push(`AVAILABILITY_${availabilityFreshness}`);
-  }
-  if (priceFreshness === "STALE" || priceFreshness === "UNKNOWN") {
+  if (priceFreshness === "UNKNOWN" || priceFreshness === "STALE")
     reasonCodes.push(`PRICE_${priceFreshness}`);
-  }
-
-  if (!offer.price) {
-    reasonCodes.push("PRICE_MISSING");
-  } else {
-    if (!Number.isFinite(offer.price.amount) || offer.price.amount <= 0) {
-      reasonCodes.push("PRICE_INVALID");
-    }
-    if (!/^[A-Z]{3}$/u.test(offer.price.currency)) reasonCodes.push("CURRENCY_INVALID");
-  }
-
-  const displayEligible = reasonCodes.length === 0;
+  if (offer.availabilityStatus === "UNKNOWN") reasonCodes.push("AVAILABILITY_UNKNOWN");
+  const currentAvailabilityEligible = availabilityFreshness === "FRESH" &&
+    offer.availabilityStatus !== "UNKNOWN";
+  const currentPriceEligible = priceFreshness === "FRESH";
+  const displayEligible = identityEligible &&
+    (priceFreshness !== "UNKNOWN" || availabilityFreshness !== "UNKNOWN");
 
   return {
     offer,
     displayEligible,
-    currentAvailabilityEligible:
-      displayEligible && availabilityFreshness === "FRESH",
+    currentAvailabilityEligible,
+    currentPriceEligible,
+    purchaseReady: currentPriceEligible && currentAvailabilityEligible &&
+      offer.availabilityStatus === "IN_STOCK" && offer.price?.scope === "EXACT_SIZE",
     reasonCodes,
     availabilityFreshness,
     priceFreshness,
@@ -282,11 +334,19 @@ export function selectCurrentExactSizeOffers(
   offers: readonly ExactSizeMerchantOfferSnapshot[],
   requestedIdentity: CanonicalSizeIdentity,
   now: Date,
-  policy: FreshnessPolicy,
+  policies: MerchantFreshnessPolicies | null,
 ) {
-  const evaluated = offers.map((offer) =>
-    evaluateCurrentExactSizeOffer(offer, requestedIdentity, now, policy),
-  );
+  const evaluated = reconcileMerchantObservations(offers, now, policies).map((group) => {
+    const base = group.availability ?? group.price;
+    if (!base) return null;
+    const entry = evaluateCurrentExactSizeOffer({ ...base,
+      price: group.price?.price ?? null,
+      availability: group.availability?.availability ?? null,
+      availabilityStatus: group.availability?.availabilityStatus ?? "UNKNOWN",
+    }, requestedIdentity, now, policies);
+    entry.reasonCodes.push(...group.conflictCodes);
+    return entry;
+  }).filter((entry): entry is EvaluatedMerchantOffer => entry != null);
   const displayEligible = evaluated
     .filter((entry) => entry.displayEligible)
     .sort(
@@ -302,6 +362,51 @@ export function selectCurrentExactSizeOffers(
       (entry) => entry.currentAvailabilityEligible,
     ),
   };
+}
+
+/** Resolve metrics independently, partitioned by merchant/product/variant/canonical identity.
+ * Returns original evidence carriers, not a synthesized offer or an ingestion-time winner.
+ * Call before future presentation selection; conflicting metrics must not be promoted.
+ */
+export function reconcileMerchantObservations(
+  offers: readonly ExactSizeMerchantOfferSnapshot[], now: Date,
+  policies: MerchantFreshnessPolicies | null,
+) {
+  const groups = new Map<string, ExactSizeMerchantOfferSnapshot[]>();
+  for (const offer of offers) {
+    const key = JSON.stringify([offer.merchantSlug, offer.merchantProductId,
+      offer.merchantProductKey, offer.sourceIdentityKey]);
+    const group = groups.get(key) ?? [];
+    group.push(offer);
+    groups.set(key, group);
+  }
+  return [...groups.entries()].map(([key, group]) => {
+    if (group.some((offer) => (Object.keys(group[0].identity) as (keyof CanonicalSizeIdentity)[])
+      .some((field) => offer.identity[field] !== group[0].identity[field]))) {
+      return { key, price: null, availability: null, conflictCodes: ["MULTIPLE_CANONICAL_SIZE_IDENTITIES"] };
+    }
+    const valid = group.map((offer) => evaluateCurrentExactSizeOffer(offer, group[0].identity, now, policies));
+    const conflictCodes: string[] = [];
+    function latest(metric: "price" | "availability") {
+      const candidates = valid.filter((entry) => entry[`${metric}Freshness`] !== "UNKNOWN");
+      const time = (entry: EvaluatedMerchantOffer) => timestampMs(metric === "price"
+        ? entry.offer.price?.observedAt : entry.offer.availability?.observedAt);
+      if (!candidates.length) return null;
+      const newest = Math.max(...candidates.map(time));
+      const latest = candidates.filter((entry) => time(entry) === newest);
+      const values = new Set(latest.map(({ offer }) => metric === "price"
+        ? JSON.stringify([offer.price?.amount, offer.price?.currency, offer.price?.scope])
+        : offer.availabilityStatus));
+      if (values.size !== 1) {
+        conflictCodes.push(metric === "price" ? "CONTRADICTORY_PRICE" : "CONTRADICTORY_AVAILABILITY");
+        return null;
+      }
+      return [...latest].sort((a, b) => a.offer.id.localeCompare(b.offer.id, "en"))[0].offer;
+    }
+    const price = latest("price");
+    const availability = latest("availability");
+    return { key, price, availability, conflictCodes };
+  });
 }
 
 export interface MerchantOfferReconciliationCandidate {
