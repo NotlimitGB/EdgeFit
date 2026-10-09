@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { classifyOfferFreshness, evaluateCurrentExactSizeOffer, reconcileMerchantObservations, selectCurrentExactSizeOffers,
-  type ExactSizeMerchantOfferSnapshot, type MerchantFreshnessPolicies } from "./merchant-offers";
+  type ExactSizeMerchantOfferSnapshot, type MerchantFreshnessPolicies, type MerchantAuthorityContext } from "./merchant-offers";
 import { projectMerchantOffer } from "./merchant-offer-presentation";
 
 const NOW = new Date("2026-10-09T12:00:00Z");
@@ -31,10 +31,133 @@ function fixture(): ExactSizeMerchantOfferSnapshot {
   };
 }
 function evaluate(offer = fixture(), policy: MerchantFreshnessPolicies | null = policies) {
-  return evaluateCurrentExactSizeOffer(offer, identity, NOW, policy);
+  return evaluateCurrentExactSizeOffer(offer, identity, NOW, policy, authorityFor(offer));
+}
+
+function authorityFor(offer = fixture()): MerchantAuthorityContext[] {
+  return [{ basis: "CURRENT_TABLES", merchantSlug: offer.merchantSlug,
+    merchantProductId: offer.merchantProductId!, merchantProductKey: offer.merchantProductKey!,
+    merchantStatus: offer.merchantStatus, sourceStatus: offer.sourceStatus, sourceKind: offer.sourceKind,
+    commercialRightsStatus: offer.commercialRightsStatus, rightsEvidenceRef: offer.rightsEvidenceRef ?? null }];
 }
 
 describe("independent merchant observation foundation", () => {
+  it.each(["2026-02-30T12:00:00Z", "2025-02-29T12:00:00Z", "1900-02-29T12:00:00Z",
+    "2026-04-31T12:00:00Z", "2026-13-01T12:00:00Z", "2026-00-01T12:00:00Z",
+    "2026-10-00T12:00:00Z", "2026-10-09T24:00:00Z", "2026-10-09T11:60:00Z",
+    "2026-10-09T11:59:60Z", "2026-10-09T11:00:00+24:00", "2026-10-09T11:00:00+00:60"])(
+    "rejects impossible calendar/clock %s across classifier, evaluator and selector", (invalid) => {
+      expect(classifyOfferFreshness(invalid, NOW, policies.price!)).toBe("UNKNOWN");
+      const offer = fixture(); offer.price!.observedAt = invalid; offer.availability!.observedAt = invalid;
+      expect(evaluate(offer)).toMatchObject({ priceFreshness: "UNKNOWN", availabilityFreshness: "UNKNOWN", purchaseReady: false });
+      expect(selectCurrentExactSizeOffers([offer], identity, NOW, policies, authorityFor()).evaluated).toEqual([]);
+    });
+  it.each(["2024-02-29T12:00:00Z", "2000-02-29T12:00:00Z", "2026-10-09T13:59:00+02:00",
+    "2026-10-09T08:29:00-03:30", "2026-10-09T11:59:00.123456Z", "2026-10-09T11:59Z"])(
+    "preserves supported valid timestamp %s", (value) => {
+      const clock = new Date(Date.parse(value) + 1000);
+      expect(classifyOfferFreshness(value, clock, policies.price!)).toBe("FRESH");
+      expect(classifyOfferFreshness(new Date(value), clock, policies.price!)).toBe("FRESH");
+    });
+  it("rejects invalid Date and future values throughout selection without fallback", () => {
+    expect(classifyOfferFreshness(new Date(NaN), NOW, policies.price!)).toBe("UNKNOWN");
+    const offer = fixture(); offer.price!.observedAt = new Date(NOW.getTime() + 1);
+    offer.availability!.observedAt = new Date(NaN);
+    expect(selectCurrentExactSizeOffers([offer], identity, NOW, policies, authorityFor()).evaluated).toEqual([]);
+    offer.availability = fixture().availability;
+    expect(evaluate(offer)).toMatchObject({ priceFreshness: "UNKNOWN", availabilityFreshness: "FRESH", purchaseReady: false });
+  });
+  it("cannot normalize February 30 into a fresh March observation", () => {
+    const clock = new Date("2026-03-02T12:01:00Z");
+    const offer = fixture();
+    offer.price!.observedAt = "2026-02-30T12:00:00Z"; offer.price!.ingestedAt = clock;
+    offer.availability!.observedAt = "2026-02-30T12:00:00Z"; offer.availability!.ingestedAt = clock;
+    expect(evaluateCurrentExactSizeOffer(offer, identity, clock, policies, authorityFor())).toMatchObject({
+      priceFreshness: "UNKNOWN", availabilityFreshness: "UNKNOWN", purchaseReady: false });
+    expect(selectCurrentExactSizeOffers([offer], identity, clock, policies, authorityFor()).evaluated).toEqual([]);
+  });
+  it("requires explicit authority even for historically authorized fresh observations", () => {
+    expect(evaluateCurrentExactSizeOffer(fixture(), identity, NOW, policies)).toMatchObject({
+      priceFreshness: "FRESH", availabilityFreshness: "FRESH", currentPriceEligible: false, purchaseReady: false });
+    expect(projectMerchantOffer(fixture(), identity, NOW, policies).availability).toMatchObject({
+      status: "UNKNOWN", observedStatus: "IN_STOCK" });
+  });
+  it.each([
+    { merchantStatus: "INACTIVE" as const }, { merchantStatus: "UNKNOWN" as const },
+    { sourceStatus: "INACTIVE" as const }, { sourceStatus: "UNKNOWN" as const },
+    { commercialRightsStatus: "RESTRICTED" as const }, { commercialRightsStatus: "UNKNOWN" as const },
+    { rightsEvidenceRef: " " },
+  ])("never resurrects old current stock after authority restriction %j", (restriction) => {
+    const old = fixture(); const newer = fixture(); Object.assign(newer, restriction);
+    newer.observedAt = NOW; newer.price!.observedAt = NOW; newer.availability!.observedAt = NOW;
+    const authority = authorityFor(); Object.assign(authority[0], restriction);
+    for (const observations of [[old, newer], [newer, old]]) {
+      const selected = selectCurrentExactSizeOffers(observations, identity, NOW, policies, authority);
+      expect(selected.evaluated).not.toHaveLength(0);
+      expect(selected.evaluated.every((entry) => !entry.purchaseReady && !entry.currentAvailabilityEligible && !entry.currentPriceEligible)).toBe(true);
+      expect(selected.evaluated[0].reasonCodes).toContain("CURRENT_AUTHORITY_NOT_CONFIRMED");
+    }
+    expect(old.availabilityStatus).toBe("IN_STOCK");
+  });
+  it("orders genuine authority events independently and permits evidenced restoration", () => {
+    const event = (effectiveAt: string, sourceStatus: "ACTIVE" | "INACTIVE"): MerchantAuthorityContext => ({
+      ...authorityFor()[0], basis: "VERIFIED_EVENT", effectiveAt, evidenceRef: "authority-event", sourceStatus });
+    const active = event("2026-10-09T09:00:00Z", "ACTIVE");
+    const revoked = event("2026-10-09T10:00:00Z", "INACTIVE");
+    const restored = event("2026-10-09T11:00:00Z", "ACTIVE");
+    const selected = (authority: MerchantAuthorityContext[]) => selectCurrentExactSizeOffers([fixture()], identity, NOW, policies, authority).evaluated[0];
+    expect(selected([revoked, active]).purchaseReady).toBe(false);
+    expect(selected([active, revoked]).purchaseReady).toBe(false);
+    expect(selected([revoked, restored, active]).purchaseReady).toBe(true);
+    expect(selected([restored, active, revoked]).purchaseReady).toBe(true);
+    expect(selected([restored, { ...restored }]).purchaseReady).toBe(true);
+    expect(selected([restored, event("2026-10-09T11:00:00Z", "INACTIVE")]).purchaseReady).toBe(false);
+    expect(selected([restored, { ...event("2026-02-30T12:00:00Z", "ACTIVE") }]).purchaseReady).toBe(false);
+    expect(selected([restored, { ...event("2026-10-09T11:00:00Z", "ACTIVE"), evidenceRef: "" }]).purchaseReady).toBe(false);
+    expect(selected([restored, event("2026-10-10T11:00:00Z", "ACTIVE")]).purchaseReady).toBe(false);
+    expect(selected([restored, authorityFor()[0]]).purchaseReady).toBe(false);
+  });
+  it("fails closed on contradictory current table reads, without blending merchants or sources", () => {
+    const offer = fixture(); const current = authorityFor()[0];
+    const otherSource = { ...current, merchantProductId: "product-2", sourceStatus: "INACTIVE" as const };
+    const evaluateWith = (authority: MerchantAuthorityContext[]) => evaluateCurrentExactSizeOffer(offer, identity, NOW, policies, authority);
+    expect(evaluateWith([current, otherSource]).purchaseReady).toBe(true);
+    expect(evaluateWith([current, { ...otherSource, merchantStatus: "INACTIVE" }]).purchaseReady).toBe(false);
+    expect(evaluateWith([current, { ...current, sourceStatus: "INACTIVE" }]).purchaseReady).toBe(false);
+    expect(evaluateWith([current, { ...current, commercialRightsStatus: "UNKNOWN" }]).purchaseReady).toBe(false);
+    expect(evaluateWith([current, { ...current, merchantSlug: "another", merchantStatus: "INACTIVE" }]).purchaseReady).toBe(true);
+    expect(evaluateWith([{ ...current, merchantProductKey: "different" }]).purchaseReady).toBe(false);
+    expect(evaluateWith([{ ...current, sourceKind: "LEGACY_IMPORT" }]).purchaseReady).toBe(false);
+  });
+  it("never combines independent source kinds into an authorized offer", () => {
+    const manual = fixture(); manual.price = null;
+    const feed = fixture(); feed.sourceKind = "PARTNER_FEED"; feed.availability = null;
+    const authority = [...authorityFor(manual), ...authorityFor(feed)];
+    authority[1].commercialRightsStatus = "RESTRICTED";
+    const selected = selectCurrentExactSizeOffers([manual, feed], identity, NOW, policies, authority);
+    expect(selected.evaluated).toHaveLength(2);
+    expect(selected.evaluated.every((entry) => !entry.purchaseReady)).toBe(true);
+    expect(selected.evaluated.find((entry) => entry.offer.sourceKind === "PARTNER_FEED")?.currentPriceEligible).toBe(false);
+  });
+  it.each([{ merchantStatus: "INACTIVE" as const }, { commercialRightsStatus: "RESTRICTED" as const },
+    { commercialRightsStatus: "UNKNOWN" as const }])("requires newer evidenced restoration after %j", (restriction) => {
+    const base = authorityFor()[0];
+    const revoked: MerchantAuthorityContext = { ...base, ...restriction, basis: "VERIFIED_EVENT",
+      effectiveAt: "2026-10-09T10:00:00Z", evidenceRef: "revoked" };
+    const restored: MerchantAuthorityContext = { ...base, basis: "VERIFIED_EVENT",
+      effectiveAt: "2026-10-09T11:00:00Z", evidenceRef: "restoration" };
+    const evaluateWith = (events: MerchantAuthorityContext[]) => evaluateCurrentExactSizeOffer(fixture(), identity, NOW, policies, events);
+    expect(evaluateWith([revoked]).purchaseReady).toBe(false);
+    expect(evaluateWith([restored, revoked]).purchaseReady).toBe(true);
+    expect(evaluateWith([revoked, { ...restored, effectiveAt: "2026-10-09T09:00:00Z" }]).purchaseReady).toBe(false);
+  });
+  it("documents atomic application, schema evidence and non-destructive recovery", () => {
+    const doc = readFileSync("docs/merchant-observation-foundation.md", "utf8");
+    expect(doc).toContain("--single-transaction");
+    expect(doc).toContain("ON_ERROR_STOP=1");
+    for (const term of ["Preflight", "Postflight", "Partial application", "UNKNOWN", "pg_get_constraintdef", "pg_indexes"])
+      expect(doc).toContain(term);
+  });
   it("requires both fresh exact-size metrics for purchase readiness", () => {
     expect(evaluate()).toMatchObject({ priceFreshness: "FRESH", availabilityFreshness: "FRESH",
       purchaseReady: true, currentPriceEligible: true, currentAvailabilityEligible: true });

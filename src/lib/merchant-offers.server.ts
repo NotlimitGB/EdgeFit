@@ -2,7 +2,7 @@ import "server-only";
 import { базаНастроена } from "@/lib/database/config";
 import { получитьКлиентБазы } from "@/lib/database/client";
 import type { Sql } from "postgres";
-import type { CanonicalSizeIdentity, ExactSizeMerchantOfferSnapshot } from "./merchant-offers";
+import type { CanonicalSizeIdentity, ExactSizeMerchantOfferSnapshot, MerchantAuthorityContext } from "./merchant-offers";
 
 interface MerchantOfferRow {
   id: string;
@@ -53,8 +53,8 @@ interface MerchantOfferRow {
 export async function getMerchantOffersForCanonicalSize(
   identity: CanonicalSizeIdentity,
   sql?: Sql,
-): Promise<ExactSizeMerchantOfferSnapshot[]> {
-  if (!базаНастроена()) return [];
+): Promise<{ offers: ExactSizeMerchantOfferSnapshot[]; authority: MerchantAuthorityContext[] }> {
+  if (!базаНастроена()) return { offers: [], authority: [] };
   const database = sql ?? получитьКлиентБазы();
 
   const rows = await database<MerchantOfferRow[]>`
@@ -130,7 +130,7 @@ export async function getMerchantOffersForCanonicalSize(
     order by merchant.slug, offer.id
   `;
 
-  return rows.map((row) => ({
+  const offers: ExactSizeMerchantOfferSnapshot[] = rows.map((row) => ({
     id: row.id,
     merchantSlug: row.merchantSlug,
     merchantStatus: row.merchantStatus,
@@ -186,4 +186,16 @@ export async function getMerchantOffersForCanonicalSize(
             sourceUrl: row.priceSourceUrl ?? "",
           },
   }));
+  const authority: MerchantAuthorityContext[] = rows.map((row) => ({
+    basis: "CURRENT_TABLES",
+    merchantSlug: row.merchantSlug,
+    merchantProductId: row.merchantProductId,
+    merchantProductKey: row.merchantProductKey,
+    merchantStatus: row.merchantStatus,
+    sourceStatus: row.sourceStatus,
+    sourceKind: row.sourceKind,
+    commercialRightsStatus: row.commercialRightsStatus,
+    rightsEvidenceRef: row.rightsEvidenceRef,
+  }));
+  return { offers, authority };
 }

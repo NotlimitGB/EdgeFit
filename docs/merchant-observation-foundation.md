@@ -104,6 +104,36 @@ currencies and sizes are not blended or converted. Selected metrics retain their
 original evidence carriers. No ingestion writer or observation-history store is
 introduced; a future writer must retain evidence and enforce ordering atomically.
 
+### Current authority is not historical observation evidence
+
+The dormant reader returns `{ offers, authority }`. Authority is explicitly passed
+to evaluation/selection/projection; omitting it fails closed for current eligibility
+and purchase readiness, without deleting historical observations. Existing joined
+`merchants` / `merchant_products` fields provide `CURRENT_TABLES` authority, with
+no invented effective timestamp. This context is valid for that current read only;
+do not persist it as if it were an immutable historical observation.
+
+For standalone history, `VERIFIED_EVENT` authority requires a genuine effective
+timestamp and a nonempty evidence reference for the whole claimed status tuple.
+Neither price/stock observation clocks nor ingestion order establish status order.
+Merchant status resolves across that merchant; source/rights resolve per merchant
+product ID, source product key and source kind, shared by that product's sizes.
+Latest independently evidenced authority may restore eligibility after revocation.
+Equal-time conflicts, conflicting current reads, invalid/future events, absent
+authority and mixed current/event bases fail closed. Different merchants and
+source identities cannot authorize one another. Authority evidence references
+are opaque provenance references, not a claim that this library verifies their
+contents; a future authorized adapter must validate them before constructing context.
+
+Freshness describes the age of independently evidenced historical metrics. It is
+not authorization: an old authorized observation may remain informational after
+current source deactivation, but cannot become a current offer. `INACTIVE`,
+`RESTRICTED`, unknown rights or missing rights evidence prohibit current price,
+current stock and purchase readiness. Projection retains observed historical
+status separately and reports current status as UNKNOWN when not eligible.
+Dates are validated against the Gregorian calendar before parsing: impossible
+days, normalized 24:00 clocks and invalid offsets never become fresh observations.
+
 `projectMerchantOffer` is pure and disconnected. Its labels include «Цена по
 недавнему наблюдению», «Текущая цена не подтверждена», «Наблюдение наличия
 устарело» and «Проверить в магазине». It does not emit a merchant URL, analytics
@@ -154,3 +184,95 @@ threshold boundaries, invalid provenance, all stock states, product versus size,
 conflicts, merchants/currencies, EVIL TWIN+, loader mapping, migration/schema parity
 and no public-flow imports. Full tests/lint/DB-less build and both artifact verifiers
 protect existing behavior. Browser QA is not applicable: rendered pages are unchanged.
+
+## Owner-only migration execution and recovery
+
+Production schema state is **UNKNOWN**. The 040A missing-table observation does
+not establish today's state. No DB access or migration execution is performed by
+040H. Migration permission and a maintenance window must be separately approved.
+The repo has no general merchant migration runner or canonical migration ledger;
+family-only scripts do not establish atomicity for this migration.
+
+### Preflight (read-only, owner-operated)
+
+Use the deployment's intended database/schema, through an existing secure libpq
+service definition; never paste DSNs, passwords or tokens into commands/reports.
+Collect only schema metadata. A read-only transaction can inspect:
+
+```sql
+BEGIN READ ONLY;
+SHOW transaction_read_only;
+SELECT current_schema(), to_regclass('merchants'),
+       to_regclass('merchant_products'), to_regclass('merchant_offers');
+SELECT table_name, column_name, data_type, udt_name, is_nullable, column_default
+FROM information_schema.columns
+WHERE table_schema = current_schema()
+  AND table_name IN ('merchants', 'merchant_products', 'merchant_offers')
+ORDER BY table_name, ordinal_position;
+SELECT conname, contype, convalidated, pg_get_constraintdef(oid)
+FROM pg_constraint
+WHERE conrelid IN (to_regclass('merchants'), to_regclass('merchant_products'),
+                  to_regclass('merchant_offers'))
+ORDER BY conrelid, conname;
+SELECT tablename, indexname, indexdef FROM pg_indexes
+WHERE schemaname = current_schema()
+  AND tablename IN ('merchants', 'merchant_products', 'merchant_offers')
+ORDER BY tablename, indexname;
+SHOW transaction_read_only;
+COMMIT;
+```
+
+Required owner evidence: target schema (no credentials), presence and definitions
+of the three tables, columns, constraints/indexes, and any actual migration ledger
+or deployment record showing applied versions. Do not invent a ledger table.
+Compare against the existing merchant-schema migration and schema.sql. Missing
+tables require separately authorized prerequisite merchant-schema application
+before 040F; do not apply the entire schema.sql as a shortcut. Existing additive
+columns must match expected types/nullability and existing same-named constraints
+must match their definitions, not merely exist. Incompatible definitions block
+application. Partial existing evidence requires owner-run integrity checks before
+adding constraints; do not disclose observation rows or merchant payloads.
+
+### Explicit atomic application (separate future authorization)
+
+After preflight, select the approved target using `PGSERVICE` configured securely
+by the owner, then run the whole migration with this contract:
+
+```text
+psql -X --set=ON_ERROR_STOP=1 --single-transaction --file=db/migrations/20261009_040f_independent_merchant_observations.sql
+```
+
+`--single-transaction` wraps the entire file in one transaction; `ON_ERROR_STOP=1`
+stops on failure. This atomicity belongs to the invocation, not the SQL file or an
+unknown GUI/runner. Do not execute statements individually, suppress failures,
+or assume another runner provides the same contract. DDL may wait for locks;
+approve bounded session-local lock/statement timeouts in the maintenance procedure
+before execution rather than changing application or database defaults.
+
+### Postflight
+
+Repeat preflight metadata checks in a fresh read-only transaction. All ten added
+columns must be nullable, without observation-time defaults: six timestamps are
+`timestamp with time zone`, four evidence/source URL columns are `text`. Confirm
+both independent-observation check constraints are validated and exactly match
+the prepared definitions, including evidence and ingestion ordering checks.
+Verify prerequisite identity lookup indexes remain unchanged; 040F adds no indexes.
+Record exact migration revision, outcome and approved deployment record without
+recording secrets. A zero exit status alone does not replace schema postflight.
+
+### Partial application, interruption and rollback
+
+A failed atomic invocation rolls back its DDL. A lost connection near COMMIT has
+an unknown outcome: obtain fresh schema evidence before retrying, and do not
+assume success or rollback. If an older non-atomic runner partially applied the
+file, inventory every expected object and validate retained evidence first.
+Reapplication is permitted only after definitions and data integrity match the
+prepared contract; guarded additions do not repair incompatible columns or
+same-named constraints. Such incompatibility requires a separately reviewed repair.
+Never automatically DROP columns, constraints, tables or evidence to retry.
+
+Consumer rollback means disabling/reverting a separately authorized future
+writer/reader rollout while retaining the additive schema and historical evidence.
+This foundation has no public consumer or rollout flag to disable today. Schema
+removal is not the default rollback and requires separate data-preservation review.
+Do not backfill observation clocks or replay ingestion as a recovery shortcut.

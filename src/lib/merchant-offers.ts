@@ -151,7 +151,16 @@ function assertFreshnessPolicy(policy: FreshnessPolicy) {
 
 function timestampMs(value: string | Date | null | undefined) {
   if (value instanceof Date) return value.getTime();
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/u.test(value)) return Number.NaN;
+  if (typeof value !== "string") return Number.NaN;
+  const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?(Z|([+-])(\d{2}):(\d{2}))$/u.exec(value);
+  if (!parts) return Number.NaN;
+  const [, y, m, d, h, minute, second] = parts;
+  const year = Number(y), month = Number(m), day = Number(d);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (month < 1 || month > 12 || day < 1 || day > days[month - 1] ||
+      Number(h) > 23 || Number(minute) > 59 || Number(second ?? 0) > 59 ||
+      Number(parts[10] ?? 0) > 23 || Number(parts[11] ?? 0) > 59) return Number.NaN;
   return Date.parse(value);
 }
 
@@ -268,11 +277,57 @@ export interface EvaluatedMerchantOffer {
   priceFreshness: FreshnessStatus;
 }
 
+/** Explicit current authority, never inferred from an observation's clocks.
+ * CURRENT_TABLES is a caller's current joined read, not an historical snapshot.
+ * VERIFIED_EVENT requires its own authority evidence and effective timestamp.
+ */
+export type MerchantAuthorityContext = {
+  merchantSlug: string;
+  merchantProductId: string;
+  merchantProductKey: string;
+  sourceKind: MerchantSourceKind;
+  merchantStatus: MerchantStatus;
+  sourceStatus: MerchantSourceStatus;
+  commercialRightsStatus: CommercialRightsStatus;
+  rightsEvidenceRef: string | null;
+} & ({ basis: "CURRENT_TABLES" } | {
+  basis: "VERIFIED_EVENT";
+  effectiveAt: string | Date;
+  evidenceRef: string;
+});
+
+function currentAuthorityEligible(offer: ExactSizeMerchantOfferSnapshot,
+  context: readonly MerchantAuthorityContext[], now: Date) {
+  function resolve(entries: readonly MerchantAuthorityContext[], value: (entry: MerchantAuthorityContext) => string) {
+    if (!entries.length || !Number.isFinite(now.getTime())) return null;
+    const bases = new Set(entries.map((entry) => entry.basis));
+    if (bases.size !== 1 || !["CURRENT_TABLES", "VERIFIED_EVENT"].includes(entries[0].basis)) return null;
+    let latest = entries;
+    if (entries[0].basis === "VERIFIED_EVENT") {
+      if (entries.some((entry) => entry.basis !== "VERIFIED_EVENT" || !entry.evidenceRef?.trim() ||
+        !Number.isFinite(timestampMs(entry.effectiveAt)) || timestampMs(entry.effectiveAt) > now.getTime())) return null;
+      const time = (entry: MerchantAuthorityContext) => entry.basis === "VERIFIED_EVENT" ? timestampMs(entry.effectiveAt) : Number.NaN;
+      const newest = Math.max(...entries.map(time));
+      latest = entries.filter((entry) => time(entry) === newest);
+    }
+    const values = new Set(latest.map(value));
+    return values.size === 1 ? latest[0] : null;
+  }
+  const merchantEntries = context.filter((entry) => entry.merchantSlug === offer.merchantSlug);
+  const merchant = resolve(merchantEntries, (entry) => entry.merchantStatus);
+  const source = resolve(merchantEntries.filter((entry) => entry.merchantProductId === offer.merchantProductId &&
+    entry.merchantProductKey === offer.merchantProductKey && entry.sourceKind === offer.sourceKind),
+  (entry) => JSON.stringify([entry.sourceStatus, entry.commercialRightsStatus, entry.rightsEvidenceRef?.trim()]));
+  return merchant?.merchantStatus === "ACTIVE" && source?.sourceStatus === "ACTIVE" &&
+    source.commercialRightsStatus === "AUTHORIZED" && Boolean(source.rightsEvidenceRef?.trim());
+}
+
 export function evaluateCurrentExactSizeOffer(
   offer: ExactSizeMerchantOfferSnapshot,
   requestedIdentity: CanonicalSizeIdentity,
   now: Date,
   policies: MerchantFreshnessPolicies | null,
+  authority: readonly MerchantAuthorityContext[] = [],
 ): EvaluatedMerchantOffer {
   const reasonCodes: string[] = [];
   if ((Object.keys(requestedIdentity) as (keyof CanonicalSizeIdentity)[])
@@ -311,9 +366,11 @@ export function evaluateCurrentExactSizeOffer(
   if (priceFreshness === "UNKNOWN" || priceFreshness === "STALE")
     reasonCodes.push(`PRICE_${priceFreshness}`);
   if (offer.availabilityStatus === "UNKNOWN") reasonCodes.push("AVAILABILITY_UNKNOWN");
-  const currentAvailabilityEligible = availabilityFreshness === "FRESH" &&
+  const authorityEligible = currentAuthorityEligible(offer, authority, now);
+  if (!authorityEligible) reasonCodes.push("CURRENT_AUTHORITY_NOT_CONFIRMED");
+  const currentAvailabilityEligible = authorityEligible && availabilityFreshness === "FRESH" &&
     offer.availabilityStatus !== "UNKNOWN";
-  const currentPriceEligible = priceFreshness === "FRESH";
+  const currentPriceEligible = authorityEligible && priceFreshness === "FRESH";
   const displayEligible = identityEligible &&
     (priceFreshness !== "UNKNOWN" || availabilityFreshness !== "UNKNOWN");
 
@@ -335,6 +392,7 @@ export function selectCurrentExactSizeOffers(
   requestedIdentity: CanonicalSizeIdentity,
   now: Date,
   policies: MerchantFreshnessPolicies | null,
+  authority: readonly MerchantAuthorityContext[] = [],
 ) {
   const evaluated = reconcileMerchantObservations(offers, now, policies).map((group) => {
     const base = group.availability ?? group.price;
@@ -343,7 +401,7 @@ export function selectCurrentExactSizeOffers(
       price: group.price?.price ?? null,
       availability: group.availability?.availability ?? null,
       availabilityStatus: group.availability?.availabilityStatus ?? "UNKNOWN",
-    }, requestedIdentity, now, policies);
+    }, requestedIdentity, now, policies, authority);
     entry.reasonCodes.push(...group.conflictCodes);
     return entry;
   }).filter((entry): entry is EvaluatedMerchantOffer => entry != null);
@@ -375,7 +433,7 @@ export function reconcileMerchantObservations(
   const groups = new Map<string, ExactSizeMerchantOfferSnapshot[]>();
   for (const offer of offers) {
     const key = JSON.stringify([offer.merchantSlug, offer.merchantProductId,
-      offer.merchantProductKey, offer.sourceIdentityKey]);
+      offer.merchantProductKey, offer.sourceKind, offer.sourceIdentityKey]);
     const group = groups.get(key) ?? [];
     group.push(offer);
     groups.set(key, group);

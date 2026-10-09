@@ -26,10 +26,11 @@ import {
   buildCanonicalSizeIdentity,
   buildMerchantOfferSourceIdentityKey,
   classifyOfferFreshness,
-  evaluateCurrentExactSizeOffer,
+  evaluateCurrentExactSizeOffer as evaluateWithoutAuthority,
   normalizeAvailabilityStatus,
   reconcileMerchantOfferCandidates,
-  selectCurrentExactSizeOffers,
+  selectCurrentExactSizeOffers as selectWithoutAuthority,
+  type MerchantAuthorityContext,
   type ExactSizeMerchantOfferSnapshot,
   type MerchantOfferReconciliationCandidate,
 } from "@/lib/merchant-offers";
@@ -42,6 +43,18 @@ const WIDE_OFFER_ID = "93415852-0c09-47fa-8e45-5d739abc1018";
 const NOW = new Date("2026-09-25T12:00:00.000Z");
 const METRIC_POLICY = { version: "fixture-only-v1", freshThroughMs: 6 * 60 * 60 * 1000, staleAfterMs: 24 * 60 * 60 * 1000 };
 const POLICY = { price: METRIC_POLICY, availability: METRIC_POLICY };
+
+function authorityFor(offers: readonly ExactSizeMerchantOfferSnapshot[]): MerchantAuthorityContext[] {
+  return offers.map((offer) => ({ basis: "CURRENT_TABLES", merchantSlug: offer.merchantSlug,
+    merchantProductId: offer.merchantProductId!, merchantProductKey: offer.merchantProductKey!,
+    merchantStatus: offer.merchantStatus, sourceStatus: offer.sourceStatus, sourceKind: offer.sourceKind,
+    commercialRightsStatus: offer.commercialRightsStatus, rightsEvidenceRef: offer.rightsEvidenceRef ?? null }));
+}
+// Explicit fixture-only current table evidence; production never derives authority from observations.
+const evaluateCurrentExactSizeOffer = (...args: Parameters<typeof evaluateWithoutAuthority>) =>
+  evaluateWithoutAuthority(args[0], args[1], args[2], args[3], args[4] ?? authorityFor([args[0]]));
+const selectCurrentExactSizeOffers = (...args: Parameters<typeof selectWithoutAuthority>) =>
+  selectWithoutAuthority(args[0], args[1], args[2], args[3], args[4] ?? authorityFor(args[0]));
 
 function canonicalSize(overrides: Partial<CanonicalSizeVariant> = {}): CanonicalSizeVariant {
   const displaySizeLabel = overrides.displaySizeLabel ?? "159";
@@ -540,10 +553,15 @@ describe("merchant offer contract", () => {
     };
     databaseMocks.query.mockResolvedValue([row]);
 
-    const result = await getMerchantOffersForCanonicalSize(
+    const loaded = await getMerchantOffersForCanonicalSize(
       regular159,
       databaseMocks.query as unknown as Sql,
     );
+    const result = loaded.offers;
+    expect(loaded.authority).toEqual([expect.objectContaining({ basis: "CURRENT_TABLES",
+      merchantSlug: row.merchantSlug, merchantStatus: row.merchantStatus,
+      sourceStatus: row.sourceStatus, rightsEvidenceRef: row.rightsEvidenceRef })]);
+    expect(loaded.authority[0]).not.toHaveProperty("effectiveAt");
     expect(result).toHaveLength(1);
     expect(result[0]?.price).toMatchObject({
       amount: 49_990,
@@ -564,12 +582,20 @@ describe("merchant offer contract", () => {
     expect(queryCall[0].join(" ")).toContain("offer.price_observed_at else product_offer.price_observed_at");
     expect(queryCall[0].join(" ")).not.toContain('then offer.observed_at else product_offer.observed_at');
     expect(queryCall.slice(1)).toContain(regular159.identityKey);
+    for (const restriction of [{ merchantStatus: "INACTIVE" }, { sourceStatus: "INACTIVE" },
+      { commercialRightsStatus: "RESTRICTED" }, { commercialRightsStatus: "UNKNOWN" }]) {
+      databaseMocks.query.mockResolvedValue([{ ...row, ...restriction }]);
+      const restricted = await getMerchantOffersForCanonicalSize(regular159, databaseMocks.query as unknown as Sql);
+      expect(restricted.authority[0]).toMatchObject(restriction);
+      expect(selectWithoutAuthority(restricted.offers, regular159, NOW, POLICY, restricted.authority)
+        .evaluated.every((entry) => !entry.purchaseReady)).toBe(true);
+    }
   });
 
   it("does not open a database connection when database configuration is absent", async () => {
     databaseMocks.configured.mockReturnValue(false);
     databaseMocks.getClient.mockClear();
-    await expect(getMerchantOffersForCanonicalSize(regular159)).resolves.toEqual([]);
+    await expect(getMerchantOffersForCanonicalSize(regular159)).resolves.toEqual({ offers: [], authority: [] });
     expect(databaseMocks.getClient).not.toHaveBeenCalled();
   });
 });

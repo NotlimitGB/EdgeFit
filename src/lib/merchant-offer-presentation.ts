@@ -1,10 +1,11 @@
 import { evaluateCurrentExactSizeOffer, type CanonicalSizeIdentity,
-  type ExactSizeMerchantOfferSnapshot, type MerchantFreshnessPolicies } from "./merchant-offers";
+  type ExactSizeMerchantOfferSnapshot, type MerchantFreshnessPolicies, type MerchantAuthorityContext } from "./merchant-offers";
 
 /** Pure future presentation contract. No public loader, DB, navigation or tracking. */
 export function projectMerchantOffer(offer: ExactSizeMerchantOfferSnapshot,
-  identity: CanonicalSizeIdentity, now: Date, policies: MerchantFreshnessPolicies | null) {
-  const evaluated = evaluateCurrentExactSizeOffer(offer, identity, now, policies);
+  identity: CanonicalSizeIdentity, now: Date, policies: MerchantFreshnessPolicies | null,
+  authority: readonly MerchantAuthorityContext[] = []) {
+  const evaluated = evaluateCurrentExactSizeOffer(offer, identity, now, policies, authority);
   const priceLabel = {
     FRESH: "Цена по недавнему наблюдению",
     AGING: "Ранее наблюдавшаяся цена",
@@ -27,7 +28,7 @@ export function projectMerchantOffer(offer: ExactSizeMerchantOfferSnapshot,
       scopeLabel: offer.price?.scope === "PRODUCT" ? "Цена товара, не конкретной ростовки" : "Цена ростовки",
       observedAt: evaluated.priceFreshness === "UNKNOWN" ? null : offer.price?.observedAt ?? null },
     availability: { freshness: evaluated.availabilityFreshness, label: stockLabel,
-      status: evaluated.availabilityFreshness === "FRESH" ? offer.availabilityStatus : "UNKNOWN",
+      status: evaluated.currentAvailabilityEligible ? offer.availabilityStatus : "UNKNOWN",
       observedStatus: evaluated.availabilityFreshness === "UNKNOWN" ? "UNKNOWN" : offer.availabilityStatus,
       scope: offer.availability?.scope ?? null,
       observedAt: evaluated.availabilityFreshness === "UNKNOWN" ? null : offer.availability?.observedAt ?? null },
