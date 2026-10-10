@@ -43,5 +43,7 @@ describe("public catalog page data source", () => {
     expect(mocks.getPublicCanonicalCatalogItems).toHaveBeenCalledTimes(1);
     expect(mocks.getAllCanonicalCatalogItems).not.toHaveBeenCalled();
     expect(markup).toContain('data-catalog-board-count="1"');
+    expect(markup).toContain('href="/catalog/models"');
+    expect(markup).toContain("Все модели сноубордов");
   });
 });

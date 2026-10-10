@@ -86,6 +86,23 @@
   margin-top: 1.25rem;
 }
 
+.directoryLink {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+  color: var(--ef-accent-strong);
+  font-size: 0.82rem;
+  font-weight: 750;
+  text-underline-offset: 0.2em;
+}
+
+.directoryLink:focus-visible {
+  outline: 3px solid var(--ef-focus);
+  outline-offset: 3px;
+}
+
 .catalogView {
   margin-top: 4.5rem;
 }

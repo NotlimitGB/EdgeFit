@@ -40,6 +40,9 @@ export default async function CatalogPage() {
             >
               Подобрать сноуборд
             </Link>
+            <Link href="/catalog/models" className={styles.directoryLink}>
+              Все модели сноубордов <span aria-hidden="true">→</span>
+            </Link>
           </div>
 
           <aside className={styles.heroGuide} aria-label="Как читать каталог">
