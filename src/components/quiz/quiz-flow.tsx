@@ -3,6 +3,10 @@
 import { getSafeSessionStorage } from "@/lib/browser-session-storage";
 import { storeRecommendationForNavigation } from "@/lib/recommendation-session";
 import { requestRecommendation } from "@/lib/recommendation-request";
+import {
+  createQuizRequestId,
+  reportQuizLifecycleEvent,
+} from "@/lib/quiz-lifecycle-diagnostics";
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -454,6 +458,8 @@ export function QuizFlow({
   const [isPending, startTransition] = useTransition();
   const [navigationRecovery, setNavigationRecovery] = useState(false);
   const submittedResult = useRef(false);
+  const submittedRequestId = useRef<string | undefined>(undefined);
+  const navigationTimeoutReported = useRef(false);
   const activeRequest = useRef<AbortController | null>(null);
   const navigationTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const mounted = useRef(true);
@@ -518,6 +524,8 @@ export function QuizFlow({
   ) {
     if (submittedResult.current) {
       submittedResult.current = false;
+      submittedRequestId.current = undefined;
+      navigationTimeoutReported.current = false;
       setNavigationRecovery(false);
       setSubmissionError("");
       clearTimeout(navigationTimer.current);
@@ -575,6 +583,9 @@ export function QuizFlow({
     setIsSubmitting(true);
     const controller = new AbortController();
     activeRequest.current = controller;
+    const requestId = createQuizRequestId();
+    submittedRequestId.current = requestId;
+    navigationTimeoutReported.current = false;
 
     try {
       const идентификаторСессии = getOrCreateSessionId();
@@ -591,7 +602,7 @@ export function QuizFlow({
             focusedBoard,
           ),
         ),
-      }, controller.signal);
+      }, controller.signal, requestId);
       if (!mounted.current || controller.signal.aborted) return;
       storeRecommendationForNavigation(
         recommendation, savedToken, purchasePreferences,
@@ -632,6 +643,15 @@ export function QuizFlow({
       setIsSubmitting(false);
       setNavigationRecovery(true);
       setSubmissionError("Подбор готов, но страница результата не открылась. Попробуй открыть результат ещё раз.");
+      if (!navigationTimeoutReported.current && submittedRequestId.current) {
+        navigationTimeoutReported.current = true;
+        reportQuizLifecycleEvent(
+          submittedRequestId.current,
+          "result_navigation",
+          10_000,
+          "navigation_timeout",
+        );
+      }
     }, 10_000);
     startTransition(() => { router.push("/result"); });
   }

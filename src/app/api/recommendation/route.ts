@@ -14,28 +14,74 @@ import { resolveCanonicalBoardRouteBySlug } from "@/lib/canonical-catalog";
 import { OperationDeadlineError } from "@/lib/operation-deadline";
 import { runPublicDbWork } from "@/lib/database/public-work";
 import { PublicDbUnavailableError } from "@/lib/database/operation-boundary";
+import {
+  isQuizRequestId,
+  QUIZ_REQUEST_ID_HEADER,
+  reportQuizLifecycleEvent,
+} from "@/lib/quiz-lifecycle-diagnostics";
 
 export async function POST(request: Request) {
+  const suppliedRequestId = request.headers.get(QUIZ_REQUEST_ID_HEADER);
+  const requestId = isQuizRequestId(suppliedRequestId)
+    ? suppliedRequestId
+    : randomUUID();
+  const startedAt = performance.now();
+  reportQuizLifecycleEvent(requestId, "request", 0, "started");
   try {
-    return await withDbDiagnosticContext(
-      { scope: "recommendation", stage: "request", traceId: randomUUID() },
-      () => runPublicDbWork("critical", 20_000, signal => handlePost(request, signal)));
+    const response = await withDbDiagnosticContext(
+      { scope: "recommendation", stage: "request", traceId: requestId },
+      () => runPublicDbWork("critical", 20_000, signal => handlePost(request, signal, requestId)));
+    reportQuizLifecycleEvent(
+      requestId,
+      "response",
+      performance.now() - startedAt,
+      response.status < 400
+        ? "success"
+        : response.status === 400
+          ? "request_rejected"
+          : "service_unavailable",
+    );
+    return response;
   } catch (error) {
     if (error instanceof OperationDeadlineError || error instanceof PublicDbUnavailableError) {
-      console.error(JSON.stringify({ event: "public_api_failure", endpoint: "recommendation", category: "operation_deadline" }));
+      const category = error instanceof OperationDeadlineError
+        ? "operation_deadline"
+        : error.code === "PUBLIC_DB_SATURATED"
+          ? "admission_saturation"
+          : "database_unavailable";
+      reportQuizLifecycleEvent(
+        requestId,
+        "request",
+        performance.now() - startedAt,
+        category,
+      );
+      console.error(JSON.stringify({ event: "public_api_failure", endpoint: "recommendation", category }));
       return NextResponse.json({ message: "Подбор занял слишком много времени. Попробуй ещё раз немного позже." }, { status: 503 });
     }
+    reportQuizLifecycleEvent(
+      requestId,
+      "request",
+      performance.now() - startedAt,
+      "server_error",
+    );
     return publicApiError("recommendation", error, false, "Проверь параметры райдера и попробуй снова.");
   }
 }
 
-async function handlePost(request: Request, signal: AbortSignal) {
+async function handlePost(request: Request, signal: AbortSignal, requestId: string) {
   let parsingInput = true;
+  let stage: "request" | "focused_board_lookup" | "catalog_loading" | "recommendation" | "result_persistence" = "request";
+  let stageStartedAt = performance.now();
+  const beginStage = (next: typeof stage) => {
+    stage = next;
+    stageStartedAt = performance.now();
+  };
   try {
     const { riderInput, purchasePreferences, focusedBoardSlug } =
       recommendationRequestSchema.parse(await request.json());
     signal.throwIfAborted();
     parsingInput = false;
+    beginStage("focused_board_lookup");
     const focusedBoardResolution = focusedBoardSlug
       ? await withDbDiagnosticStage("focused_board_lookup", () => resolveCanonicalBoardRouteBySlug(focusedBoardSlug))
       : undefined;
@@ -50,11 +96,18 @@ async function handlePost(request: Request, signal: AbortSignal) {
         { status: 400 },
       );
     }
+    beginStage("catalog_loading");
     const { products, familyKeyByProductId } =
       await withDbDiagnosticStage("catalog_loading", () => getRecommendationCatalog());
     signal.throwIfAborted();
 
     if (products.length === 0) {
+      reportQuizLifecycleEvent(
+        requestId,
+        "catalog_loading",
+        performance.now() - stageStartedAt,
+        "service_unavailable",
+      );
       return NextResponse.json(
         {
           message: "Не удалось загрузить каталог. Попробуй ещё раз немного позже.",
@@ -63,6 +116,7 @@ async function handlePost(request: Request, signal: AbortSignal) {
       );
     }
 
+    beginStage("recommendation");
     const recommendation = getRecommendation(riderInput, products, {
       familyKeyByProductId,
     });
@@ -81,6 +135,7 @@ async function handlePost(request: Request, signal: AbortSignal) {
     // The recommendation is already complete. Optional persistence must not turn
     // a useful result into a failure; expose a token only after acknowledgement.
     let savedResultToken: string | null = null;
+    beginStage("result_persistence");
     try {
       savedResultToken = await withDbDiagnosticStage("result_persistence", () => runPublicDbWork("optional", 2_000, () => сохранитьРезультатКвиза({
       вход: riderInput,
@@ -89,6 +144,12 @@ async function handlePost(request: Request, signal: AbortSignal) {
       идентификаторСессии: request.headers.get("x-edgefit-session-id"),
       })));
     } catch {
+      reportQuizLifecycleEvent(
+        requestId,
+        "result_persistence",
+        performance.now() - stageStartedAt,
+        "optional_persistence_unavailable",
+      );
       console.error(JSON.stringify({ event: "public_api_failure", endpoint: "recommendation", category: "result_persistence_unavailable" }));
     }
     signal.throwIfAborted();
@@ -103,8 +164,24 @@ async function handlePost(request: Request, signal: AbortSignal) {
     return response;
   } catch (error) {
     if (error instanceof OperationDeadlineError || error instanceof PublicDbUnavailableError) {
+      reportQuizLifecycleEvent(
+        requestId,
+        stage,
+        performance.now() - stageStartedAt,
+        error instanceof OperationDeadlineError
+          ? "operation_deadline"
+          : error.code === "PUBLIC_DB_SATURATED"
+            ? "admission_saturation"
+            : "database_unavailable",
+      );
       return NextResponse.json({ message: "Сервис временно недоступен. Попробуй ещё раз немного позже." }, { status: 503 });
     }
+    reportQuizLifecycleEvent(
+      requestId,
+      stage,
+      performance.now() - stageStartedAt,
+      parsingInput ? "request_rejected" : "server_error",
+    );
     return publicApiError("recommendation", error, parsingInput, "Проверь параметры райдера и попробуй снова.");
   }
 }

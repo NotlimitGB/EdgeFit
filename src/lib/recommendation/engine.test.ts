@@ -323,6 +323,50 @@ describe("getRecommendation", () => {
     expect(ALGORITHM_VERSION).toBe("v1.6.4");
   });
 
+  it.each([
+    { heightCm: 160, weightKg: 56, bootSizeEu: 38 },
+    { heightCm: 169, weightKg: 64, bootSizeEu: 40 },
+    { heightCm: 178, weightKg: 74, bootSizeEu: 43 },
+  ])("returns a fit for a synthetic women's candidate with a valid rider profile", (rider) => {
+    const input: QuizInput = {
+      ...baseInput,
+      ...rider,
+      boardLinePreference: "women",
+    };
+    const physicalTarget = getRecommendation(input, []);
+    const syntheticWomenCandidate = createProduct(
+      {
+        slug: `synthetic-womens-${rider.heightCm}`,
+        modelName: "Synthetic Women's Board",
+        boardLine: "women",
+      },
+      {
+        sizeCm: Math.round((physicalTarget.lengthRange.min + physicalTarget.lengthRange.max) / 2),
+        waistWidthMm: physicalTarget.targetWaistWidthMm,
+        recommendedWeightMin: rider.weightKg - 12,
+        recommendedWeightMax: rider.weightKg + 12,
+        widthType: physicalTarget.recommendedWidthType,
+      },
+    );
+
+    const result = getRecommendation(input, [syntheticWomenCandidate]);
+    const standardLineResult = getRecommendation(
+      { ...input, boardLinePreference: "men" },
+      [syntheticWomenCandidate],
+    );
+
+    expect(result.input.boardLinePreference).toBe("women");
+    expect(result.recommendedBoards.map((match) => match.product.slug)).toContain(
+      syntheticWomenCandidate.slug,
+    );
+    expect(result.lengthRange).toEqual(physicalTarget.lengthRange);
+    expect(result.targetWaistWidthMm).toBe(physicalTarget.targetWaistWidthMm);
+    expect(result.bootDragRisk).toBe(physicalTarget.bootDragRisk);
+    expect(result.lengthRange).toEqual(standardLineResult.lengthRange);
+    expect(result.targetWaistWidthMm).toBe(standardLineResult.targetWaistWidthMm);
+    expect(result.bootDragRisk).toBe(standardLineResult.bootDragRisk);
+  });
+
   it("keeps fit output identical across advisory budget preferences", () => {
     const results = [null, 40_000, 100_000].map((budgetMaxRub) => {
       const request = recommendationRequestSchema.parse({

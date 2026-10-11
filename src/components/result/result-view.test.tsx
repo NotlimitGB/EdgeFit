@@ -124,15 +124,16 @@ describe("ResultView catalog prefetch", () => {
   });
 
   it("disables prefetch in the empty-recommendations action", () => {
-    expectCatalogLinksWithoutPrefetch(
-      renderToStaticMarkup(
-        <ResultView
-          initialRecommendation={{ ...recommendation, recommendedBoards: [] }}
-          mode="saved"
-        />,
-      ),
-      2,
+    const markup = renderToStaticMarkup(
+      <ResultView
+        initialRecommendation={{ ...recommendation, recommendedBoards: [] }}
+        mode="saved"
+      />,
     );
+
+    expectCatalogLinksWithoutPrefetch(markup, 2);
+    expect(markup).toContain("Расчёт готов, каталог не совпал");
+    expect(markup).toContain("Подходящий диапазон рассчитан");
   });
 
   it("disables prefetch in the final catalog action", () => {

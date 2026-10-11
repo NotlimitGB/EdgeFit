@@ -7,8 +7,23 @@ const mocks = vi.hoisted(() => ({
   getFocusedBoardCheck: vi.fn(),
   getRecommendationCatalog: vi.fn(),
   resolveCanonicalBoardRouteBySlug: vi.fn(),
+  diagnosticContexts: [] as Array<{ scope: string; stage: string; traceId: string }>,
   recommendation: null as RecommendationResult | null,
 }));
+
+vi.mock("@/lib/database/lifecycle-diagnostics", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/database/lifecycle-diagnostics")>();
+  return {
+    ...original,
+    withDbDiagnosticContext: (
+      context: Parameters<typeof original.withDbDiagnosticContext>[0],
+      operation: Parameters<typeof original.withDbDiagnosticContext>[1],
+    ) => {
+      mocks.diagnosticContexts.push(context);
+      return original.withDbDiagnosticContext(context, operation);
+    },
+  };
+});
 
 vi.mock("@/lib/products", () => ({
   getRecommendationCatalog: (...parameters: unknown[]) =>
@@ -97,6 +112,7 @@ describe("recommendation bounded recovery", () => {
 describe("recommendation API saved-result transport", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.diagnosticContexts.length = 0;
     mocks.recommendation = recommendation;
     mocks.getRecommendation.mockReturnValue(recommendation);
     mocks.getFocusedBoardCheck.mockReturnValue({
@@ -111,6 +127,59 @@ describe("recommendation API saved-result transport", () => {
       products: [{ id: "product-1" }],
       familyKeyByProductId: { "product-1": "family:family-1" },
     });
+  });
+
+  it("uses a valid client request ID as the server diagnostic trace ID", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const requestId = "9f9cf976-b611-4ec7-81e1-106931a16313";
+    const response = await POST(
+      new Request("http://localhost/api/recommendation", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-snowdex-request-id": requestId,
+        },
+        body: JSON.stringify(recommendation.input),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.diagnosticContexts.at(-1)?.traceId).toBe(requestId);
+    const lifecycleEvents = info.mock.calls
+      .map(([line]) => JSON.parse(String(line)))
+      .filter((event) => event.event === "quiz_lifecycle");
+    expect(lifecycleEvents[0]).toMatchObject({
+      requestId,
+      stage: "request",
+      category: "started",
+    });
+    const lifecycleEvent = lifecycleEvents.find((event) => event.stage === "response");
+    expect(lifecycleEvent).toMatchObject({
+      requestId,
+      stage: "response",
+      category: "success",
+    });
+  });
+
+  it("does not trust or reflect a malformed client request ID", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const untrusted = "sentinel-private-request-value";
+    const response = await POST(
+      new Request("http://localhost/api/recommendation", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-snowdex-request-id": untrusted,
+        },
+        body: JSON.stringify(recommendation.input),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const traceId = mocks.diagnosticContexts.at(-1)?.traceId;
+    expect(traceId).toMatch(/^[0-9a-f-]{36}$/iu);
+    expect(traceId).not.toBe(untrusted);
+    expect(info.mock.calls.map(([line]) => String(line)).join(" ")).not.toContain(untrusted);
   });
 
   it("does not reflect unexpected DB errors into a public 400", async () => {
@@ -143,6 +212,36 @@ describe("recommendation API saved-result transport", () => {
     });
     expect(mocks.getRecommendation).not.toHaveBeenCalled();
     expect(mocks.save).not.toHaveBeenCalled();
+  });
+
+  it("returns a successful empty-match result without disguising catalog failure", async () => {
+    mocks.save.mockResolvedValue(null);
+    const womenInput = {
+      ...recommendation.input,
+      boardLinePreference: "women" as const,
+    };
+    const emptyResult = {
+      ...recommendation,
+      input: womenInput,
+      recommendedBoards: [],
+      avoidBoards: [],
+    };
+    mocks.getRecommendation.mockReturnValue(emptyResult);
+
+    const response = await POST(
+      new Request("http://localhost/api/recommendation", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(womenInput),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(emptyResult);
+    expect(mocks.getRecommendation).toHaveBeenCalledOnce();
+    expect(mocks.getRecommendation.mock.calls[0][0]).toEqual(womenInput);
+    expect(mocks.save).toHaveBeenCalledOnce();
+    expect(response.headers.get(SAVED_RESULT_TOKEN_HEADER)).toBeNull();
   });
 
   it("keeps the response body exact and omits saved headers without a token", async () => {

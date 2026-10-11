@@ -471,7 +471,11 @@ describe("Quiz v2 entry telemetry", () => {
     fireEvent.click(screen.getByRole("button", { name: /Получить подбор/u }));
     await waitFor(() => expect(mocks.routerPush).toHaveBeenCalledWith("/result"));
     expect(fetchMock.mock.calls).toHaveLength(1);
-    expect(fetchMock).toHaveBeenCalledWith("/api/recommendation", expect.objectContaining({ headers: { "Content-Type": "application/json" } }));
+    const requestHeaders = new Headers(fetchMock.mock.calls[0][1].headers);
+    expect(requestHeaders.get("content-type")).toBe("application/json");
+    expect(requestHeaders.get("x-snowdex-request-id")).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu,
+    );
     quiz.unmount();
     render(<ResultView />);
     expect(screen.getByRole("heading", { name: "Результат подбора", level: 1 })).toBeTruthy();
@@ -520,7 +524,7 @@ describe("Quiz v2 entry telemetry", () => {
   });
 });
 
-async function readyToSubmit() {
+async function readyToSubmit(boardLinePreference: "men" | "women" = "men") {
   render(<QuizFlow />); await waitForInitialAnalytics(); fillPhysicalStep();
   fireEvent.click(screen.getByRole("button", { name: /Продолжить/u }));
   await screen.findByText("Теперь уточним твой опыт и сценарий катания");
@@ -530,20 +534,28 @@ async function readyToSubmit() {
   fireEvent.click(screen.getByRole("button", { name: /Продолжить/u }));
   await screen.findByText("Осталось уточнить характер, линейку и бюджет");
   fireEvent.click(screen.getByRole("radio", { name: /^Сбалансированный/u }));
+  if (boardLinePreference === "women") {
+    fireEvent.click(screen.getByRole("radio", { name: /^Женская/u }));
+  }
 }
 describe("quiz completion recovery", () => {
   it("bounds pending submission, keeps answers and blocks a double click", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const fetcher = vi.fn(() => new Promise(() => undefined)); vi.stubGlobal("fetch", fetcher);
     await readyToSubmit(); vi.useFakeTimers();
     const button = screen.getByRole("button", { name: /Получить подбор/u });
     fireEvent.click(button); fireEvent.click(button);
     await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
     expect(fetcher).toHaveBeenCalledTimes(1); expect(mocks.routerPush).not.toHaveBeenCalled();
+    const requestId = new Headers(fetcher.mock.calls[0][1].headers).get("x-snowdex-request-id");
+    expect(requestId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu);
     expect(screen.getByRole("alert").textContent).toContain("не завершился вовремя");
     expect(screen.getByRole("button", { name: /Получить подбор/u }).hasAttribute("disabled")).toBe(false);
     expect((screen.getByRole("radio", { name: /^Сбалансированный/u }) as HTMLInputElement).checked).toBe(true);
+    expect(JSON.parse(String(info.mock.calls.find(([line]) => String(line).includes("client_timeout"))?.[0]))).toMatchObject({ requestId, category: "client_timeout" });
   });
   it("retries navigation to the same completed snapshot without a second POST or completion event", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const recommendation = getRecommendation({ heightCm: 178, weightKg: 74, bootSizeEu: 43,
       boardLinePreference: "any", skillLevel: "intermediate", ridingStyle: "all-mountain",
       terrainPriority: "balanced", aggressiveness: "balanced", stanceType: "standard" }, []);
@@ -552,8 +564,99 @@ describe("quiz completion recovery", () => {
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: /Получить подбор/u })); await vi.advanceTimersByTimeAsync(0); });
     expect(mocks.routerPush).toHaveBeenCalledOnce();
     await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    const requestId = new Headers(fetcher.mock.calls[0][1].headers).get("x-snowdex-request-id");
+    const navigationEvent = info.mock.calls
+      .map(([line]) => JSON.parse(String(line)))
+      .find((event) => event.category === "navigation_timeout");
+    expect(navigationEvent).toMatchObject({ requestId, stage: "result_navigation" });
     fireEvent.click(screen.getByRole("button", { name: /Открыть результат/u }));
     expect(mocks.routerPush).toHaveBeenCalledTimes(2); expect(fetcher).toHaveBeenCalledOnce();
+    expect(fetcher.mock.calls[0][1].headers).toBeDefined();
     expect(analyticsCalls("quiz_completed")).toHaveLength(1);
+  });
+
+  it("shows a recoverable network error for a women's line and retries only after another user action", async () => {
+    const successfulEmptyResult = getRecommendation(
+      {
+        heightCm: 178,
+        weightKg: 74,
+        bootSizeEu: 43,
+        boardLinePreference: "women",
+        skillLevel: "intermediate",
+        ridingStyle: "all-mountain",
+        terrainPriority: "balanced",
+        aggressiveness: "balanced",
+        stanceType: "standard",
+      },
+      [],
+    );
+    const fetcher = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch: private-detail"))
+      .mockResolvedValueOnce(new Response(JSON.stringify(successfulEmptyResult)));
+    vi.stubGlobal("fetch", fetcher);
+    await readyToSubmit("women");
+
+    const submit = screen.getByRole("button", { name: /Получить подбор/u });
+    fireEvent.click(submit);
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(
+      "Не удалось отправить ответы. Проверь соединение и попробуй ещё раз.",
+    );
+    expect(alert.textContent).not.toContain("private-detail");
+    expect((submit as HTMLButtonElement).disabled).toBe(false);
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(JSON.parse(fetcher.mock.calls[0][1].body as string).boardLinePreference).toBe("women");
+
+    fireEvent.click(submit);
+    await waitFor(() => expect(mocks.routerPush).toHaveBeenCalledWith("/result"));
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetcher.mock.calls[1][1].body as string).boardLinePreference).toBe("women");
+    expect(analyticsCalls("quiz_completed")).toHaveLength(1);
+
+    render(<ResultView />);
+    expect(await screen.findByText("Расчёт готов, каталог не совпал")).toBeTruthy();
+  });
+
+  it("shows API failures as recoverable and only retries after another submit", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const successfulEmptyResult = getRecommendation(
+      {
+        heightCm: 178,
+        weightKg: 74,
+        bootSizeEu: 43,
+        boardLinePreference: "women",
+        skillLevel: "intermediate",
+        ridingStyle: "all-mountain",
+        terrainPriority: "balanced",
+        aggressiveness: "balanced",
+        stanceType: "standard",
+      },
+      [],
+    );
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(
+        JSON.stringify({ message: "Сервис временно недоступен. Попробуй ещё раз немного позже." }),
+        { status: 503 },
+      ))
+      .mockResolvedValueOnce(new Response(JSON.stringify(successfulEmptyResult)));
+    vi.stubGlobal("fetch", fetcher);
+    await readyToSubmit("women");
+    const submit = screen.getByRole("button", { name: /Получить подбор/u });
+
+    fireEvent.click(submit);
+    expect((await screen.findByRole("alert")).textContent).toContain("Сервис временно недоступен");
+    expect((submit as HTMLButtonElement).disabled).toBe(false);
+    expect(fetcher).toHaveBeenCalledOnce();
+
+    fireEvent.click(submit);
+    await waitFor(() => expect(mocks.routerPush).toHaveBeenCalledWith("/result"));
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    const firstId = new Headers(fetcher.mock.calls[0][1].headers).get("x-snowdex-request-id");
+    const secondId = new Headers(fetcher.mock.calls[1][1].headers).get("x-snowdex-request-id");
+    expect(firstId).not.toBe(secondId);
+    expect(analyticsCalls("quiz_completed")).toHaveLength(1);
+    expect(info.mock.calls.map(([line]) => String(line)).join(" ")).not.toContain("riderInput");
   });
 });
