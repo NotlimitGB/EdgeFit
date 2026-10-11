@@ -581,13 +581,15 @@ export function QuizFlow({
 
     setSubmissionError("");
     setIsSubmitting(true);
-    const controller = new AbortController();
-    activeRequest.current = controller;
-    const requestId = createQuizRequestId();
-    submittedRequestId.current = requestId;
+    let controller: AbortController | null = null;
+    submittedRequestId.current = undefined;
     navigationTimeoutReported.current = false;
 
     try {
+      controller = new AbortController();
+      activeRequest.current = controller;
+      const requestId = createQuizRequestId();
+      submittedRequestId.current = requestId;
       const идентификаторСессии = getOrCreateSessionId();
       const { recommendation, savedToken } = await requestRecommendation({
         method: "POST",
@@ -627,9 +629,13 @@ export function QuizFlow({
           ? error.message
           : "Сервис временно недоступен. Попробуйте ещё раз.",
       );
-      setIsSubmitting(false);
     } finally {
-      if (activeRequest.current === controller) activeRequest.current = null;
+      if (controller && activeRequest.current === controller) {
+        activeRequest.current = null;
+      }
+      if (mounted.current && !submittedResult.current) {
+        setIsSubmitting(false);
+      }
     }
   }
 

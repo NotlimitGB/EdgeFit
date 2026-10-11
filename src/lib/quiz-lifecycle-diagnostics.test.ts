@@ -5,7 +5,10 @@ import {
   reportQuizLifecycleEvent,
 } from "./quiz-lifecycle-diagnostics";
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 it("creates and validates opaque UUIDv4 request identifiers", () => {
   const requestId = createQuizRequestId();
@@ -15,6 +18,31 @@ it("creates and validates opaque UUIDv4 request identifiers", () => {
   );
   expect(isQuizRequestId(requestId)).toBe(true);
   expect(isQuizRequestId("private-user-value")).toBe(false);
+});
+
+it("fails open when randomUUID throws", () => {
+  const getRandomValues = vi.fn();
+  vi.stubGlobal("crypto", {
+    randomUUID: () => { throw new Error("private crypto detail"); },
+    getRandomValues,
+  });
+
+  expect(createQuizRequestId()).toBeUndefined();
+  expect(getRandomValues).not.toHaveBeenCalled();
+});
+
+it("fails open when getRandomValues throws", () => {
+  vi.stubGlobal("crypto", {
+    getRandomValues: () => { throw new Error("private crypto detail"); },
+  });
+
+  expect(createQuizRequestId()).toBeUndefined();
+});
+
+it.each([undefined, {}])("fails open when Web Crypto is unavailable (%s)", (cryptoApi) => {
+  vi.stubGlobal("crypto", cryptoApi);
+
+  expect(createQuizRequestId()).toBeUndefined();
 });
 
 it("emits only allowlisted lifecycle fields and safe categories", () => {

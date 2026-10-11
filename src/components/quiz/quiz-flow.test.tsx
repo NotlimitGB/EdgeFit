@@ -539,6 +539,71 @@ async function readyToSubmit(boardLinePreference: "men" | "women" = "men") {
   }
 }
 describe("quiz completion recovery", () => {
+  it.each([
+    ["randomUUID throws", { randomUUID: () => { throw new Error("private crypto detail"); } }],
+    ["getRandomValues throws", { getRandomValues: () => { throw new Error("private crypto detail"); } }],
+    ["Web Crypto is unavailable", undefined],
+  ])("submits successfully when diagnostic ID generation fails: %s", async (_caseName, cryptoApi) => {
+    vi.stubGlobal("crypto", cryptoApi);
+    const recommendation = getRecommendation({
+      heightCm: 178,
+      weightKg: 74,
+      bootSizeEu: 43,
+      boardLinePreference: "women",
+      skillLevel: "intermediate",
+      ridingStyle: "all-mountain",
+      terrainPriority: "balanced",
+      aggressiveness: "balanced",
+      stanceType: "standard",
+    }, []);
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(recommendation)));
+    vi.stubGlobal("fetch", fetcher);
+    await readyToSubmit("women");
+
+    const submit = screen.getByRole("button", { name: /Получить подбор/u });
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+
+    await waitFor(() => expect(mocks.routerPush).toHaveBeenCalledWith("/result"));
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(new Headers(fetcher.mock.calls[0][1].headers).has("x-snowdex-request-id")).toBe(false);
+    expect(JSON.parse(fetcher.mock.calls[0][1].body as string).boardLinePreference).toBe("women");
+  });
+
+  it("cleans up failed-ID submissions after an API error and retries only on user action", async () => {
+    vi.stubGlobal("crypto", {
+      randomUUID: () => { throw new Error("private crypto detail"); },
+    });
+    const recommendation = getRecommendation({
+      heightCm: 178,
+      weightKg: 74,
+      bootSizeEu: 43,
+      boardLinePreference: "women",
+      skillLevel: "intermediate",
+      ridingStyle: "all-mountain",
+      terrainPriority: "balanced",
+      aggressiveness: "balanced",
+      stanceType: "standard",
+    }, []);
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ message: "Сервис временно недоступен." }), { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(recommendation)));
+    vi.stubGlobal("fetch", fetcher);
+    await readyToSubmit("women");
+
+    const submit = screen.getByRole("button", { name: /Получить подбор/u });
+    fireEvent.click(submit);
+    expect((await screen.findByRole("alert")).textContent).toContain("Сервис временно недоступен");
+    expect((submit as HTMLButtonElement).disabled).toBe(false);
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(new Headers(fetcher.mock.calls[0][1].headers).has("x-snowdex-request-id")).toBe(false);
+
+    fireEvent.click(submit);
+    await waitFor(() => expect(mocks.routerPush).toHaveBeenCalledWith("/result"));
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(new Headers(fetcher.mock.calls[1][1].headers).has("x-snowdex-request-id")).toBe(false);
+  });
+
   it("bounds pending submission, keeps answers and blocks a double click", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const fetcher = vi.fn(() => new Promise(() => undefined)); vi.stubGlobal("fetch", fetcher);

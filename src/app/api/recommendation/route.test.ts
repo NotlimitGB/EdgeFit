@@ -161,6 +161,25 @@ describe("recommendation API saved-result transport", () => {
     });
   });
 
+  it("generates a valid server trace ID when the optional client ID is absent", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const response = await POST(
+      new Request("http://localhost/api/recommendation", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(recommendation.input),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const traceId = mocks.diagnosticContexts.at(-1)?.traceId;
+    expect(traceId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu);
+    const startedEvent = info.mock.calls
+      .map(([line]) => JSON.parse(String(line)))
+      .find((event) => event.event === "quiz_lifecycle" && event.category === "started");
+    expect(startedEvent).toMatchObject({ requestId: traceId, stage: "request" });
+  });
+
   it("does not trust or reflect a malformed client request ID", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const untrusted = "sentinel-private-request-value";
