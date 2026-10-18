@@ -1,6 +1,11 @@
 import type { MetadataRoute } from "next";
+import { randomUUID } from "node:crypto";
 import { getAllCanonicalBoardSlugs } from "@/lib/canonical-catalog";
 import { LEGACY_CANONICAL_BOARD_SLUG_ALIASES } from "@/lib/canonical-board-route";
+import { базаНастроена } from "@/lib/database/config";
+import { PublicDbUnavailableError } from "@/lib/database/operation-boundary";
+import { runPublicDbWork } from "@/lib/database/public-work";
+import { withDbDiagnosticContext } from "@/lib/database/lifecycle-diagnostics";
 import { getSeoLandingPath, seoLandingPages } from "@/lib/seo-pages";
 import { getAbsoluteSiteUrl } from "@/lib/site-url";
 
@@ -10,6 +15,11 @@ export const dynamic = "force-dynamic";
 const explicitLegacyAliasSources = new Set(
   Object.keys(LEGACY_CANONICAL_BOARD_SLUG_ALIASES),
 );
+
+class SitemapUnavailableError extends Error {
+  readonly code = "SITEMAP_UNAVAILABLE";
+  constructor() { super("Canonical sitemap data is temporarily unavailable."); }
+}
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const routes = [
@@ -23,12 +33,21 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...seoLandingPages.map((page) => getSeoLandingPath(page.slug)),
   ];
 
-  let slugs: string[] = [];
-
+  let slugs: string[];
   try {
-    slugs = await getAllCanonicalBoardSlugs();
-  } catch {
-    console.error("sitemap: canonical-corpus-unavailable; static-routes-only");
+    if (!базаНастроена()) throw new PublicDbUnavailableError("PUBLIC_DB_UNAVAILABLE");
+    slugs = await withDbDiagnosticContext(
+      { scope: "sitemap", stage: "canonical_corpus", traceId: randomUUID() },
+      () => runPublicDbWork("critical", 15_000, () => getAllCanonicalBoardSlugs()),
+    );
+  } catch (error) {
+    let code: unknown;
+    try { code = (error as { code?: unknown } | null)?.code; } catch { /* hostile error getter */ }
+    const category = code === "OPERATION_DEADLINE" ? "operation_deadline"
+      : code === "PUBLIC_DB_SATURATED" ? "admission_saturation"
+        : "canonical_corpus_unavailable";
+    try { console.error(JSON.stringify({ event: "public_route_failure", route: "sitemap", category })); } catch { /* diagnostics are fail-open */ }
+    throw new SitemapUnavailableError();
   }
 
   return [

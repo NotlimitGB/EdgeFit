@@ -19,6 +19,30 @@ function harness() {
 }
 const scoped = <T>(operation: () => T) => runPublicDbWork("critical", 120_000, operation);
 
+function diagnosticHarness() {
+  const raw = postgres({ host: "127.0.0.1", port: 1, fetch_types: false });
+  const queries: (ReturnType<typeof raw.unsafe> & { resolve: (v: unknown) => void; reject: (v: unknown) => void })[] = [];
+  const execute = vi.fn(), lines: string[] = [];
+  const make = () => {
+    const query = raw.unsafe("sentinel private SQL", ["sentinel private parameter"]);
+    query.handler = execute;
+    queries.push(query);
+    return query;
+  };
+  const source = Object.assign(make, { unsafe: make, json: raw.json });
+  const diagnostics = createDbLifecycleDiagnostics(line => lines.push(line));
+  const sql = diagnostics.wrap(boundDatabaseOperations(
+    source as unknown as Sql, diagnostics.boundary, diagnostics,
+  ));
+  return { raw, queries, execute, lines, diagnostics, sql,
+    events: () => lines.map(line => JSON.parse(line)) };
+}
+
+const flushDiagnostics = async () => {
+  await new Promise<void>(resolve => setImmediate(resolve));
+  await new Promise<void>(resolve => setImmediate(resolve));
+};
+
 describe("public admission, never generation retirement", () => {
   it("admits a directly returned lazy Query inside the public work context", async () => {
     vi.useFakeTimers(); const h = harness();
@@ -91,6 +115,137 @@ describe("public admission, never generation retirement", () => {
     expect(h.events).toHaveBeenCalledWith(expect.objectContaining({ event: "operator_action_required", unit: "transaction", publicInFlight: 1 }));
     rejectTx(new Error("unknown commit")); await vi.advanceTimersByTimeAsync(0);
     expect(h.begin).toHaveBeenCalledOnce(); expect(h.source.end).not.toHaveBeenCalled(); expect(vi.getTimerCount()).toBe(0); await h.raw.end();
+  });
+
+  it("snapshots the oldest eight saturated public units with correlated dispatch and timeout state", async () => {
+    const h = diagnosticHarness();
+    const callers = withDbDiagnosticContext({ scope: "canonical_catalog", stage: "family_rows", traceId: "safe-trace" }, () =>
+      Array.from({ length: PUBLIC_DB_WORK_LIMIT }, () => runPublicDbWork("optional", 50,
+        () => Promise.resolve(h.sql.unsafe("sentinel private SQL", ["sentinel private parameter"]))).catch(error => error)));
+
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const callerResults = await Promise.all(callers);
+    expect(callerResults.every(error => error.code === "OPERATION_DEADLINE")).toBe(true);
+    const overflow = await withDbDiagnosticContext(
+      { scope: "canonical_catalog", stage: "family_rows", traceId: "safe-overflow-trace" },
+      () => runPublicDbWork("critical", 500, () => Promise.resolve(h.sql.unsafe("overflow"))).catch(error => error),
+    );
+    expect(overflow.code).toBe("PUBLIC_DB_SATURATED");
+    await flushDiagnostics();
+
+    const saturated = h.events().find(event => event.event === "admission_saturated");
+    expect(saturated).toMatchObject({ publicInFlight: 32, limit: 32, traceId: "safe-overflow-trace" });
+    expect(saturated.utc).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/);
+    expect(saturated.processId).toEqual(expect.any(String));
+    expect(saturated.clientId).toEqual(expect.any(String));
+    expect(saturated.oldestOperations).toHaveLength(8);
+    expect(saturated.oldestOperations[0]).toMatchObject({
+      publicWorkId: expect.any(String),
+      operationId: expect.any(String),
+      startedAtUtc: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T.*Z$/),
+      ageMs: expect.any(Number),
+      workKind: "optional",
+      unit: "query",
+      requestScope: "canonical_catalog",
+      stage: "family_rows",
+      traceId: "safe-trace",
+      driverDispatchAttempt: "not_observed",
+      callerTimeoutObserved: true,
+      underlyingSettled: false,
+      capacityReleased: false,
+    });
+    expect(saturated.oldestOperations.every((entry: { startedAtUtc: string }) =>
+      Date.parse(entry.startedAtUtc) <= Date.parse(saturated.utc))).toBe(true);
+    const ages = saturated.oldestOperations.map((entry: { ageMs: number }) => entry.ageMs);
+    expect(ages).toEqual([...ages].sort((a: number, b: number) => b - a));
+    expect(h.lines.join("\n")).not.toContain("sentinel private SQL");
+    expect(h.lines.join("\n")).not.toContain("sentinel private parameter");
+
+    const first = saturated.oldestOperations[0];
+    withDbDiagnosticContext({ scope: "outbound", stage: "unrelated_release", traceId: "unrelated" },
+      () => h.queries[0].resolve([]));
+    await flushDiagnostics();
+    expect(h.events()).toContainEqual(expect.objectContaining({
+      event: "admission_released",
+      admissionId: first.admissionId,
+      operationId: first.operationId,
+      traceId: "safe-trace", stage: "family_rows", requestScope: "canonical_catalog",
+      callerTimeoutObserved: true,
+      underlyingSettled: true,
+      capacityReleased: true,
+    }));
+
+    // Availability has resumed, but other snapshot holders still need a release event.
+    const second = saturated.oldestOperations[1];
+    h.queries[1].resolve([]);
+    await flushDiagnostics();
+    expect(h.events()).toContainEqual(expect.objectContaining({
+      event: "admission_released", admissionId: second.admissionId,
+      underlyingSettled: true, capacityReleased: true,
+    }));
+
+    const fresh = withDbDiagnosticContext({ scope: "canonical_catalog", stage: "family_rows", traceId: "fresh-trace" },
+      () => runPublicDbWork("critical", 500, () => Promise.resolve(h.sql.unsafe("fresh"))));
+    await flushDiagnostics();
+    const freshQuery = h.queries.at(-1)!;
+    freshQuery.resolve([{ value: "ok" }]);
+    expect(await fresh).toEqual([{ value: "ok" }]);
+    for (const query of h.queries) query.resolve([]);
+    await h.raw.end();
+  }, 5000);
+
+  it("keeps an expired tracker holder identifiable until its real release", async () => {
+    vi.useFakeTimers();
+    const h = diagnosticHarness();
+    const oldest = runPublicDbWork("optional", 500, () => Promise.resolve(h.sql.unsafe("oldest"))).catch(error => error);
+    await vi.advanceTimersByTimeAsync(60_001);
+    expect(await oldest).toMatchObject({ code: "OPERATION_DEADLINE" });
+    const rest = Array.from({ length: PUBLIC_DB_WORK_LIMIT - 1 }, () => scoped(() => Promise.resolve(h.sql.unsafe("rest"))));
+    await vi.advanceTimersByTimeAsync(0);
+    const overflow = scoped(() => Promise.resolve(h.sql.unsafe("overflow"))).catch(error => error);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await overflow).toMatchObject({ code: "PUBLIC_DB_SATURATED" });
+    const snapshot = h.events().find(event => event.event === "admission_saturated").oldestOperations[0];
+    expect(snapshot).toMatchObject({ operationId: expect.any(String), driverDispatchAttempt: "unknown",
+      callerTimeoutObserved: true, underlyingSettled: false, capacityReleased: false });
+    expect(snapshot.ageMs).toBeGreaterThanOrEqual(60_000);
+    h.queries[0].resolve([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(h.events()).toContainEqual(expect.objectContaining({ event: "admission_released",
+      admissionId: snapshot.admissionId, operationId: snapshot.operationId,
+      underlyingSettled: true, capacityReleased: true }));
+    for (const query of h.queries) query.resolve([]);
+    await Promise.all(rest);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(vi.getTimerCount()).toBe(0);
+    await h.raw.end();
+  });
+
+  it("preserves admission and settlement when every diagnostic observer throws", async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    const fail = () => { throw new Error("sentinel diagnostic failure"); };
+    const sql = boundDatabaseOperations(h.source as unknown as Sql, fail, {
+      bindAdmission: fail, releaseAdmission: fail, getAdmissionState: fail,
+    });
+    const callers = Array.from({ length: PUBLIC_DB_WORK_LIMIT }, () =>
+      runPublicDbWork("optional", 500, () => Promise.resolve(sql.unsafe("pending"))).catch(error => error));
+    await vi.advanceTimersByTimeAsync(500);
+    expect((await Promise.all(callers)).every(error => error.code === "OPERATION_DEADLINE")).toBe(true);
+    const overflow = scoped(() => Promise.resolve(sql.unsafe("overflow"))).catch(error => error);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(await overflow).toMatchObject({ code: "PUBLIC_DB_SATURATED" });
+    expect(h.execute).toHaveBeenCalledTimes(32);
+    h.queries[0].resolve([]);
+    const fresh = scoped(() => Promise.resolve(sql.unsafe("fresh")));
+    await vi.advanceTimersByTimeAsync(0);
+    h.queries.at(-1)!.resolve("ok");
+    expect(await fresh).toBe("ok");
+    for (const query of h.queries) query.resolve([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(h.source.end).not.toHaveBeenCalled();
+    await h.raw.end();
   });
 });
 

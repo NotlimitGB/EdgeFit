@@ -50,6 +50,24 @@ Unscoped scheduler/reporting work is neither capped nor interrupted; a diagnosti
 trace alone never enables admission policy. Public count is not pool occupancy.
 This does not isolate natural contention on the existing single-connection pool.
 
+The first rejected public unit emits one `admission_saturated` event with a
+bounded `oldestOperations` snapshot (up to eight active units, oldest first).
+Each item carries an `admissionId`, its public-work lineage and trace/stage, unit
+kind, `startedAtUtc`, monotonic age, caller-timeout state, settlement/release state, and—when the existing
+query tracker can correlate it—the driver operation ID and dispatch-attempt
+state. Missing operation IDs or `unknown` dispatch state are evidence gaps, not
+inferred successes. `not_observed` means only that no correlated driver dispatch
+attempt was seen; it does not prove a postgres.js pool wait. `admission_released`
+is emitted only on original settlement, and `admission_available` records that
+capacity is available again on this same shared client. The snapshot is produced
+only when saturation is first observed, not continuously.
+The event envelope supplies UTC, process ID and client ID. Snapshot holders
+continue to emit their eventual `admission_released` event after capacity becomes
+available, including after lifecycle tracking expiry. The original unit's
+trace/stage takes precedence over the unrelated async context that releases it.
+An incomplete snapshot is marked `snapshotComplete=false`; logging failure does
+not change admission or the driver's settlement.
+
 ## Observability and operator recovery
 
 039C diagnostics keep bounded queues/registries and static error categories. A
@@ -121,3 +139,99 @@ or owner-authorized process termination. This is an explicit observable safety/
 availability tradeoff, not automatic recovery or proven SQL cancellation.
 Production DB, scheduler, merchant transitions and deployment are outside local
 acceptance. Main integration requires independent exact-SHA review and authorization.
+
+## 039L isolated Next.js 16.2.2 HTTP fixture
+
+The production-mode fixture used 558 synthetic canonical identities and no
+production credentials or data. Healthy local responses completed for health,
+catalog (558 DTO identities; 24 initial SSR cards), sitemap (558 board URLs),
+the synthetic YES Hell YES 149 board, a saved-result fixture and a women's quiz
+recommendation. A local `/go` request was inspected as a manual redirect only;
+the merchant destination was not followed. These are local mechanics checks,
+not production corpus or persistence evidence.
+
+With unavailable DB configuration or a rejecting loader, the production server
+returns completed HTTP 500 responses for catalog, board and sitemap rather than
+an empty catalog, false board 404 or successful static-only sitemap. Sitemap's
+failed XML body is empty. A never-settling board dependency produces a completed
+HTTP 500 after about 30 seconds with the generic `Internal Server Error` body.
+The initial explanation of separate metadata/page waits was refined by 039L1:
+they share the initial loader; metadata executes again during framework error
+rendering, as described below. No production trace correlation was available,
+so the incident root cause remains unknown and no recovery claim is made.
+
+## 039L1 release gates and remaining HTTP limitation
+
+The local exact-bytes test failed because system Git `core.autocrlf=true`
+checked out the verification HTML as 55 bytes with CRLF. Its historical and
+current Git blobs are identical: 54 bytes ending in LF, SHA256
+`d61f4eddcbe5524fe7d9da5a7bdedd4281b8663420400c4e699e83584b481d7b`.
+The isolated test checkout extracts the exact Git bytes and overlays this
+candidate. The assertion and production file are unchanged. Middleware is
+2141 bytes in both blobs and working tree, SHA256
+`0c49aa8ad0345bbfe762752cad856e473b25f9bb3097fb004bf47676559bac3b`.
+
+The board fixture preserves the page, metadata, layout, React `cache`, Data Cache
+and 3600-second ISR setting. DB/config are deterministic local doubles, using
+real postgres.js lazy Query objects and the public admission adapter. These
+doubles do not establish SQL execution or network health.
+
+The healthy initial page and metadata share one canonical-loader/DB-double
+execution. A second request has `x-nextjs-cache=HIT` and zero loader executions;
+a distinct healthy path has `MISS` and one. A genuine missing board returns a
+complete 404. Rejected and saturated dependencies return complete 500 responses,
+not false 404s. Saturation retains 32 original units and exposes the oldest
+holders in the bounded snapshot.
+
+For a pending dependency, the first shared loader hits its 15-second deadline.
+Next.js 16.2.2 then enters `getErrorRSCPayload` with `isStaticGeneration=true`.
+That function recreates metadata using the original loader tree, under a new
+React render/cache context. Metadata invokes the canonical loader and DB-double
+again and consumes a second 15-second budget. The page component itself is not
+invoked again. The second metadata failure escapes the error-RSC/Fizz render;
+Next's server error rendering falls back to the completed 21-byte plain-text
+`Internal Server Error` response. The segment's client `error.tsx` cannot supply
+the recovery UI at this boundary. Static inspection of the pinned Next runtime
+and temporary in-memory runtime markers confirm this local chain.
+
+This proves duplicate DB-double execution locally; it does not prove duplicate
+production SQL. Both accepted pending units retain capacity until genuine
+settlement, even after the HTTP response completes. No runtime workaround is
+included: metadata-only catch was already ineffective, and changing route
+caching, TTLs or inventing a successful error page is outside this package.
+The candidate is therefore **observability and failure semantics only**, with
+the completed generic board 500 and approximately 30-second total wait disclosed.
+
+Sitemap failure semantics intentionally change: exceptions, saturation and
+deadline failures reject the full sitemap instead of serving static routes as
+an apparently successful fallback. A successfully loaded, genuinely empty
+canonical corpus can still produce the existing static routes. Healthy content,
+alias exclusions and canonical identities are unchanged. Public catalog/board
+loaders reject absent DB configuration; saved-result reads gain public admission
+and the existing 15-second budget, while invalid/missing tokens remain not-found.
+
+Final local HTTP observation window: 2026-10-18 18:55:50–18:56:23 UTC.
+Durations end after complete body consumption, excluding diagnostic drain time;
+these local fixture timings are not production benchmarks.
+
+| Fixture case | Status | TTFB ms | Total ms | Body complete | Cache |
+| --- | --- | --- | --- | --- | --- |
+| Healthy first observation | 200 | 1372 | 1381 | Yes | MISS |
+| Same successful board | 200 | 12 | 15 | Yes | HIT |
+| Distinct healthy board | 200 | 74 | 77 | Yes | MISS |
+| Genuine missing board | 404 | 50 | 52 | Yes | MISS |
+| Rejected dependency | 500 | 46 | 47 | Yes, plain text | Not exposed |
+| Permanently pending dependency | 500 | 30045 | 30045 | Yes, plain text | Not exposed |
+| Saturated admission | 500 | 81 | 81 | Yes, plain text | Not exposed |
+
+The healthy responses contain the synthetic model/season and matching canonical.
+The HIT performs zero new loader/DB-double executions. The rejection and pending
+cases each execute two DB-double operations, one during the initial render and
+one during error metadata. In the final saturation case, the two pending units
+remain retained, 30 additional fixture holders fill the limit, and the rejected
+board lookup does not reach its handler. No PostgreSQL server is used.
+
+039L1 validation: 114 focused tests; all 1631 tests across 109 files in the
+Git-byte-exact isolated copy; lint; Timeweb standalone DB-less build; both catalog
+and saved-result artifact verifiers; diff-check. The existing byte assertion is
+unchanged. No additional broad browser QA or production probes were performed.

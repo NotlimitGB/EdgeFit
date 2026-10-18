@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ prefetch: vi.fn() }), usePathname: () => "/" }));
 
 const sitemapBoardSlugs = vi.hoisted(() => [
@@ -396,7 +397,14 @@ describe("SEO indexing hygiene", () => {
   });
 
   it("excludes explicit alias sources while preserving canonical and unrelated URLs", async () => {
-    const entries = await sitemap();
+    vi.stubEnv("DATABASE_URL", "postgres://local-fixture");
+    vi.stubEnv("DATABASE_SSL", "disable");
+    let entries: Awaited<ReturnType<typeof sitemap>>;
+    try {
+      entries = await sitemap();
+    } finally {
+      vi.unstubAllEnvs();
+    }
     const paths = entries.map((entry) => new URL(entry.url).pathname);
 
     expect(paths).not.toContain("/result");

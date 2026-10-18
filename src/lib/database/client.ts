@@ -23,7 +23,7 @@ export function получитьКлиентБазы() {
     });
     // One application client per process. end() is not proof of socket closure;
     // caller deadlines must never replace this generation.
-    клиентБазы = diagnostics.wrap(boundDatabaseOperations(raw, diagnostics.boundary));
+    клиентБазы = diagnostics.wrap(boundDatabaseOperations(raw, diagnostics.boundary, diagnostics));
   }
 
   return клиентБазы;

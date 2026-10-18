@@ -12,6 +12,7 @@ import { createBoardPageDiagnostics } from "@/lib/board-page-load-diagnostics";
 import { runPublicDbWork } from "@/lib/database/public-work";
 import { randomUUID } from "node:crypto";
 import { withDbDiagnosticContext } from "@/lib/database/lifecycle-diagnostics";
+import { PublicDbUnavailableError } from "@/lib/database/operation-boundary";
 
 class UnresolvedBoard extends Error {}
 
@@ -52,7 +53,7 @@ export const getPublicBoardBundle = cache(async (slug: string) => {
 });
 
 async function loadPublicBoardBundle(slug: string) {
-  if (!базаНастроена()) return undefined;
+  if (!базаНастроена()) throw new PublicDbUnavailableError("PUBLIC_DB_UNAVAILABLE");
   const namespace = getPublicDatabaseNamespace();
   const support = await getPublicSchemaSupport(namespace);
   try {

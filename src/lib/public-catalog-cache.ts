@@ -8,6 +8,7 @@ import { getPublicDatabaseNamespace, getPublicSchemaSupport } from "@/lib/public
 import { toPublicCatalogItems } from "@/lib/public-catalog-dto";
 import { measurePublicLoad } from "@/lib/public-load-diagnostics";
 import { runPublicDbWork } from "@/lib/database/public-work";
+import { PublicDbUnavailableError } from "@/lib/database/operation-boundary";
 import { randomUUID } from "node:crypto";
 import { withDbDiagnosticContext } from "@/lib/database/lifecycle-diagnostics";
 
@@ -37,7 +38,7 @@ export async function getPublicCanonicalCatalogItems() {
 }
 
 async function loadPublicCatalog() {
-  if (!базаНастроена()) return [];
+  if (!базаНастроена()) throw new PublicDbUnavailableError("PUBLIC_DB_UNAVAILABLE");
   const namespace = getPublicDatabaseNamespace();
   const support = await getPublicSchemaSupport(namespace);
   return measurePublicLoad("catalog_cache_lookup", () => loadCachedPublicCatalog(namespace, support));

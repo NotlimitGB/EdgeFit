@@ -86,7 +86,7 @@ describe("public board data cache", () => {
 
   it("does not read the database when safely disabled", async () => {
     mocks.configured = false;
-    expect(await getPublicBoardBundle("board")).toBeUndefined();
+    await expect(getPublicBoardBundle("board")).rejects.toMatchObject({ code: "PUBLIC_DB_UNAVAILABLE" });
     expect(mocks.schema).not.toHaveBeenCalled();
     expect(mocks.sql).not.toHaveBeenCalled();
   });

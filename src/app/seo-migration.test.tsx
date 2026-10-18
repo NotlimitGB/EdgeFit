@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("server-only", () => ({}));
 
 const loadSitemapSlugs = vi.hoisted(() => vi.fn());
 vi.mock("next/font/google", () => ({
@@ -27,9 +28,11 @@ import { getAbsoluteSiteUrl } from "@/lib/site-url";
 
 beforeEach(() => {
   loadSitemapSlugs.mockReset().mockResolvedValue(["test-board", "bataleon-evil-twin-trial-sport-3131268", "nitro-team-2025-2026", "nitro-team"]);
+  vi.stubEnv("DATABASE_URL", "postgres://local-fixture");
+  vi.stubEnv("DATABASE_SSL", "disable");
   for (const name of ["NEXT_PUBLIC_SITE_URL", "VERCEL_PROJECT_PRODUCTION_URL", "VERCEL_URL"]) vi.stubEnv(name, "");
 });
-afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe("public SnowDex metadata migration", () => {
   it("uses a SnowDex root template without imposing a homepage canonical on children", () => {
@@ -61,17 +64,37 @@ describe("public SnowDex metadata migration", () => {
     expect(entries.map(({ url }) => new URL(url).pathname)).not.toContain("/boards/nitro-team-2025-2026");
   });
 
-  it("recovers runtime sitemap truth after unavailable or empty corpus without a rebuild", async () => {
+  it("fails closed on unavailable canonical data rather than serving a partial successful sitemap", async () => {
     expect(sitemapDynamic).toBe("force-dynamic");
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     loadSitemapSlugs.mockRejectedValueOnce(new Error("audit-private-db-detail"))
       .mockResolvedValueOnce([]).mockResolvedValueOnce(["runtime-board"]);
+    await expect(sitemap()).rejects.toMatchObject({ code: "SITEMAP_UNAVAILABLE" });
     expect(await sitemap()).toHaveLength(18);
-    expect(await sitemap()).toHaveLength(18);
-    expect((await sitemap()).map(({ url }) => url)).toContain("https://snowdex.ru/boards/runtime-board");
+    const runtimeEntries = await sitemap();
+    expect(runtimeEntries).toHaveLength(19);
+    expect(runtimeEntries.map(({ url }) => url)).toContain("https://snowdex.ru/boards/runtime-board");
     expect(loadSitemapSlugs).toHaveBeenCalledTimes(3);
-    expect(log).toHaveBeenCalledWith("sitemap: canonical-corpus-unavailable; static-routes-only");
+    expect(log).toHaveBeenCalledWith(JSON.stringify({
+      event: "public_route_failure", route: "sitemap", category: "canonical_corpus_unavailable",
+    }));
     expect(JSON.stringify(log.mock.calls)).not.toContain("audit-private-db-detail");
+  });
+
+  it("does not treat missing database configuration as a complete static-only sitemap", async () => {
+    vi.stubEnv("DATABASE_URL", " ");
+
+    await expect(sitemap()).rejects.toMatchObject({ code: "SITEMAP_UNAVAILABLE" });
+    expect(loadSitemapSlugs).not.toHaveBeenCalled();
+  });
+
+  it("returns a bounded error when canonical sitemap data never settles", async () => {
+    vi.useFakeTimers();
+    loadSitemapSlugs.mockImplementation(() => new Promise(() => undefined));
+    const pending = sitemap().catch(error => error);
+
+    await vi.advanceTimersByTimeAsync(15_000);
+    await expect(pending).resolves.toMatchObject({ code: "SITEMAP_UNAVAILABLE" });
   });
 
   it("generates a unique full fixture corpus on SnowDex, excluding only explicit alias sources", async () => {

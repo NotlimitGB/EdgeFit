@@ -154,9 +154,9 @@ describe("public catalog cache", () => {
     expect(mocks.getAllCanonicalCatalogItems).toHaveBeenCalledTimes(4);
   });
 
-  it("performs no schema or data reads when the database is disabled", async () => {
+  it("fails visibly instead of returning a successful empty catalog when the database is disabled", async () => {
     mocks.configured = false;
-    expect(await getPublicCanonicalCatalogItems()).toEqual([]);
+    await expect(getPublicCanonicalCatalogItems()).rejects.toMatchObject({ code: "PUBLIC_DB_UNAVAILABLE" });
     expect(mocks.getSupport).not.toHaveBeenCalled();
     expect(mocks.getAllCanonicalCatalogItems).not.toHaveBeenCalled();
   });

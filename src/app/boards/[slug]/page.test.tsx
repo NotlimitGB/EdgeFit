@@ -181,6 +181,22 @@ describe("canonical board metadata", () => {
 });
 
 describe("canonical board page loading", () => {
+  it("does not convert a database failure into a false not-found response", async () => {
+    mocks.resolve.mockRejectedValueOnce(new Error("private database detail"));
+    const request = BoardPage({ params: Promise.resolve({ slug: "yes-hell-yes" }) });
+
+    await expect(request).rejects.toThrow("private database detail");
+    expect(mocks.notFound).not.toHaveBeenCalled();
+  });
+
+  it("keeps a genuinely missing board as not-found", async () => {
+    mocks.resolve.mockResolvedValueOnce(undefined);
+
+    await expect(BoardPage({ params: Promise.resolve({ slug: "missing-board" }) }))
+      .rejects.toThrow("NEXT_NOT_FOUND");
+    expect(mocks.notFound).toHaveBeenCalledOnce();
+  });
+
   it("renders the published Evil Twin 25/26 with its own canonical and focused CTA", async () => {
     const item: CanonicalCatalogItem = {
       ...board, slug: "bataleon-evil-twin-trial-sport-3131268",

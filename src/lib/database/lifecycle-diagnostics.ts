@@ -3,14 +3,15 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import type { Sql } from "postgres";
 
-type Context = {
-  scope: "canonical_catalog" | "recommendation" | "outbound";
+export type DbDiagnosticContext = {
+  scope: "canonical_catalog" | "recommendation" | "outbound" | "saved_result" | "sitemap";
   stage: string;
   traceId: string;
   parentTraceId?: string;
 };
-const context = new AsyncLocalStorage<Context>();
+const context = new AsyncLocalStorage<DbDiagnosticContext>();
 const processId = randomUUID();
+export const getDbDiagnosticContext = () => context.getStore();
 
 // Caller events have no fabricated client ID when no DB client was acquired.
 const callerEvents: Record<string, unknown>[] = [];
@@ -26,17 +27,17 @@ function scheduleCallers() {
   if (callerDrainScheduled) return;
   callerDrainScheduled = true; setImmediate(drainCallers).unref();
 }
-export function reportPublicCallerTimeout(kind: "critical" | "optional") {
+export function reportPublicCallerTimeout(kind: "critical" | "optional", publicWorkId: string) {
   try {
     if (callerEvents.length >= 256) { callerDropped++; return; }
     const current = context.getStore();
     callerEvents.push({ scope: "public_db_work", event: "caller_timeout", utc: new Date().toISOString(), processId,
-      workKind: kind, requestScope: current?.scope, stage: current?.stage, traceId: current?.traceId });
+      publicWorkId, workKind: kind, requestScope: current?.scope, stage: current?.stage, traceId: current?.traceId });
     scheduleCallers();
   } catch { /* diagnostics cannot affect the response */ }
 }
 
-export function withDbDiagnosticContext<T>(value: Context, operation: () => T): T {
+export function withDbDiagnosticContext<T>(value: DbDiagnosticContext, operation: () => T): T {
   const parent = context.getStore();
   return context.run({ ...value, ...(parent && parent.traceId !== value.traceId
     ? { parentTraceId: parent.traceId } : {}) }, operation);
@@ -59,11 +60,13 @@ type DriverQuery = {
 };
 type RecordEntry = {
   operationId: string;
-  context?: Context;
+  admissionId?: string;
+  context?: DbDiagnosticContext;
   started: number;
   dispatched: boolean;
   dispatchUnknown?: boolean;
   expired: boolean;
+  settled?: boolean;
   observation?: ReturnType<typeof setTimeout>;
   expiry?: ReturnType<typeof setTimeout>;
 };
@@ -122,7 +125,8 @@ export function createDbLifecycleDiagnostics(
     } catch { /* diagnostics may not break the query */ }
   }
   function details(entry: RecordEntry) {
-    return { operationId: entry.operationId, requestScope: entry.context?.scope ?? "unscoped",
+    return { operationId: entry.operationId, admissionId: entry.admissionId,
+      requestScope: entry.context?.scope ?? "unscoped",
       stage: entry.context?.stage ?? "unscoped", traceId: entry.context?.traceId,
       parentTraceId: entry.context?.parentTraceId,
       durationMs: Math.max(0, Math.round(performance.now() - entry.started)) };
@@ -130,6 +134,7 @@ export function createDbLifecycleDiagnostics(
   function settle(query: DriverQuery, event: "success" | "error", error?: unknown) {
     const entry = records.get(query);
     if (!entry) return;
+    entry.settled = true;
     clearTimeout(entry.observation);
     clearTimeout(entry.expiry);
     records.delete(query);
@@ -223,9 +228,37 @@ export function createDbLifecycleDiagnostics(
         correlation: "matched", beforeDriverExecutionMs: Math.max(0, Math.round(performance.now() - entry.started)) });
     } catch { /* fail open, including driver callbacks */ }
   }
-  return { wrap, debug, boundary: (event: { event: "admission_saturated" | "admission_available" | "abandoned_context" | "operator_action_required" | "transaction_observation";
-    publicInFlight: number; limit: number; workKind?: "critical" | "optional"; unit?: "query" | "transaction"; publicWorkId?: string; status?: "DISPATCH_CORRELATION_UNKNOWN" }) => {
+  const admissionEntries = new Map<string, RecordEntry>();
+  function bindAdmission(query: object | undefined, admissionId: string) {
+    if (!query) return;
+    const entry = records.get(query as DriverQuery);
+    if (!entry) return;
+    entry.admissionId = admissionId;
+    admissionEntries.set(admissionId, entry);
+  }
+  function releaseAdmission(admissionId: string) {
+    admissionEntries.delete(admissionId);
+  }
+  function getAdmissionState(admissionId: string) {
+    const entry = admissionEntries.get(admissionId);
+    if (!entry) return undefined;
+    return {
+      operationId: entry.operationId,
+      driverDispatchAttempt: entry.dispatchUnknown || entry.expired
+        ? "unknown" as const
+        : entry.dispatched ? "observed" as const : "not_observed" as const,
+      underlyingSettled: entry.settled === true,
+    };
+  }
+  return { wrap, debug, bindAdmission, releaseAdmission, getAdmissionState,
+    boundary: (event: { event: "admission_saturated" | "admission_available" | "abandoned_context" | "operator_action_required" | "transaction_observation" | "admission_released";
+    publicInFlight: number; limit: number; workKind?: "critical" | "optional"; unit?: "query" | "transaction";
+    admissionId?: string; publicWorkId?: string; requestScope?: string; stage?: string; traceId?: string;
+    operationId?: string; ageMs?: number; driverDispatchAttempt?: "observed" | "not_observed" | "unknown";
+    callerTimeoutObserved?: boolean; underlyingSettled?: boolean; capacityReleased?: boolean;
+    oldestOperations?: Array<Record<string, unknown>>; status?: "DISPATCH_CORRELATION_UNKNOWN" }) => {
     const current = context.getStore();
-    emit({ ...event, requestScope: current?.scope, stage: current?.stage, traceId: current?.traceId });
+      emit({ ...event, requestScope: event.requestScope ?? current?.scope,
+        stage: event.stage ?? current?.stage, traceId: event.traceId ?? current?.traceId });
   } };
 }
