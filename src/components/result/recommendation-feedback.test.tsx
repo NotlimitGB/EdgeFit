@@ -57,7 +57,7 @@ describe("recommendation feedback", () => {
       recommendation_score: 92,
       algorithm_version: "v1.6.4",
       result_variant: "session",
-      exact_size_offer_status: "confirmed_available",
+      exact_size_offer_status: "historical_mark",
     });
   });
 

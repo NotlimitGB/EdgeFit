@@ -246,6 +246,15 @@ describe("ResultView focused board check", () => {
     expect(markup).not.toMatch(/result-email|result-consent|Отправим этот результат|Отправить на почту/u);
   });
 
+  it("shows the fit size and an honest unknown-stock state for new focused results", () => {
+    const item: RecommendationResult = { ...focusedRecommendation,
+      focusedBoardCheck: { ...focusedRecommendation.focusedBoardCheck!, buyability: "UNKNOWN" } };
+    const markup = renderToStaticMarkup(<ResultView initialRecommendation={item} mode="session" />);
+    expect(markup).toContain("Наличие 156 не подтверждено.");
+    expect(markup).not.toContain("Сначала нужно определить подходящую ростовку");
+    expect(markup).not.toContain("В наличии");
+  });
+
   it("renders focused evidence high in the result without numeric scoring", () => {
     const markup = renderToStaticMarkup(
       <ResultView initialRecommendation={focusedRecommendation} mode="saved" />,
@@ -365,7 +374,7 @@ describe("result store click provenance", () => {
       destination_url: "https://traektoria.ru/product/1_board/",
       result_variant: "session",
       algorithm_version: "v1.6.3",
-      exact_size_offer_status: "confirmed_available",
+      exact_size_offer_status: "historical_mark",
       exact_size_matched: true,
       result_width_type: "regular",
       riding_style: "all-mountain",
@@ -374,7 +383,7 @@ describe("result store click provenance", () => {
     expect(action.href).toContain("recommendationRank=1");
     expect(action.href).toContain("sizeLabel=156");
     expect(action.href).toContain("budgetMaxRub=50000");
-    expect(action.offerIntelligence.status).toBe("confirmed_available");
+    expect(action.offerIntelligence.status).toBe("historical_mark");
   });
 
   it.each([

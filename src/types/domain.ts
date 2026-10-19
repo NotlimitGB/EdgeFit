@@ -1,3 +1,5 @@
+import type { PurchaseAvailability } from "@/lib/purchase-availability";
+
 export type RidingStyle = "all-mountain" | "park" | "freeride";
 
 export type SkillLevel = "beginner" | "intermediate" | "advanced";
@@ -63,6 +65,8 @@ export interface ProductSize {
   recommendedWeightMin: number;
   recommendedWeightMax: number | null;
   widthType: WidthType;
+  /** Historical merchant size mark, without a trustworthy observation clock.
+   * Not evidence of current stock and never a physical-fit eligibility rule. */
   isAvailable: boolean;
 }
 
@@ -104,6 +108,8 @@ export interface RecommendationMatch {
   confidenceLabel: string;
   isCatalogReady: boolean;
   reasons: string[];
+  /** Optional for compatibility with older saved snapshots. */
+  purchaseAvailability?: PurchaseAvailability;
 }
 
 export interface RecommendationShapeProfile {
@@ -159,6 +165,7 @@ export interface FocusedBoardCheck {
     sizeLabel: string;
   } | null;
   buyability: FocusedBoardBuyability;
+  purchaseAvailability?: PurchaseAvailability;
   signals: FocusedBoardSignal[];
   alternatives: FocusedBoardAlternative[];
 }

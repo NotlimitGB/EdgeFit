@@ -86,7 +86,7 @@ function FocusedBoardResult({ check, mode }: { check: FocusedBoardCheck; mode: "
   const buyability =
     check.buyability === "AVAILABLE"
       ? mode === "saved" ? "На момент расчёта в сохранённых данных была отметка доступности выбранной ростовки." : "Выбранная ростовка ранее отмечалась доступной в данных SnowDex."
-      : check.buyability === "NOT_CONFIRMED" && check.bestFitSize
+      : check.bestFitSize
         ? mode === "saved" ? `На момент расчёта наличие ${check.bestFitSize.sizeLabel} не было подтверждено.` : `Наличие ${check.bestFitSize.sizeLabel} не подтверждено.`
         : "Сначала нужно определить подходящую ростовку.";
 

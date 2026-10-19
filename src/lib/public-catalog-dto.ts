@@ -3,6 +3,7 @@ import { compareCanonicalFeatured, compareCanonicalPriceAsc, compareCanonicalPri
   getCanonicalAvailabilityPreview, getCanonicalDescription, getCanonicalWidthTypes,
   normalizeCatalogSearch } from "@/components/catalog/canonical-catalog-ui";
 import type { WidthType } from "@/types/domain";
+import { legacyPurchaseAvailability, type PurchaseAvailability } from "@/lib/purchase-availability";
 
 /** Presentation-only projection. Canonical truth remains on the server. */
 export type PublicCatalogSize = Pick<CanonicalSizeVariant,
@@ -18,6 +19,7 @@ export interface PublicCatalogItem extends Pick<CanonicalCatalogItem,
   availabilityPreview: string;
   widthTypes: WidthType[];
   sortRanks?: { featured: number; priceAsc: number; priceDesc: number };
+  purchaseAvailability?: PurchaseAvailability;
 }
 
 // Single-card projection; catalog ordering must use the bulk ranked projection below.
@@ -36,6 +38,7 @@ export function toPublicCatalogItem(board: CanonicalCatalogItem): PublicCatalogI
     availableSizeCount: board.sizes.filter((size) => size.offerIsActive && size.isAvailable).length,
     availabilityPreview: getCanonicalAvailabilityPreview(board),
     widthTypes: getCanonicalWidthTypes(board),
+    purchaseAvailability: legacyPurchaseAvailability(),
   };
 }
 

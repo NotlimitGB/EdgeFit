@@ -6,6 +6,8 @@ import {
   resolveProductStoreUrl,
 } from "@/lib/store-redirect";
 import { recommendationRequestSchema } from "@/lib/quiz/schema";
+import { goldenRecommendationCases } from "./golden-dataset";
+import { demoBoards } from "./demo";
 import {
   ALGORITHM_VERSION,
   getFocusedBoardCheck,
@@ -97,6 +99,41 @@ const defaultBoards = [
   ),
 ];
 
+describe("physical fit is independent of historical inventory", () => {
+  const decisions = (result: ReturnType<typeof getRecommendation>) => ({
+    lengthRange: result.lengthRange, targetWaistWidthMm: result.targetWaistWidthMm,
+    recommendedWidthType: result.recommendedWidthType, bootDragRisk: result.bootDragRisk,
+    recommended: result.recommendedBoards.map((match) => [match.product.slug, match.size.sizeCm,
+      match.size.sizeLabel, match.score, match.role, match.confidence, match.reasons]),
+    alternatives: result.avoidBoards.map((match) => [match.product.slug, match.size.sizeCm,
+      match.size.sizeLabel, match.score, match.role, match.confidence, match.reasons]),
+  });
+
+  it.each(goldenRecommendationCases)("preserves the physical decision for $id when every legacy flag changes", ({ input }) => {
+    const unmarked = demoBoards.map((board) => ({ ...board,
+      sizes: board.sizes.map((size) => ({ ...size, isAvailable: false })) }));
+    expect(decisions(getRecommendation(input, unmarked))).toEqual(decisions(getRecommendation(input, demoBoards)));
+  });
+
+  it("keeps a suitable model without a merchant destination or any positive stock marks", () => {
+    const board = createProduct({ affiliateUrl: "", priceFrom: 0 }, { isAvailable: false });
+    expect(getRecommendation(baseInput, [board]).recommendedBoards.map((match) => match.product.slug)).toEqual([board.slug]);
+  });
+
+  it("keeps the correct physical size even if the only historical positive mark is an impossible size", () => {
+    const board = createProduct({ sizes: [createSize({ sizeCm: 86, waistWidthMm: 180, isAvailable: true }),
+      createSize({ sizeCm: 154, isAvailable: false })] });
+    const result = getRecommendation(baseInput, [board]);
+    expect(result.recommendedBoards[0]?.size.sizeCm).toBe(154);
+    expect(result.recommendedBoards[0]?.size.isAvailable).toBe(false);
+  });
+
+  it("never promotes an impossible or inactive board because of stock marks", () => {
+    expect(getRecommendation(baseInput, [createProduct({}, { sizeCm: 86, waistWidthMm: 180 })]).recommendedBoards).toEqual([]);
+    expect(getRecommendation(baseInput, [createProduct({ isActive: false })]).recommendedBoards).toEqual([]);
+  });
+});
+
 function createCanonicalBoard(
   overrides: Partial<CanonicalCatalogItem> = {},
 ): CanonicalCatalogItem {
@@ -179,10 +216,10 @@ describe("focused board fit check", () => {
     });
 
     expect(check.bestFitSize).toEqual({ sizeCm: 154, sizeLabel: "154" });
-    expect(check.buyability).toBe("NOT_CONFIRMED");
+    expect(check.buyability).toBe("UNKNOWN");
     expect(repriced.verdict).toBe(check.verdict);
     expect(repriced.bestFitSize).toEqual(check.bestFitSize);
-    expect(repriced.buyability).toBe("AVAILABLE");
+    expect(repriced.buyability).toBe("UNKNOWN");
     expect(JSON.stringify(check)).not.toContain('"score"');
   });
 

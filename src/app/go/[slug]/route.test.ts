@@ -150,7 +150,7 @@ describe("store click provenance", () => {
         destination_url: product.affiliateUrl,
         result_variant: "session",
         algorithm_version: "v1.6.4",
-        exact_size_offer_status: "confirmed_available",
+        exact_size_offer_status: "historical_mark",
         exact_size_matched: true,
         clicked_product_budget_relation: "over_catalog_estimate",
       }),

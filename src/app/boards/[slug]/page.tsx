@@ -11,11 +11,11 @@ import {
   getCanonicalBoardPricePresentation,
   getCanonicalBoardPublicNarrative,
   getCanonicalBoardTrustDetails,
-  getCanonicalCurrentAvailableSizes,
+  getCanonicalHistoricallyMarkedSizes,
   getCanonicalFlexPresentation,
   getCanonicalSizeStoreAction,
   getCanonicalSizeAvailabilityLabel,
-  isCanonicalSizeCurrentlyAvailable,
+  isCanonicalSizeHistoricallyMarked,
 } from "@/lib/canonical-board-detail";
 import {
   getAllCanonicalBoardSlugs,
@@ -101,8 +101,8 @@ export default async function BoardPage({ params }: BoardPageProps) {
   const trustDetails = getCanonicalBoardTrustDetails(specs);
   const flexPresentation = getCanonicalFlexPresentation(specs);
   const pricePresentation = getCanonicalBoardPricePresentation(board.priceFrom);
-  const currentAvailableSizes = getCanonicalCurrentAvailableSizes(board);
-  const hasAvailableSizes = currentAvailableSizes.length > 0;
+  const historicallyMarkedSizes = getCanonicalHistoricallyMarkedSizes(board);
+  const hasAvailableSizes = historicallyMarkedSizes.length > 0;
   const availabilityHeadline = getCanonicalBoardAvailabilityHeadline(board);
   const availabilityDescription =
     getCanonicalBoardAvailabilityDescription(board);
@@ -318,8 +318,8 @@ export default async function BoardPage({ params }: BoardPageProps) {
                   </thead>
                   <tbody>
                     {board.sizes.map((size) => {
-                      const currentlyAvailable =
-                        isCanonicalSizeCurrentlyAvailable(size);
+                      const historicallyMarked =
+                        isCanonicalSizeHistoricallyMarked(size);
                       const storeAction = getCanonicalSizeStoreAction(
                         board.slug,
                         size,
@@ -329,7 +329,7 @@ export default async function BoardPage({ params }: BoardPageProps) {
                         <tr
                           key={size.sourceSizeId}
                           className={
-                            currentlyAvailable
+                            historicallyMarked
                               ? styles.availableRow
                               : styles.unavailableRow
                           }
@@ -341,7 +341,7 @@ export default async function BoardPage({ params }: BoardPageProps) {
                           <td>
                             <span
                               className={
-                                currentlyAvailable
+                                historicallyMarked
                                   ? styles.sizeAvailable
                                   : styles.sizeUnavailable
                               }

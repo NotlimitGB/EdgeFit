@@ -228,22 +228,22 @@ function compareOffers(left: SourceOfferSummary, right: SourceOfferSummary) {
   );
 }
 
-export function isCanonicalSizeCurrentlyAvailable(
+export function isCanonicalSizeHistoricallyMarked(
   size: CanonicalSizeVariant,
 ) {
   return size.offerIsActive && size.isAvailable;
 }
 
-export function getCanonicalCurrentAvailableSizes(
+export function getCanonicalHistoricallyMarkedSizes(
   board: Pick<CanonicalCatalogItem, "sizes">,
 ) {
-  return board.sizes.filter(isCanonicalSizeCurrentlyAvailable);
+  return board.sizes.filter(isCanonicalSizeHistoricallyMarked);
 }
 
 export function getCanonicalBoardAvailabilityHeadline(
   board: Pick<CanonicalCatalogItem, "sizes">,
 ) {
-  const count = getCanonicalCurrentAvailableSizes(board).length;
+  const count = getCanonicalHistoricallyMarkedSizes(board).length;
 
   return count === 0
     ? "Доступность не подтверждена"
@@ -254,7 +254,7 @@ export function getCanonicalBoardAvailabilityDescription(
   board: Pick<CanonicalCatalogItem, "sizes">,
   limit = 5,
 ) {
-  const labels = getCanonicalCurrentAvailableSizes(board)
+  const labels = getCanonicalHistoricallyMarkedSizes(board)
     .map((size) => size.displaySizeLabel.trim())
     .filter(Boolean);
 
@@ -273,7 +273,7 @@ export function getCanonicalBoardAvailabilityDescription(
 export function getCanonicalSizeAvailabilityLabel(
   size: CanonicalSizeVariant,
 ) {
-  return isCanonicalSizeCurrentlyAvailable(size)
+  return isCanonicalSizeHistoricallyMarked(size)
     ? "ранее отмечен доступным"
     : "доступность не подтверждена";
 }
@@ -394,7 +394,7 @@ export function getCanonicalSizeStoreAction(
   boardSlug: string,
   size: CanonicalSizeVariant,
 ): CanonicalSizeStoreAction | null {
-  if (!isCanonicalSizeCurrentlyAvailable(size)) {
+  if (!size.offerIsActive) {
     return null;
   }
 

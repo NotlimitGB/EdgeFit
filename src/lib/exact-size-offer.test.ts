@@ -58,19 +58,20 @@ function classify(
 }
 
 describe("getExactSizeOfferIntelligence", () => {
-  it("confirms one exact regular size at a direct identified merchant", () => {
+  it("preserves one exact historical mark without confirming current merchant stock", () => {
     expect(classify(regular155)).toMatchObject({
-      status: "confirmed_available",
+      status: "historical_mark",
       recommendedSizeLabel: "155",
       storeCode: "trial-sport",
       sourceProductId: "3131513",
       exactSizeMatched: true,
+      purchaseAvailability: { status: "unknown", freshness: "UNKNOWN", observedStockStatus: "UNKNOWN" },
     });
   });
 
   it("matches Wide independently from a regular size of the same length", () => {
     expect(classify(wide155)).toMatchObject({
-      status: "confirmed_available",
+      status: "historical_mark",
       recommendedSizeLabel: "155W",
       exactSizeMatched: true,
     });

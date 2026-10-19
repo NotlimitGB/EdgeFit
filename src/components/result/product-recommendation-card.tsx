@@ -94,7 +94,7 @@ export function ProductRecommendationCard({
   const availabilityLabel =
     commercialPresentation.mode === "saved"
       ? `Наличие размера ${sizeLabel} нужно проверить в магазине`
-      : offerIntelligence.status === "confirmed_available"
+      : offerIntelligence.status === "historical_mark"
         ? `Размер ${sizeLabel} ранее отмечался доступным. Текущее наличие проверь в ${merchantLocationLabel}`
         : offerIntelligence.status === "search_only"
           ? `Точного предложения по размеру ${sizeLabel} пока нет`
@@ -202,7 +202,8 @@ export function ProductRecommendationCard({
       <div className={styles.commercialMeta}>
         <p>
           <span>{commercialPresentation.priceLabel}</span>
-          <strong>{formatMoney(match.product.priceFrom)}</strong>
+          <strong>{Number.isFinite(match.product.priceFrom) && match.product.priceFrom > 0
+            ? formatMoney(match.product.priceFrom) : "нет данных"}</strong>
         </p>
         <p>{availabilityLabel}</p>
         {budgetLabel ? <p>{budgetLabel}</p> : null}

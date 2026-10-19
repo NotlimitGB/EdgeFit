@@ -98,10 +98,11 @@ function renderCard(
     | "over_catalog_estimate"
     | "price_unknown" = "budget_not_set",
   showReasons = true,
+  priceFrom = match.product.priceFrom,
 ) {
   const currentMatch = {
     ...match,
-    product: { ...match.product, affiliateUrl },
+    product: { ...match.product, affiliateUrl, priceFrom },
   };
 
   return renderToStaticMarkup(
@@ -132,6 +133,12 @@ function renderCard(
 }
 
 describe("ProductRecommendationCard commercial presentation", () => {
+  it.each([0, -1, NaN, Infinity])("does not invent a stored price for %s", (priceFrom) => {
+    const markup = renderCard(match.product.affiliateUrl, "session", "price_unknown", true, priceFrom);
+    expect(markup).toContain("нет данных");
+    expect(markup).toContain("Сохранённая цена");
+    expect(markup).not.toMatch(/0 ₽|NaN|Infinity/u);
+  });
   it("uses a buyer-facing catalog readiness badge", () => {
     expect(renderCard(match.product.affiliateUrl)).toContain(
       "Основные характеристики указаны",

@@ -79,6 +79,11 @@ const productSchema = z
     sizes: z.array(productSizeSchema),
   })
   .strict();
+const purchaseAvailabilitySchema = z.object({
+  status: z.enum(["verified_available", "verified_unavailable", "unknown"]),
+  freshness: z.enum(["FRESH", "AGING", "STALE", "UNKNOWN"]),
+  observedStockStatus: z.enum(["IN_STOCK", "OUT_OF_STOCK", "PREORDER", "UNKNOWN"]),
+}).strict();
 const recommendationMatchSchema = z
   .object({
     product: productSchema,
@@ -90,6 +95,7 @@ const recommendationMatchSchema = z
     confidenceLabel: z.string(),
     isCatalogReady: z.boolean(),
     reasons: z.array(z.string()),
+    purchaseAvailability: purchaseAvailabilitySchema.optional(),
   })
   .strict();
 const focusedBoardSignalSchema = z
@@ -131,6 +137,7 @@ const focusedBoardCheckSchema = z
       .strict()
       .nullable(),
     buyability: z.enum(["AVAILABLE", "NOT_CONFIRMED", "UNKNOWN"]),
+    purchaseAvailability: purchaseAvailabilitySchema.optional(),
     signals: z.array(focusedBoardSignalSchema),
     alternatives: z.array(focusedBoardAlternativeSchema),
   })

@@ -4,6 +4,7 @@ import {
   isVerifiedProduct,
   hasTrustedFlex,
 } from "@/lib/catalog-readiness";
+import { legacyPurchaseAvailability } from "@/lib/purchase-availability";
 import {
   aggressivenessLabels,
   boardLineLabels,
@@ -1260,6 +1261,7 @@ function scoreCandidate(
     confidence: confidence.confidence,
     confidenceLabel: confidence.confidenceLabel,
     isCatalogReady: catalogReady,
+    purchaseAvailability: legacyPurchaseAvailability(),
     reasons: reasons.slice(0, 3),
   } satisfies RecommendationMatch;
 }
@@ -1332,11 +1334,8 @@ function getCandidates(
   familyKeyByProductId: Readonly<Record<string, string>>,
 ) {
   const bestPerBoard = boards.flatMap((product) => {
-    const availableSizes = product.sizes.filter(
-      (size) => size.isAvailable !== false,
-    );
-
-    const eligibleSizes = availableSizes.filter((size) =>
+    // Legacy stock marks have no observation clock. Fit uses the size geometry.
+    const eligibleSizes = product.sizes.filter((size) =>
       isPhysicallyEligibleSize(
         size,
         input,
@@ -1810,11 +1809,8 @@ export function getFocusedBoardCheck(
     bestFitSize: best
       ? { sizeCm: best.sizeCm, sizeLabel: best.sizeLabel }
       : null,
-    buyability: best
-      ? best.variants.some((size) => size.isAvailable)
-        ? "AVAILABLE"
-        : "NOT_CONFIRMED"
-      : "UNKNOWN",
+    buyability: "UNKNOWN",
+    purchaseAvailability: legacyPurchaseAvailability(),
     signals,
     alternatives: getFocusedAlternatives(
       recommendation,
@@ -1829,11 +1825,7 @@ export function getRecommendation(
   boards: Product[] = [],
   identityContext: RecommendationIdentityContext = {},
 ): RecommendationResult {
-  const activeBoards = boards.filter(
-    (board) =>
-      board.isActive &&
-      board.sizes.some((size) => size.isAvailable !== false),
-  );
+  const activeBoards = boards.filter((board) => board.isActive);
   const candidateBoards = getCandidateBoards(activeBoards, input);
   const weightRange = getWeightLengthRange(input.weightKg);
   const heightAdjustment = getHeightAdjustment(input.heightCm);

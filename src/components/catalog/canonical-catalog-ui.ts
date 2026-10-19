@@ -78,10 +78,7 @@ export function getCanonicalAvailableSizes<T extends CanonicalSizeVariant>(
 export function getCanonicalFilterSizes<T extends CanonicalSizeVariant>(
   board: { sizes: T[] },
 ): T[] {
-  const availableSizes = getCanonicalAvailableSizes(board);
-  return availableSizes.length > 0
-    ? availableSizes
-    : getCanonicalActiveSizes(board);
+  return getCanonicalActiveSizes(board);
 }
 
 export function getCanonicalAvailableSizeCount(board: CanonicalCatalogItem) {
@@ -237,13 +234,6 @@ export function compareCanonicalFeatured(
 
   if (verifiedDelta !== 0) {
     return verifiedDelta;
-  }
-
-  const availableDelta =
-    getCanonicalAvailableSizeCount(right) -
-    getCanonicalAvailableSizeCount(left);
-  if (availableDelta !== 0) {
-    return availableDelta;
   }
 
   const freshnessDelta =

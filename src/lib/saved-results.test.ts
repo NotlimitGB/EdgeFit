@@ -139,6 +139,15 @@ describe("saved result contracts", () => {
     expect(hashSavedResultToken(first)).not.toBe(hashSavedResultToken(second));
   });
 
+  it("reads old snapshots and preserves explicit unknown stock in new focused snapshots", () => {
+    expect(isRecommendationResultSnapshot(focusedRecommendation)).toBe(true);
+    const current = { ...focusedRecommendation, focusedBoardCheck: { ...focusedRecommendation.focusedBoardCheck!,
+      buyability: "UNKNOWN" as const, purchaseAvailability: { status: "unknown" as const,
+        freshness: "UNKNOWN" as const, observedStockStatus: "UNKNOWN" as const } } };
+    expect(isRecommendationResultSnapshot(current)).toBe(true);
+    expect(parseSavedResultSnapshot(current)?.recommendation.focusedBoardCheck).toEqual(current.focusedBoardCheck);
+  });
+
   it("builds only safe private paths and classifies private analytics paths", () => {
     const token = generateSavedResultToken();
     expect(getSavedResultPath(token)).toBe(`/result/${token}`);

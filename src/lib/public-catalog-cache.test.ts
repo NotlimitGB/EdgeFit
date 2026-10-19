@@ -120,12 +120,24 @@ describe("public catalog cache", () => {
     expect(mocks.unstableCache).toHaveBeenCalledTimes(1);
     expect(mocks.unstableCache).toHaveBeenCalledWith(
       expect.any(Function),
-      ["edgefit-public-canonical-catalog-v5"],
+      ["edgefit-public-canonical-catalog-v6"],
       {
         revalidate: 300,
         tags: ["edgefit-public-canonical-catalog"],
       },
     );
+  });
+
+  it("projects physical widths without dropping an unmarked size or changing canonical identity", () => {
+    const item = { ...boards[0], sizes: [boards[0].sizes[0], { ...boards[0].sizes[0],
+      sourceSizeId: "unmarked-regular", displaySizeLabel: "156", widthType: "regular" as const, isAvailable: false }] };
+    const dto = toPublicCatalogItem(item);
+    expect(dto.slug).toBe(item.slug);
+    expect(dto.seasonLabel).toBe(item.seasonLabel);
+    expect(dto.widthTypes).toEqual(["regular", "wide"]);
+    expect(dto.availableSizeCount).toBe(1); // Historical count is preserved as history.
+    expect(dto.availabilityPreview).toContain("Ранее отмеченные размеры");
+    expect(dto.defaultOfferSlug).toBe(item.defaultOfferSlug);
   });
 
   it("reuses the cached loader result without changing catalog data", async () => {

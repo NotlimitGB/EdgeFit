@@ -141,7 +141,7 @@ describe("canonical Catalog UI helpers", () => {
     ]);
   });
 
-  it("prefers available active sizes for filtering", () => {
+  it("keeps all active physical widths regardless of historical stock marks", () => {
     const board = makeBoard({
       sizes: [
         makeSize("available", { widthType: "regular" }),
@@ -151,6 +151,7 @@ describe("canonical Catalog UI helpers", () => {
 
     expect(getCanonicalFilterSizes(board).map((size) => size.sourceSizeId)).toEqual([
       "available",
+      "unavailable",
     ]);
   });
 
@@ -265,14 +266,14 @@ describe("canonical Catalog UI helpers", () => {
     );
   });
 
-  it("uses active availability count in featured ordering", () => {
+  it("does not use historical stock count in featured ordering", () => {
     const one = makeBoard({ slug: "one" });
     const two = makeBoard({
       slug: "two",
       sizes: [makeSize("one"), makeSize("two")],
     });
 
-    expect([one, two].sort(compareCanonicalFeatured)[0]?.slug).toBe("two");
+    expect([two, one].sort(compareCanonicalFeatured)[0]?.slug).toBe("one");
   });
 
   it("uses canonical source freshness in featured ordering", () => {

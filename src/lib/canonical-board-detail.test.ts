@@ -5,7 +5,7 @@ import {
   getCanonicalBoardPricePresentation,
   getCanonicalBoardPublicNarrative,
   getCanonicalBoardTrustDetails,
-  getCanonicalCurrentAvailableSizes,
+  getCanonicalHistoricallyMarkedSizes,
   getCanonicalFlexPresentation,
   getCanonicalNarrativeOfferSlug,
   getCanonicalSizeAvailabilityLabel,
@@ -281,7 +281,7 @@ describe("canonical Board Detail helpers", () => {
     });
   });
 
-  it("returns only active and available sizes as current", () => {
+  it("returns active positive size marks as history only", () => {
     const board = makeBoard({
       sizes: [
         makeSize("current"),
@@ -291,7 +291,7 @@ describe("canonical Board Detail helpers", () => {
     });
 
     expect(
-      getCanonicalCurrentAvailableSizes(board).map(
+      getCanonicalHistoricallyMarkedSizes(board).map(
         (size) => size.sourceSizeId,
       ),
     ).toEqual(["current"]);
@@ -533,13 +533,13 @@ describe("canonical Board Detail helpers", () => {
     expect(action?.analyticsPayload.source_size_label).toBe("161 cm");
   });
 
-  it("does not build an action for an unavailable size", () => {
+  it("keeps a merchant verification action when historical stock is unknown", () => {
     expect(
       getCanonicalSizeStoreAction(
         "brand-model",
         makeSize("unavailable", { isAvailable: false }),
       ),
-    ).toBeNull();
+    ).toMatchObject({ href: expect.stringContaining("/go/") });
   });
 
   it("does not build an action for a size from an inactive offer", () => {

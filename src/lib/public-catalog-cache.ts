@@ -12,7 +12,7 @@ import { PublicDbUnavailableError } from "@/lib/database/operation-boundary";
 import { randomUUID } from "node:crypto";
 import { withDbDiagnosticContext } from "@/lib/database/lifecycle-diagnostics";
 
-const PUBLIC_CATALOG_CACHE_KEY = "edgefit-public-canonical-catalog-v5";
+const PUBLIC_CATALOG_CACHE_KEY = "edgefit-public-canonical-catalog-v6";
 const PUBLIC_CATALOG_CACHE_TAG = "edgefit-public-canonical-catalog";
 const PUBLIC_CATALOG_CACHE_REVALIDATE_SECONDS = 300;
 

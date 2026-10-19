@@ -181,6 +181,26 @@ describe("canonical board metadata", () => {
 });
 
 describe("canonical board page loading", () => {
+  it("preserves YES Hell YES 149 identity and canonical when current stock is unknown", async () => {
+    const item: CanonicalCatalogItem = { ...board, slug: "yes-hell-yes", brand: "YES", modelName: "Hell YES",
+      seasonLabel: "2025/2026", sizes: [{ sourceSizeId: "fixture-hell-yes-149", offerId: "offer-1",
+        offerSlug: "yes-hell-yes", memberRole: "base", offerIsActive: true,
+        rawSizeLabel: "149", sizeCm: 149, sizeLabel: "149", displaySizeLabel: "149",
+        widthType: "regular", waistWidthMm: 249, recommendedWeightMin: 50,
+        recommendedWeightMax: 75, isAvailable: false }] };
+    mocks.resolve.mockResolvedValue({ kind: "render", item });
+    const props = { params: Promise.resolve({ slug: item.slug }) };
+    expect(await generateMetadata(props)).toMatchObject({ title: "YES Hell YES 2025/2026",
+      alternates: { canonical: "/boards/yes-hell-yes" } });
+    const markup = renderToStaticMarkup(await BoardPage(props));
+    expect(markup).toContain("Hell YES");
+    expect(markup).toContain("149");
+    expect(markup).toContain("доступность не подтверждена");
+    expect(markup).toContain("Проверить в магазине");
+    expect(markup).toContain('href="/quiz?board=yes-hell-yes"');
+    expect(markup).not.toContain("В наличии");
+  });
+
   it("does not convert a database failure into a false not-found response", async () => {
     mocks.resolve.mockRejectedValueOnce(new Error("private database detail"));
     const request = BoardPage({ params: Promise.resolve({ slug: "yes-hell-yes" }) });

@@ -6,9 +6,10 @@ import {
   type StoreDestinationMode,
 } from "@/lib/store-redirect";
 import type { Product, ProductSize, WidthType } from "@/types/domain";
+import { legacyPurchaseAvailability, type PurchaseAvailability } from "@/lib/purchase-availability";
 
 export type ExactSizeOfferStatus =
-  | "confirmed_available"
+  | "historical_mark"
   | "not_confirmed"
   | "search_only";
 
@@ -20,6 +21,7 @@ export interface ExactSizeRecommendation {
 
 export interface ExactSizeOfferIntelligence {
   status: ExactSizeOfferStatus;
+  purchaseAvailability: PurchaseAvailability;
   recommendedSizeLabel: string | null;
   merchantLabel: string | null;
   storeCode: string | null;
@@ -80,11 +82,12 @@ export function getExactSizeOfferIntelligence({
     exactSizeMatched &&
     exactMatches[0]?.isAvailable === true
   ) {
-    status = "confirmed_available";
+    status = "historical_mark";
   }
 
   return {
     status,
+    purchaseAvailability: legacyPurchaseAvailability(),
     recommendedSizeLabel,
     merchantLabel: presentation.merchantLabel,
     storeCode: destination.storeCode,
