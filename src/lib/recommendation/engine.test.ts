@@ -7,7 +7,7 @@ import {
 } from "@/lib/store-redirect";
 import { recommendationRequestSchema } from "@/lib/quiz/schema";
 import { goldenRecommendationCases } from "./golden-dataset";
-import { demoBoards } from "./demo";
+import { demoBoards, demoInput } from "./demo";
 import {
   ALGORITHM_VERSION,
   getFocusedBoardCheck,
@@ -131,6 +131,146 @@ describe("physical fit is independent of historical inventory", () => {
   it("never promotes an impossible or inactive board because of stock marks", () => {
     expect(getRecommendation(baseInput, [createProduct({}, { sizeCm: 86, waistWidthMm: 180 })]).recommendedBoards).toEqual([]);
     expect(getRecommendation(baseInput, [createProduct({ isActive: false })]).recommendedBoards).toEqual([]);
+  });
+});
+
+describe("physical viability before population preferences", () => {
+  const decision = (result: ReturnType<typeof getRecommendation>) => ({
+    lengthRange: result.lengthRange, targetWaistWidthMm: result.targetWaistWidthMm,
+    recommendedWidthType: result.recommendedWidthType, explanation: result.explanation,
+    recommended: result.recommendedBoards.map((match) => [match.product.slug, match.size.sizeCm,
+      match.size.sizeLabel, match.score, match.role, match.confidence, match.reasons, match.purchaseAvailability]),
+    alternatives: result.avoidBoards.map((match) => [match.product.slug, match.size.sizeCm,
+      match.score, match.role, match.confidence, match.reasons]),
+  });
+  const recordedBoard = (slug: string, overrides: Partial<Product> = {}): Product => ({
+    ...demoBoards[0], id: slug, slug, ...overrides,
+  });
+
+  it("043B P1 keeps the 154/257 model without a link ahead of unsuitable ready models", () => {
+    const suitable: Product = { ...demoBoards[0], id: "fit-without-link", slug: "fit-without-link",
+      affiliateUrl: "", priceFrom: 0 };
+    const unsuitable = [1, 2, 3].map((index): Product => ({ ...demoBoards[0],
+      id: `ready-${index}`, slug: `ready-${index}`, boardLine: "women",
+      sizes: [{ ...demoBoards[0].sizes[0], sizeCm: 140, waistWidthMm: 230, isAvailable: false }],
+    }));
+    const result = getRecommendation(demoInput, [suitable, ...unsuitable]);
+    expect(result.recommendedBoards.map((match) => match.product.slug)).toEqual([suitable.slug]);
+    expect(result.recommendedBoards[0]).toMatchObject({ score: 169,
+      size: { sizeCm: 154, waistWidthMm: 257 },
+      purchaseAvailability: { status: "unknown", freshness: "UNKNOWN", observedStockStatus: "UNKNOWN" } });
+    expect(result.recommendedBoards[0].size).toBe(suitable.sizes[0]);
+  });
+
+  it("ranks all four suitable verified models even when one has no merchant link", () => {
+    const noLink = recordedBoard("without-link", { affiliateUrl: "", priceFrom: 0 });
+    const ready = ["ready-a", "ready-b", "ready-c"].map((slug) => recordedBoard(slug));
+    const boards = [noLink, ...ready];
+    const original = JSON.stringify(boards);
+    const result = getRecommendation(demoInput, boards);
+    expect(result.recommendedBoards.map((match) => match.product.slug))
+      .toEqual(["ready-a", "ready-b", "ready-c", "without-link"]);
+    expect(result.recommendedBoards.map((match) => match.score)).toEqual([175, 175, 175, 169]);
+    expect(decision(getRecommendation(demoInput, [...boards].reverse()))).toEqual(decision(result));
+    expect(decision(getRecommendation(demoInput, boards.map((board) => ({ ...board,
+      sizes: board.sizes.map((size) => ({ ...size, isAvailable: false })) }))))).toEqual(decision(result));
+    for (const match of result.recommendedBoards) {
+      expect(match.size).toBe(match.product.sizes[0]);
+      expect(match.purchaseAvailability?.status).toBe("unknown");
+    }
+    expect(JSON.stringify(boards)).toBe(original);
+  });
+
+  it("recommends recorded physical fits when every merchant offer is missing", () => {
+    const boards = ["no-offer-a", "no-offer-b", "no-offer-c"].map((slug) =>
+      recordedBoard(slug, { affiliateUrl: "", priceFrom: 0,
+        sizes: [{ ...demoBoards[0].sizes[0], isAvailable: false }] }));
+    const result = getRecommendation(demoInput, boards);
+    expect(result.recommendedBoards).toHaveLength(3);
+    expect(result.recommendedBoards.every((match) => match.size.sizeCm === 154 &&
+      match.purchaseAvailability?.status === "unknown")).toBe(true);
+  });
+
+  it("does not let empty, inactive or unsuitable verified models displace a viable draft", () => {
+    const suitable = recordedBoard("viable-draft", { dataStatus: "draft", sourceName: null,
+      sourceUrl: null, sourceCheckedAt: null, affiliateUrl: "" });
+    const unsuitable = [1, 2, 3].map((index) => recordedBoard(`unsuitable-${index}`, {
+      sizes: [createSize({ sizeCm: 140, waistWidthMm: 230, isAvailable: false })],
+    }));
+    const empty = recordedBoard("empty", { sizes: [] });
+    const inactive = recordedBoard("inactive", { isActive: false });
+    expect(getRecommendation(demoInput, [suitable, ...unsuitable, empty, inactive])
+      .recommendedBoards.map((match) => match.product.slug)).toEqual([suitable.slug]);
+    const missing = getRecommendation(demoInput, [...unsuitable, empty, inactive]);
+    expect(missing.recommendedBoards).toEqual([]);
+    expect(missing.avoidBoards).toEqual([]);
+  });
+
+  it("counts only physically viable models toward the existing style preference", () => {
+    const park = recordedBoard("viable-park", { ridingStyle: "park" });
+    const unsuitable = [1, 2, 3].map((index) => recordedBoard(`bad-all-mountain-${index}`, {
+      sizes: [createSize({ sizeCm: 140, waistWidthMm: 230 })],
+    }));
+    expect(getRecommendation(demoInput, [park, ...unsuitable]).recommendedBoards
+      .map((match) => match.product.slug)).toEqual([park.slug]);
+  });
+
+  it("preserves the verified-quality policy when three viable verified models exist", () => {
+    const verified = ["verified-a", "verified-b", "verified-c"].map((slug) => recordedBoard(slug));
+    const draft = recordedBoard("draft", { dataStatus: "draft", affiliateUrl: "" });
+    const result = getRecommendation(demoInput, [draft, ...verified]);
+    expect(result.recommendedBoards.map((match) => match.product.slug)).toEqual(verified.map((board) => board.slug));
+    expect(result.avoidBoards.some((match) => match.product.slug === draft.slug)).toBe(false);
+  });
+
+  it("does not turn a physically admitted but below-threshold fit into a recommendation", () => {
+    const board = createProduct({ slug: "below-threshold", ridingStyle: "park", skillLevel: "advanced",
+      flex: 9, shapeType: "twin", dataStatus: "draft", sourceName: null, sourceUrl: null,
+      sourceCheckedAt: null, affiliateUrl: "https://example.com/alternative" }, { sizeCm: 150 });
+    const result = getRecommendation(baseInput, [board]);
+    expect(result.recommendedBoards).toEqual([]);
+    expect(result.avoidBoards).toHaveLength(1);
+    expect(result.avoidBoards[0].score).toBeGreaterThanOrEqual(40);
+    expect(result.avoidBoards[0].score).toBeLessThan(56);
+    expect(result.avoidBoards[0].size).toBe(board.sizes[0]);
+  });
+
+  it.each([
+    ["regular", 37, 240], ["mid-wide", 44, 257], ["wide", 46, 270],
+  ] as const)("uses only the recorded unmarked %s variant", (widthType, bootSizeEu, waistWidthMm) => {
+    const size = createSize({ sizeCm: 154, sizeLabel: `154-${widthType}`, waistWidthMm, widthType, isAvailable: false });
+    const board = recordedBoard(`recorded-${widthType}`, { sizes: [size,
+      createSize({ sizeCm: 86, waistWidthMm: 180, isAvailable: true })] });
+    const result = getRecommendation({ ...demoInput, bootSizeEu }, [board]);
+    expect(result.recommendedBoards[0]?.size).toBe(size);
+    expect(result.recommendedBoards[0]?.size.sizeLabel).toBe(size.sizeLabel);
+  });
+
+  it.each([
+    ["beginner", { skillLevel: "beginner" }],
+    ["freestyle", { ridingStyle: "park", terrainPriority: "switch-freestyle" }],
+    ["freeride", { ridingStyle: "freeride", terrainPriority: "soft-snow" }],
+    ["women", { boardLinePreference: "women", heightCm: 165, weightKg: 58, bootSizeEu: 38 }],
+    ["wide", { bootSizeEu: 46 }],
+  ] satisfies [string, Partial<QuizInput>][])("keeps a nonempty deterministic %s fixture independent of stock", (_name, patch) => {
+    const boards: Product[] = [];
+    for (const boardLine of ["men", "women", "unisex"] as const) {
+      for (const ridingStyle of ["all-mountain", "park", "freeride"] as const) {
+        for (const sizeCm of [144, 150, 154, 160]) {
+          boards.push(recordedBoard(`${boardLine}-${ridingStyle}-${sizeCm}`, { boardLine, ridingStyle,
+            flex: ridingStyle === "park" ? 4 : ridingStyle === "freeride" ? 7 : 5,
+            sizes: [createSize({ sizeCm, recommendedWeightMin: 40, recommendedWeightMax: 100,
+              waistWidthMm: sizeCm < 151 ? 245 : sizeCm < 158 ? 257 : 270,
+              widthType: sizeCm < 151 ? "regular" : sizeCm < 158 ? "mid-wide" : "wide" })] }));
+        }
+      }
+    }
+    const input = { ...demoInput, ...patch };
+    const result = getRecommendation(input, boards);
+    expect(result.recommendedBoards).toHaveLength(4);
+    expect(decision(getRecommendation(input, [...boards].reverse()))).toEqual(decision(result));
+    expect(decision(getRecommendation(input, boards.map((board) => ({ ...board,
+      sizes: board.sizes.map((size) => ({ ...size, isAvailable: false })) }))))).toEqual(decision(result));
   });
 });
 

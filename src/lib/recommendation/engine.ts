@@ -311,24 +311,24 @@ function getPreferredBoardStyles(input: QuizInput) {
   return ["freeride", "all-mountain"] satisfies Product["ridingStyle"][];
 }
 
-function getStyleFocusedBoards(boards: Product[], input: QuizInput) {
+type PhysicallyViableBoard = {
+  product: Product;
+  eligibleSizes: ProductSize[];
+};
+
+function getStyleFocusedBoards(boards: PhysicallyViableBoard[], input: QuizInput) {
   const preferredStyles = new Set(getPreferredBoardStyles(input));
   const focusedBoards = boards.filter((board) =>
-    preferredStyles.has(board.ridingStyle),
+    preferredStyles.has(board.product.ridingStyle),
   );
 
   return focusedBoards.length >= 3 ? focusedBoards : boards;
 }
 
-function getCandidateBoards(boards: Product[], input: QuizInput) {
+function getCandidateBoards(boards: PhysicallyViableBoard[], input: QuizInput) {
   const styleFocusedBoards = getStyleFocusedBoards(boards, input);
-  const catalogReadyBoards = styleFocusedBoards.filter(isReadyForCatalog);
-
-  if (catalogReadyBoards.length >= 3) {
-    return catalogReadyBoards;
-  }
-
-  const verifiedBoards = styleFocusedBoards.filter(isVerifiedProduct);
+  // Merchant readiness remains a scoring signal, never a population gate.
+  const verifiedBoards = styleFocusedBoards.filter((board) => isVerifiedProduct(board.product));
 
   if (verifiedBoards.length >= 3) {
     return verifiedBoards;
@@ -965,6 +965,22 @@ function isPhysicallyEligibleSize(
   return hardMismatchCount < 2;
 }
 
+function getPhysicallyViableBoards(
+  boards: Product[],
+  input: QuizInput,
+  lengthRange: { min: number; max: number },
+  targetWaistWidthMm: number,
+): PhysicallyViableBoard[] {
+  return boards.flatMap((product) => {
+    if (!product.isActive) return [];
+    // Keep original recorded variants; stock marks cannot establish physical fit.
+    const eligibleSizes = product.sizes.filter((size) =>
+      isPhysicallyEligibleSize(size, input, lengthRange, targetWaistWidthMm),
+    );
+    return eligibleSizes.length > 0 ? [{ product, eligibleSizes }] : [];
+  });
+}
+
 function getCriticalSizePenalty(
   size: ProductSize,
   input: QuizInput,
@@ -1326,28 +1342,14 @@ export function collapseRecommendationMatchesByFamily(
 }
 
 function getCandidates(
-  boards: Product[],
+  boards: PhysicallyViableBoard[],
   input: QuizInput,
   lengthRange: { min: number; max: number },
   targetWaistWidthMm: number,
   shapeProfile: ReturnType<typeof getRecommendationShapeProfile>,
   familyKeyByProductId: Readonly<Record<string, string>>,
 ) {
-  const bestPerBoard = boards.flatMap((product) => {
-    // Legacy stock marks have no observation clock. Fit uses the size geometry.
-    const eligibleSizes = product.sizes.filter((size) =>
-      isPhysicallyEligibleSize(
-        size,
-        input,
-        lengthRange,
-        targetWaistWidthMm,
-      ),
-    );
-
-    if (eligibleSizes.length === 0) {
-      return [];
-    }
-
+  const bestPerBoard = boards.flatMap(({ product, eligibleSizes }) => {
     const matches = eligibleSizes.map((size) =>
       scoreCandidate(
         product,
@@ -1825,8 +1827,6 @@ export function getRecommendation(
   boards: Product[] = [],
   identityContext: RecommendationIdentityContext = {},
 ): RecommendationResult {
-  const activeBoards = boards.filter((board) => board.isActive);
-  const candidateBoards = getCandidateBoards(activeBoards, input);
   const weightRange = getWeightLengthRange(input.weightKg);
   const heightAdjustment = getHeightAdjustment(input.heightCm);
   const styleAdjustment = getStyleAdjustment(input.ridingStyle);
@@ -1867,6 +1867,10 @@ export function getRecommendation(
     input.terrainPriority,
     input.stanceType,
   );
+  const viableBoards = getPhysicallyViableBoards(
+    boards, input, lengthRange, widthRecommendation.targetWaistWidthMm,
+  );
+  const candidateBoards = getCandidateBoards(viableBoards, input);
   const shapeProfile = getRecommendationShapeProfile(input);
   const bootDragRisk = getBootDragRisk(
     input.bootSizeEu,
