@@ -120,7 +120,7 @@ describe("public catalog cache", () => {
     expect(mocks.unstableCache).toHaveBeenCalledTimes(1);
     expect(mocks.unstableCache).toHaveBeenCalledWith(
       expect.any(Function),
-      ["edgefit-public-canonical-catalog-v6"],
+      ["edgefit-public-canonical-catalog-v7"],
       {
         revalidate: 300,
         tags: ["edgefit-public-canonical-catalog"],
@@ -217,5 +217,19 @@ describe("public catalog cache", () => {
       expect([...projected].sort(sorter).map((item) => item.slug))
         .toEqual([...input].sort(sorter).map((item) => item.slug));
     for (const item of input) expect(getCanonicalWidthSummary(toPublicCatalogItem(item))).toBe(getCanonicalWidthSummary(item));
+  });
+  it("projects deduplicated recorded variants independently of stock and uses the existing flex trust rule", () => {
+    const original = boards[0];
+    const size = original.sizes[0];
+    const projected = toPublicCatalogItem({ ...original,
+      sizes: [size, { ...size, isAvailable: false }, { ...size, widthType: "regular" }, { ...size, offerIsActive: false, sizeCm: 170 }],
+      canonicalSpecs: { ...original.canonicalSpecs, flex: 7, dataStatus: "draft" } });
+    expect(projected.recordedVariants).toEqual([
+      { sizeCm: size.sizeCm, displaySizeLabel: size.displaySizeLabel, widthType: size.widthType },
+      { sizeCm: size.sizeCm, displaySizeLabel: size.displaySizeLabel, widthType: "regular" },
+    ]);
+    expect(projected.flexPresentation).toBeNull();
+    expect(toPublicCatalogItem({ ...original, canonicalSpecs: { ...original.canonicalSpecs, flex: 7, dataStatus: "verified", canonicalSourceKind: "manual" } }).flexPresentation).toBe("7 из 10");
+    expect(projected.purchaseAvailability?.status).toBe("unknown");
   });
 });

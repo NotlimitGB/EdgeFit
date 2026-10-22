@@ -31,7 +31,7 @@ describe("public catalog page data source", () => {
     mocks.connection.mockReturnValue(new Promise<void>((resolve) => { release = resolve; }));
     const boards = [{ slug: "runtime-board" }];
     mocks.getPublicCanonicalCatalogItems.mockResolvedValue(boards);
-    const pending = CatalogPage();
+    const pending = CatalogPage({});
     expect(mocks.getPublicCanonicalCatalogItems).not.toHaveBeenCalled();
     release();
 
@@ -39,7 +39,7 @@ describe("public catalog page data source", () => {
     const markup = renderToStaticMarkup(page);
 
     expect(mocks.connection).toHaveBeenCalledTimes(1);
-    expect(page.props.children[1].props.children[1].props.boards).toBe(boards);
+    expect(page.props.children.props.children[1].props.boards).toBe(boards);
     expect(mocks.getPublicCanonicalCatalogItems).toHaveBeenCalledTimes(1);
     expect(mocks.getAllCanonicalCatalogItems).not.toHaveBeenCalled();
     expect(markup).toContain('data-catalog-board-count="1"');

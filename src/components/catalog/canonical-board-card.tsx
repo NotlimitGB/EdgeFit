@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { memo, useState } from "react";
 import { TrackedStoreLink } from "@/components/analytics/tracked-store-link";
-import boardCardStyles from "@/components/boards/board-card.module.css";
-import publicStyles from "@/components/public/public-ui.module.css";
+import boardCardStyles from "./catalog-card.module.css";
 import {
   boardShapeLabels,
   camberProfileLabels,
@@ -14,8 +13,6 @@ import { buildStoreRedirectHref } from "@/lib/store-redirect";
 import type { PublicCatalogItem as CanonicalCatalogItem } from "@/lib/public-catalog-dto";
 import { useCatalogIntentPrefetch } from "./catalog-prefetch";
 import {
-  getCanonicalAvailabilityHeadline,
-  getCanonicalAvailabilityPreview,
   getCanonicalPricePresentation,
   getCanonicalWidthSummary,
 } from "./canonical-catalog-ui";
@@ -46,11 +43,13 @@ export const CanonicalBoardCard = memo(function CanonicalBoardCard({
   const activeImageUrl = imageCandidates.find(
     (imageUrl) => !failedImageUrls.includes(imageUrl),
   );
+  function markImageFailed(imageUrl: string) {
+    setFailedImageUrls((current) => current.includes(imageUrl) ? current : [...current, imageUrl]);
+  }
   const modelHref = `/boards/${board.slug}`;
   const intentPrefetch = useCatalogIntentPrefetch(modelHref);
-  const availabilityHeadline = getCanonicalAvailabilityHeadline(board);
-  const availabilityPreview = getCanonicalAvailabilityPreview(board);
   const price = getCanonicalPricePresentation(board.priceFrom);
+  const sizeLabels = [...new Set((board.recordedVariants ?? []).map((v) => v.displaySizeLabel))];
   const technicalFacts = [
     {
       label: "Стиль",
@@ -70,6 +69,7 @@ export const CanonicalBoardCard = memo(function CanonicalBoardCard({
         ? camberProfileLabels[board.canonicalSpecs.camberProfile]
         : "уточняется",
     },
+    { label: "Жёсткость", value: board.flexPresentation ?? "уточняется" },
   ];
   const shopHref = board.defaultOfferSlug
     ? buildStoreRedirectHref(board.defaultOfferSlug, {
@@ -94,25 +94,22 @@ export const CanonicalBoardCard = memo(function CanonicalBoardCard({
             // eslint-disable-next-line @next/next/no-img-element
             <img
               key={activeImageUrl}
+              ref={(image) => {
+                // An SSR image may fail before hydration attaches onError.
+                if (image?.complete && image.naturalWidth === 0) markImageFailed(activeImageUrl);
+              }}
               src={activeImageUrl}
-              alt={`${board.brand} ${board.modelName}`}
+              alt={`${board.brand} ${board.modelName}${board.seasonLabel ? ` · ${board.seasonLabel}` : ""}`}
               loading="lazy"
               decoding="async"
-              onError={() => {
-                setFailedImageUrls((current) =>
-                  current.includes(activeImageUrl)
-                    ? current
-                    : [...current, activeImageUrl],
-                );
-              }}
+              onError={() => markImageFailed(activeImageUrl)}
               className={boardCardStyles.productImage}
             />
           ) : (
             <div className={boardCardStyles.imageFallback}>
               <span className={boardCardStyles.fallbackBoard} aria-hidden="true" />
               <span>
-                <small>{board.brand}</small>
-                Фото пока не подготовлено
+                Фото модели пока нет
               </span>
             </div>
           )}
@@ -138,8 +135,6 @@ export const CanonicalBoardCard = memo(function CanonicalBoardCard({
           </div>
         </div>
 
-        <p className={boardCardStyles.description}>{board.canonicalSpecs.descriptionShort}</p>
-
         <dl className={boardCardStyles.technicalFacts}>
           {technicalFacts.map((fact) => (
             <div key={fact.label}>
@@ -150,15 +145,14 @@ export const CanonicalBoardCard = memo(function CanonicalBoardCard({
         </dl>
 
         <div className={boardCardStyles.commercialInfo}>
-          <div className={boardCardStyles.availability}>
-            <p className={publicStyles.microLabel}>Данные о доступности</p>
-            <strong>{availabilityHeadline}</strong>
-            <span>{availabilityPreview}</span>
+          <div className={boardCardStyles.availability}><p>Ростовки по данным каталога</p>
+            <span>{sizeLabels.length ? `${sizeLabels.slice(0, 4).join(" · ")}${sizeLabels.length > 4 ? ` +${sizeLabels.length - 4}` : ""}` : "Не указаны"}</span>
           </div>
           <div className={boardCardStyles.price}>
-            <p className={publicStyles.microLabel}>{price.label}</p>
-            <strong>{price.value}</strong>
+            <p>{price.label}</p>
+            <strong>{board.priceFrom != null && Number.isFinite(board.priceFrom) && board.priceFrom > 0 ? price.value : "Цена не указана"}</strong>
           </div>
+          <p className={boardCardStyles.stockNote}>Текущее наличие не подтверждено</p>
         </div>
 
         <div className={boardCardStyles.actions}>
@@ -166,7 +160,7 @@ export const CanonicalBoardCard = memo(function CanonicalBoardCard({
             href={modelHref}
             prefetch={false}
             {...intentPrefetch}
-            className={`${publicStyles.secondaryAction} ${boardCardStyles.cardAction} ${
+            className={`${boardCardStyles.modelAction} ${boardCardStyles.cardAction} ${
               shopHref ? "" : catalogStyles.singleCardAction
             }`}
           >
@@ -179,7 +173,7 @@ export const CanonicalBoardCard = memo(function CanonicalBoardCard({
                 board_slug: board.slug,
                 placement: storePlacement,
               }}
-              className={`${publicStyles.primaryAction} ${boardCardStyles.cardAction}`}
+              className={`${boardCardStyles.storeAction} ${boardCardStyles.cardAction}`}
             >
               Проверить в магазине
             </TrackedStoreLink>

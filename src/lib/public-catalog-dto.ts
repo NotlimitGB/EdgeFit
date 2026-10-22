@@ -4,6 +4,7 @@ import { compareCanonicalFeatured, compareCanonicalPriceAsc, compareCanonicalPri
   normalizeCatalogSearch } from "@/components/catalog/canonical-catalog-ui";
 import type { WidthType } from "@/types/domain";
 import { legacyPurchaseAvailability, type PurchaseAvailability } from "@/lib/purchase-availability";
+import { getCanonicalFlexPresentation } from "@/lib/canonical-board-detail";
 
 /** Presentation-only projection. Canonical truth remains on the server. */
 export type PublicCatalogSize = Pick<CanonicalSizeVariant,
@@ -20,6 +21,8 @@ export interface PublicCatalogItem extends Pick<CanonicalCatalogItem,
   widthTypes: WidthType[];
   sortRanks?: { featured: number; priceAsc: number; priceDesc: number };
   purchaseAvailability?: PurchaseAvailability;
+  recordedVariants?: { sizeCm: number; displaySizeLabel: string; widthType: WidthType }[];
+  flexPresentation?: string | null;
 }
 
 // Single-card projection; catalog ordering must use the bulk ranked projection below.
@@ -39,6 +42,13 @@ export function toPublicCatalogItem(board: CanonicalCatalogItem): PublicCatalogI
     availabilityPreview: getCanonicalAvailabilityPreview(board),
     widthTypes: getCanonicalWidthTypes(board),
     purchaseAvailability: legacyPurchaseAvailability(),
+    recordedVariants: [...new Map(board.sizes.filter((size) => size.offerIsActive)
+      .map(({ sizeCm, displaySizeLabel, widthType }) => {
+        const variant = { sizeCm, displaySizeLabel, widthType };
+        return [JSON.stringify(variant), variant] as const;
+      })).values()],
+    flexPresentation: getCanonicalFlexPresentation(board.canonicalSpecs).value === "Уточняется"
+      ? null : getCanonicalFlexPresentation(board.canonicalSpecs).value,
   };
 }
 

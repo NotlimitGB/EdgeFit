@@ -74,7 +74,22 @@ it("preserves every normalized image fallback, lazy decoding and the final place
     expect(image.getAttribute("loading")).toBe("lazy"); expect(image.getAttribute("decoding")).toBe("async");
     fireEvent.error(image);
   }
-  expect(screen.queryByRole("img")).toBeNull(); expect(screen.getByText("Фото пока не подготовлено")).toBeTruthy();
+  expect(screen.queryByRole("img")).toBeNull(); expect(screen.getByText("Фото модели пока нет")).toBeTruthy();
+});
+
+it("handles already-failed SSR images at hydration without waiting for another error event", () => {
+  vi.spyOn(HTMLImageElement.prototype, "complete", "get").mockReturnValue(true);
+  vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockImplementation(function (this: HTMLImageElement) {
+    return this.getAttribute("src") === "/valid.svg" ? 100 : 0;
+  });
+  const original = fixture(1); original.media = ["/failed-before-hydration.svg", "/valid.svg"];
+  const view = render(<CanonicalBoardCard board={toPublicCatalogItems([original])[0]} />);
+  expect(screen.getByRole("img").getAttribute("src")).toBe("/valid.svg");
+  view.unmount();
+  original.media = ["/already-failed-one.svg", "/already-failed-two.svg"];
+  render(<CanonicalBoardCard board={toPublicCatalogItems([original])[0]} />);
+  expect(screen.queryByRole("img")).toBeNull();
+  expect(screen.getByText("Фото модели пока нет")).toBeTruthy();
 });
 
 it("uses factual fallback and preserves safe description and source-search normalization", () => {

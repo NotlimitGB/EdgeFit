@@ -1,0 +1,34 @@
+.catalogCard { min-width:0; display:flex; flex-direction:column; border:1px solid #d9dfd9; border-radius:8px; background:#fff; overflow:hidden; }
+.imageLink { display:block; text-decoration:none; }
+.imageStage { position:relative; aspect-ratio:8/5; background:#eef0eb; padding:16px; display:grid; place-items:center; overflow:hidden; }
+.imageGrid { display:none; }
+.productImage { width:100%; height:100%; object-fit:contain; position:absolute; inset:0; padding:16px; }
+.imageFallback { display:flex; align-items:center; justify-content:center; gap:20px; width:100%; color:#687369; }
+.fallbackBoard { display:block; height:96px; width:24px; border:1.5px solid #a5b1a6; border-radius:48% 48% 45% 45% / 15% 15% 15% 15%; transform:rotate(19deg); background:transparent; flex-shrink:0; }
+.imageFallback > span:last-child { max-width:110px; font-size:12px; line-height:1.5; }
+.cardBody { display:flex; flex-direction:column; flex:1; min-width:0; padding:18px 16px 16px; }
+.identityRow { display:flex; flex-direction:column; gap:12px; margin-bottom:16px; }
+.identity p { font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#606961; margin:0 0 5px; }
+.identity h3 { font-size:21px; font-weight:650; letter-spacing:-.035em; line-height:1.2; margin:0 0 6px; overflow-wrap:anywhere; }
+.identity h3 a { text-decoration:none; color:#202622; }
+.identity h3 a:hover { text-decoration:underline; text-underline-offset:4px; }
+.identity > span { font-size:12px; color:#606961; }
+.tags { display:flex; flex-wrap:wrap; gap:6px; }
+.tags span { font-size:10px; background:#f0f2ed; border-radius:3px; padding:3px 6px; color:#505b52; }
+.technicalFacts { display:grid; gap:8px; margin:0 0 16px; padding-bottom:16px; border-bottom:1px solid #e3e7e0; }
+.technicalFacts > div { display:flex; justify-content:space-between; gap:10px; align-items:baseline; font-size:12px; }
+.technicalFacts dt { color:#606961; }
+.technicalFacts dd { margin:0; text-align:right; font-weight:500; }
+.commercialInfo { margin-top:auto; }
+.availability p,.price p { color:#606961; font-size:11px; margin:0 0 6px; }
+.availability { margin-bottom:16px; }
+.availability > span { font-size:13px; }
+.price strong { font-size:22px; line-height:1.2; font-weight:650; letter-spacing:-.035em; }
+.stockNote { font-size:11px; line-height:1.5; color:#606961; margin:10px 0 0; }
+.actions { display:grid; gap:8px; margin-top:18px; }
+.cardAction { display:flex; justify-content:center; align-items:center; min-height:44px; border-radius:4px; padding:10px 8px; font-size:12px; font-weight:600; text-decoration:none; text-align:center; }
+.modelAction { color:white; background:#ad3e13; border:1px solid #ad3e13; }
+.modelAction:hover { background:#8d3010; }
+.storeAction { color:#354237; border:1px solid #b8c3b9; background:white; }
+.storeAction:hover { background:#f0f2ed; }
+@media(min-width:600px) and (max-width:1179px) { .cardBody { padding:20px; } }

@@ -7,7 +7,7 @@ import type {
   WidthType,
 } from "@/types/domain";
 
-export type CatalogSort = "default" | "price-asc" | "price-desc";
+export type CatalogSort = "default" | "price-asc" | "price-desc" | "season-desc";
 
 export interface CatalogUrlState {
   q: string;
@@ -17,6 +17,9 @@ export interface CatalogUrlState {
   shapes: readonly BoardShape[];
   lines: readonly Product["boardLine"][];
   widths: readonly WidthType[];
+  seasons?: readonly string[];
+  cambers?: readonly string[];
+  sizes?: readonly string[];
   sort: CatalogSort;
 }
 
@@ -40,6 +43,7 @@ const CATALOG_PARAM_NAMES = [
   "line",
   "width",
   "sort",
+  "season", "camber", "size",
 ] as const;
 
 export const CATALOG_RIDING_STYLES = [
@@ -61,7 +65,7 @@ export const CATALOG_BOARD_SHAPES = [
 ] as const;
 export const CATALOG_BOARD_LINES = ["men", "women", "unisex"] as const;
 export const CATALOG_WIDTH_TYPES = ["regular", "mid-wide", "wide"] as const;
-const SORTS = ["price-asc", "price-desc"] as const;
+const SORTS = ["price-asc", "price-desc", "season-desc"] as const;
 
 function includesValue<T extends string>(
   allowedValues: readonly T[],
@@ -97,6 +101,7 @@ export function toggleCatalogValue<T extends string>(
 export function parseCatalogState(
   searchParams: URLSearchParams,
   allowedBrands: readonly string[],
+  facets?: { seasons: readonly string[]; cambers: readonly string[]; sizes: readonly string[] },
 ): CatalogUrlState {
   const q = searchParams.get("q")?.trim() ?? "";
   const sortParam = searchParams.get("sort");
@@ -128,6 +133,11 @@ export function parseCatalogState(
       CATALOG_WIDTH_TYPES,
     ),
     sort: includesValue(SORTS, sortParam) ? sortParam : "default",
+    ...(facets ? {
+      seasons: normalizeSelectedValues(searchParams.getAll("season"), facets.seasons),
+      cambers: normalizeSelectedValues(searchParams.getAll("camber"), facets.cambers),
+      sizes: normalizeSelectedValues(searchParams.getAll("size"), facets.sizes),
+    } : {}),
   };
 }
 
@@ -178,6 +188,9 @@ export function buildCatalogSearchParams(
     nextSearchParams.append("width", width);
   }
   if (state.sort !== "default") nextSearchParams.set("sort", state.sort);
+  for (const [key, values] of [["season", state.seasons], ["camber", state.cambers], ["size", state.sizes]] as const) {
+    for (const value of [...new Set(values ?? [])].sort()) nextSearchParams.append(key, value);
+  }
 
   return nextSearchParams;
 }
