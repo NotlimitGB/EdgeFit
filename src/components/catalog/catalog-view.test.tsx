@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -38,6 +39,8 @@ vi.mock("@/components/catalog/canonical-board-card", () => ({
 }));
 
 import { CatalogView } from "./catalog-view";
+import { getCatalogStateKey, parseCatalogState } from "./catalog-state";
+import { catalogFacets } from "./catalog-selection";
 
 interface BoardFixtureOptions {
   slug: string;
@@ -164,6 +167,23 @@ function renderCatalog(search = "", input = boards) {
   return render(<CatalogView boards={input} initialSearch={search} />);
 }
 function facet(label: string) { fireEvent.click(screen.getByRole("checkbox", { name: label })); }
+const storageKey = "edgefit:catalog-visible-count:v2";
+function restorationCorpus(count: number) {
+  return Array.from({ length: count }, (_, i) => ({ ...boards[0],
+    slug: `returning-${String(i).padStart(3, "0")}`,
+    modelName: `Returning ${String(i).padStart(3, "0")}`,
+    searchText: `alpha returning ${String(i).padStart(3, "0")}`,
+    priceFrom: i + 1,
+  }));
+}
+function identities() {
+  return Array.from(document.querySelectorAll("article"), (node) => node.getAttribute("data-testid")?.slice("board-".length));
+}
+function saveExpansion(input: typeof boards, count: unknown, search = "") {
+  const facets = catalogFacets(input);
+  const stateKey = getCatalogStateKey(parseCatalogState(new URLSearchParams(search), facets.brands, facets));
+  sessionStorage.setItem(storageKey, JSON.stringify({ stateKey, visibleCount: count }));
+}
 
 describe("catalog applied state and local interactions", () => {
   it("server-renders 24 of 558 and applies URL filters before hydration", () => {
@@ -244,5 +264,82 @@ describe("catalog applied state and local interactions", () => {
     fireEvent.change(screen.getByLabelText("Поиск по каталогу"), { target: { value: "absent" } });
     expect(screen.getByText("По этим условиям моделей не найдено")).toBeTruthy();
     view.unmount(); renderCatalog("", []); expect(screen.getByText("В каталоге пока нет моделей")).toBeTruthy();
+  });
+  it.each([60, 558])("restores the complete final partial batch of %i identities after remount", async (total) => {
+    const corpus = restorationCorpus(total);
+    const view = renderCatalog("", corpus);
+    await waitFor(() => expect(identities()).toHaveLength(24));
+    for (let visible = 24; visible < total; visible += 24) {
+      fireEvent.click(screen.getByRole("button", { name: `Показать ещё ${Math.min(24, total - visible)}` }));
+    }
+    const expected = corpus.map((board) => board.slug);
+    expect(identities()).toEqual(expected);
+    expect(JSON.parse(sessionStorage.getItem(storageKey)!).visibleCount).toBe(total);
+    view.unmount(); renderCatalog("", corpus);
+    await waitFor(() => expect(identities()).toEqual(expected));
+    expect(identities().at(-1)).toBe(corpus.at(-1)!.slug);
+    expect(new Set(identities()).size).toBe(total);
+    expect(JSON.parse(sessionStorage.getItem(storageKey)!).visibleCount).toBe(total);
+  });
+  it.each([24, 25, 48, 49, 60, 73])("restores saved integer %i without batch rounding", async (count) => {
+    const corpus = restorationCorpus(96);
+    saveExpansion(corpus, count);
+    renderCatalog("", corpus);
+    expect(identities()).toEqual(corpus.slice(0, 24).map((board) => board.slug));
+    await waitFor(() => expect(identities()).toEqual(corpus.slice(0, count).map((board) => board.slug)));
+    expect(JSON.parse(sessionStorage.getItem(storageKey)!).visibleCount).toBe(count);
+  });
+  it.each([null, "60", "invalid", 24.5, -24, 0, 23, Number.MAX_SAFE_INTEGER + 1])("ignores invalid saved count %s", async (count) => {
+    const corpus = restorationCorpus(60);
+    saveExpansion(corpus, count);
+    renderCatalog("", corpus);
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+    await waitFor(() => expect(identities()).toHaveLength(24));
+    await waitFor(() => expect(screen.getByText("Показано 24 из 60")).toBeTruthy());
+  });
+  it.each(["missing", "broken-json", "wrong-key", "read-failure"])("fails open for %s storage", async (mode) => {
+    const corpus = restorationCorpus(60);
+    if (mode === "broken-json") sessionStorage.setItem(storageKey, "{broken");
+    if (mode === "wrong-key") sessionStorage.setItem(storageKey, JSON.stringify({ stateKey: "other", visibleCount: 60 }));
+    if (mode === "read-failure") vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("blocked"); });
+    renderCatalog("", corpus);
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+    await waitFor(() => expect(identities()).toEqual(corpus.slice(0, 24).map((board) => board.slug)));
+  });
+  it.each([0, 13, 49, 60])("clamps a large valid count to %i current results without phantom cards", async (total) => {
+    const corpus = restorationCorpus(total);
+    saveExpansion(corpus, Number.MAX_SAFE_INTEGER);
+    renderCatalog("", corpus);
+    await waitFor(() => expect(identities()).toEqual(corpus.map((board) => board.slug)));
+    if (!total) expect(screen.getByText("В каталоге пока нет моделей")).toBeTruthy();
+  });
+  it.each(["q=returning", "brand=Alpha", "brand=Alpha&line=men&q=returning&sort=price-desc"])("restores only matching identities for %s and preserves URL state on Back", async (search) => {
+    const matching = restorationCorpus(60);
+    const excluded = boards[1];
+    const corpus = [...matching, excluded];
+    const expected = (search.includes("price-desc") ? [...matching].reverse() : matching).map((board) => board.slug);
+    saveExpansion(corpus, 73, search);
+    const view = renderCatalog(search, corpus);
+    await waitFor(() => expect(identities()).toEqual(expected));
+    expect(identities()).not.toContain(excluded.slug);
+    view.unmount(); renderCatalog(search, corpus);
+    await waitFor(() => expect(identities()).toEqual(expected));
+    expect(location.search).toBe(`?${search}`);
+    window.history.pushState(null, "", "/catalog?line=women");
+    fireEvent(window, new PopStateEvent("popstate"));
+    await waitFor(() => expect(identities()).toEqual([excluded.slug]));
+    window.history.replaceState(null, "", `/catalog?${search}`);
+    fireEvent(window, new PopStateEvent("popstate"));
+    await waitFor(() => expect(identities()).toEqual(expected));
+    expect(location.search).toBe(`?${search}`);
+  });
+  it("resets expansion when filters change instead of restoring another state's count", async () => {
+    const corpus = restorationCorpus(60);
+    saveExpansion(corpus, 60);
+    renderCatalog("", corpus);
+    await waitFor(() => expect(identities()).toHaveLength(60));
+    fireEvent.change(screen.getByLabelText("Поиск по каталогу"), { target: { value: "Returning" } });
+    await waitFor(() => expect(identities()).toHaveLength(24));
+    expect(JSON.parse(sessionStorage.getItem(storageKey)!).visibleCount).toBe(24);
   });
 });

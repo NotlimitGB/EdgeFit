@@ -22,8 +22,8 @@ interface Props { boards: PublicCatalogItem[]; initialSearch?: string }
 function restoredCount(key: string, total: number) {
   try {
     const stored = JSON.parse(sessionStorage.getItem(STORAGE_KEY) ?? "null");
-    if (stored?.stateKey === key && Number.isInteger(stored.visibleCount) && stored.visibleCount >= PAGE_SIZE)
-      return Math.min(Math.floor(stored.visibleCount / PAGE_SIZE) * PAGE_SIZE, Math.max(PAGE_SIZE, total));
+    if (stored?.stateKey === key && Number.isSafeInteger(stored.visibleCount) && stored.visibleCount >= PAGE_SIZE)
+      return Math.min(stored.visibleCount, total);
   } catch { /* Storage is optional. */ }
   return PAGE_SIZE;
 }
