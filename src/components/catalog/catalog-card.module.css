@@ -3,7 +3,7 @@
 .imageStage { position:relative; aspect-ratio:8/5; background:#eef0eb; padding:16px; display:grid; place-items:center; overflow:hidden; }
 .imageGrid { display:none; }
 .productImage { width:100%; height:100%; object-fit:contain; position:absolute; inset:0; padding:16px; }
-.imageFallback { display:flex; align-items:center; justify-content:center; gap:20px; width:100%; color:#687369; }
+.imageFallback { display:flex; align-items:center; justify-content:center; gap:20px; width:100%; color:#606961; }
 .fallbackBoard { display:block; height:96px; width:24px; border:1.5px solid #a5b1a6; border-radius:48% 48% 45% 45% / 15% 15% 15% 15%; transform:rotate(19deg); background:transparent; flex-shrink:0; }
 .imageFallback > span:last-child { max-width:110px; font-size:12px; line-height:1.5; }
 .cardBody { display:flex; flex-direction:column; flex:1; min-width:0; padding:18px 16px 16px; }
