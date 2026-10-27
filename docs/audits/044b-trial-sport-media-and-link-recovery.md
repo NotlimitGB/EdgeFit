@@ -23,6 +23,12 @@
 - The public page labels the price as saved and describes four sizes as previously marked. Those are historical records and are not evidence of live stock.
 - The merchant CTA was inspected but not followed. The `/go` route performs product lookup and may persist click analytics when a session cookie is present; following it in the production browser would exceed this read-only page inspection. The saved merchant URL, its current validity, and the failure cause remain unknown.
 
+## Official Rome source and image-rights check
+
+- On 2026-10-27, the official Rome Snowboards product page identified the Boneless as a 2025/2026 product and exposed a seven-image product gallery: [Rome Boneless 2025/2026](https://romesnowboards.com/products/rome-boneless-2526-unisex-snowboard). This proves that Rome's public product page currently presents product imagery; it does not identify the image URL previously stored in SnowDex, establish that Trial-Sport used the same asset, or grant SnowDex a right to reuse it.
+- I checked the official [Rome Snowboards Terms & Conditions](https://romesnowboards.com/pages/terms-conditions) for image reuse, copyright, and intellectual-property permission. The inspected page did not contain an explicit image-use grant. This is not evidence that permission is impossible or denied; image rights remain **UNKNOWN** until Rome or the relevant rights holder confirms them.
+- No image was downloaded, copied, rehosted, or added. No request was made to Trial-Sport, and no merchant CTA was followed.
+
 ## Local correction
 
 - BoardGallery now detects already-completed failed images during ref attachment, removes failed URLs from the gallery, and uses an honest failed-image message when all configured images fail. If the opened viewer loses its last image, it closes, restores page scrolling, and moves focus to the fallback message because the original trigger no longer exists.
