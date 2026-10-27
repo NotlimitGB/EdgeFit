@@ -106,6 +106,24 @@ describe("saved-result store redirect privacy", () => {
   });
 });
 
+describe("missing outbound product recovery", () => {
+  it("returns an honest noindex 404 instead of redirecting to the catalog", async () => {
+    mocks.productLookup.mockResolvedValueOnce(null);
+
+    const response = await GET(
+      new Request("https://edge-fit.test/go/retired-product"),
+      { params: Promise.resolve({ slug: "retired-product" }) },
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("x-robots-tag")).toBe("noindex");
+    expect(await response.text()).toContain('href="/catalog"');
+    expect(mocks.saveAnalyticsEvent).not.toHaveBeenCalled();
+  });
+});
+
 describe("store click provenance", () => {
   beforeEach(() => {
     vi.clearAllMocks();

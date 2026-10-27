@@ -59,6 +59,11 @@ describe("store redirect helpers", () => {
 
   it.each([
     ["https://example-store.test/board"],
+    ["http://trial-sport.ru/goods/1.html"],
+    ["https://user:password@trial-sport.ru/goods/1.html"],
+    ["https://trial-sport.ru:8443/goods/1.html"],
+    ["https://trial-sport.ru.example.test/goods/1.html"],
+    ["https://trial-sport.ru@evil.example/goods/1.html"],
     ["not-a-url"],
     [""],
     [null],
@@ -90,6 +95,20 @@ describe("store redirect helpers", () => {
     expect(buildTrialSportSearchUrl("Jones Mountain Twin")).toBe(
       "https://trial-sport.ru/search/?q=Jones+Mountain+Twin",
     );
+  });
+
+  it.each([
+    "http://trial-sport.ru/goods/1.html",
+    "https://user:password@trial-sport.ru/goods/1.html",
+    "https://trial-sport.ru:8443/goods/1.html",
+  ])("does not redirect to an insecure or ambiguous destination: %s", (affiliateUrl) => {
+    expect(
+      resolveProductStoreUrl({
+        affiliateUrl,
+        brand: "Jones",
+        modelName: "Mountain Twin",
+      }),
+    ).toBe("https://trial-sport.ru/search/?q=Jones+Mountain+Twin");
   });
 
   it.each([

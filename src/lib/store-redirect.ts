@@ -78,8 +78,21 @@ function getSupportedStoreDestination(value?: string | null) {
     return null;
   }
 
-  const hostname = getHostname(normalizedValue);
-  return hostname ? SUPPORTED_STORE_DESTINATIONS[hostname] ?? null : null;
+  try {
+    const url = new URL(normalizedValue);
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      url.port
+    ) {
+      return null;
+    }
+
+    return SUPPORTED_STORE_DESTINATIONS[url.hostname.toLowerCase()] ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function normalizeStoreSearchQuery(value: string) {

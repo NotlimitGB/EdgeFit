@@ -37,6 +37,7 @@ export function BoardGallery({
   const [failedImages, setFailedImages] = useState<string[]>([]);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
   const viewerRef = useRef<HTMLDivElement>(null);
+  const focusFallbackOnErrorRef = useRef(false);
   const closeRef = useRef<HTMLButtonElement>(null);
 
   const availableImages = images.filter((image) => !failedImages.includes(image));
@@ -46,9 +47,25 @@ export function BoardGallery({
       : availableImages[0] ?? null;
 
   function handleImageError(imageUrl: string) {
+    if (
+      isViewerOpen &&
+      availableImages.length === 1 &&
+      availableImages[0] === imageUrl
+    ) {
+      focusFallbackOnErrorRef.current = true;
+      setIsViewerOpen(false);
+    }
+
     setFailedImages((current) =>
       current.includes(imageUrl) ? current : [...current, imageUrl],
     );
+  }
+
+  function handleImageRef(image: HTMLImageElement | null, imageUrl: string) {
+    // An SSR image can fail before hydration attaches its onError handler.
+    if (image?.complete && image.naturalWidth === 0) {
+      handleImageError(imageUrl);
+    }
   }
 
   function selectImage(imageUrl: string) {
@@ -86,7 +103,9 @@ export function BoardGallery({
     closeRef.current?.focus();
     return () => {
       document.body.style.overflow = previousOverflow;
-      if (previousFocus instanceof HTMLElement) previousFocus.focus();
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
+        previousFocus.focus();
+      }
     };
   }, [isViewerOpen]);
 
@@ -146,10 +165,23 @@ export function BoardGallery({
     return (
       <div className={`${styles.galleryFrame} ${styles.fallbackFrame}`}>
         <div className={styles.fallbackGrid} aria-hidden="true" />
-        <div className={styles.fallbackIdentity}>
+        <div
+          ref={(element) => {
+            if (element && focusFallbackOnErrorRef.current) {
+              focusFallbackOnErrorRef.current = false;
+              element.focus();
+            }
+          }}
+          className={styles.fallbackIdentity}
+          tabIndex={-1}
+        >
           <p>{brand}</p>
           <p className={styles.fallbackModel}>{modelName}</p>
-          <span>Фото пока не подготовлены</span>
+          <span>
+            {images.length > 0
+              ? "Фото модели не удалось загрузить"
+              : "Фото пока не подготовлены"}
+          </span>
           <p>
             Размерная сетка и характеристики модели остаются доступны ниже.
           </p>
@@ -175,6 +207,7 @@ export function BoardGallery({
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               key={activeImage}
+              ref={(image) => handleImageRef(image, activeImage)}
               src={activeImage}
               alt={`${brand} ${modelName}`}
               loading="eager"
@@ -211,6 +244,7 @@ export function BoardGallery({
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
+                    ref={(element) => handleImageRef(element, image)}
                     src={image}
                     alt=""
                     loading="lazy"
@@ -278,6 +312,7 @@ export function BoardGallery({
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   key={`${activeImage}-viewer`}
+                  ref={(image) => handleImageRef(image, activeImage)}
                   src={activeImage}
                   alt={`${brand} ${modelName}`}
                   className={styles.viewerImage}
@@ -302,6 +337,7 @@ export function BoardGallery({
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
+                        ref={(element) => handleImageRef(element, image)}
                         src={image}
                         alt=""
                         loading="lazy"

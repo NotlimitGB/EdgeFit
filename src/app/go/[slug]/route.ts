@@ -31,9 +31,18 @@ const outboundClickQuerySchema = z.object({
   budgetMaxRub: z.coerce.number().int().min(1).max(1_000_000).optional(),
 });
 
-function getFallbackRedirectUrl(request: Request) {
-  const url = new URL(request.url);
-  return new URL("/catalog", url.origin);
+function getMissingProductResponse() {
+  return new Response(
+    '<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="robots" content="noindex"><title>Модель не найдена</title></head><body><main><h1>Не удалось найти эту модель</h1><p>Ссылка могла устареть. Открой каталог, чтобы выбрать другую модель.</p><a href="/catalog">Перейти в каталог</a></main></body></html>',
+    {
+      status: 404,
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+        "X-Robots-Tag": "noindex",
+      },
+    },
+  );
 }
 
 async function getPagePathFromRequest(from?: string) {
@@ -71,11 +80,11 @@ async function handleGet(request: Request, params: Promise<{ slug: string }>, si
   const { slug } = await params;
   const product = await withDbDiagnosticStage("product_lookup", () => runPublicDbWork("critical", 8_000, () => getProductBySlug(slug)));
   signal.throwIfAborted();
-  const destinationUrl = product ? resolveProductStoreUrl(product) : null;
-
-  if (!product || !destinationUrl) {
-    return NextResponse.redirect(getFallbackRedirectUrl(request));
+  if (!product) {
+    return getMissingProductResponse();
   }
+
+  const destinationUrl = resolveProductStoreUrl(product);
 
   const searchParams = Object.fromEntries(new URL(request.url).searchParams.entries());
   const payload = outboundClickQuerySchema.safeParse(searchParams);

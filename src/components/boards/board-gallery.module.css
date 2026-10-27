@@ -130,6 +130,11 @@
   max-width: 30rem;
 }
 
+.fallbackIdentity:focus {
+  outline: 3px solid var(--ef-focus);
+  outline-offset: 4px;
+}
+
 .fallbackIdentity p,
 .fallbackIdentity span {
   margin: 0;
