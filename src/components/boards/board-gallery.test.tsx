@@ -76,6 +76,28 @@ describe("board gallery keyboard presentation", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
+  it("updates the photo counter as failed candidates are removed", () => {
+    render(
+      <BoardGallery
+        brand="Rome"
+        modelName="BONELESS"
+        primaryImage="/failed-primary.jpg"
+        galleryImages={["/failed-secondary.jpg"]}
+      />,
+    );
+
+    expect(screen.getByText("Фото 1 из 2")).toBeTruthy();
+    fireEvent.error(screen.getByRole("img", { name: "Rome BONELESS" }));
+
+    const activeImage = screen.getByRole("img", { name: "Rome BONELESS" });
+    expect(activeImage.getAttribute("src")).toBe("/failed-secondary.jpg");
+    expect(screen.getByText("Фото модели")).toBeTruthy();
+
+    fireEvent.error(activeImage);
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(screen.getByText("Фото модели не удалось загрузить")).toBeTruthy();
+  });
+
   it("recovers an image that failed before hydration", async () => {
     const failedUrls = new Set(["/failed-before-hydration.jpg"]);
     Object.defineProperty(HTMLImageElement.prototype, "complete", {
