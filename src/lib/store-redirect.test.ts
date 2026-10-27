@@ -77,6 +77,23 @@ describe("store redirect helpers", () => {
     });
   });
 
+  it.each([
+    "https://trial-sport.ru/",
+    "https://trial-sport.ru/search/?q=Rome+BONELESS",
+    "https://www.traektoria.ru/",
+  ])("does not treat a merchant page without a product path as a direct item link: %s", (affiliateUrl) => {
+    expect(isPreferredStoreUrl(affiliateUrl)).toBe(false);
+    expect(getStoreDestinationPresentation(affiliateUrl)).toMatchObject({
+      mode: "fallback-search",
+      actionLabel: "Искать в Trial Sport",
+    });
+    expect(resolveProductStoreUrl({
+      affiliateUrl,
+      brand: "Rome",
+      modelName: "BONELESS",
+    })).toBe("https://trial-sport.ru/search/?q=Rome+BONELESS");
+  });
+
   it("does not expose a snapshot merchant in saved-result presentation", () => {
     expect(
       getStoreDestinationPresentation(

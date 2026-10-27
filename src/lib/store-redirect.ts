@@ -89,10 +89,26 @@ function getSupportedStoreDestination(value?: string | null) {
       return null;
     }
 
-    return SUPPORTED_STORE_DESTINATIONS[url.hostname.toLowerCase()] ?? null;
+    const destination = SUPPORTED_STORE_DESTINATIONS[url.hostname.toLowerCase()];
+    if (!destination || !isKnownProductPath(url.pathname, destination.storeCode)) {
+      return null;
+    }
+
+    return destination;
   } catch {
     return null;
   }
+}
+
+function isKnownProductPath(
+  pathname: string,
+  storeCode: SupportedStoreDestination["storeCode"],
+) {
+  if (storeCode === "trial-sport") {
+    return /^\/goods\/(?:\d+\/)?\d+\.html\/?$/u.test(pathname);
+  }
+
+  return /^\/product\/\d+_[^/]+\/?$/u.test(pathname);
 }
 
 function normalizeStoreSearchQuery(value: string) {

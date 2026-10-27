@@ -64,6 +64,24 @@ beforeEach(() => mocks.productLookup.mockResolvedValue(product));
 afterEach(() => { vi.useRealTimers(); mocks.productLookup.mockReset(); mocks.saveAnalyticsEvent.mockReset(); vi.restoreAllMocks(); });
 
 describe("outbound bounded recovery", () => {
+  beforeEach(() => {
+    product.affiliateUrl = "https://trial-sport.ru/goods/1.html";
+  });
+
+  it("uses the labeled search fallback for a merchant URL without a product path", async () => {
+    product.affiliateUrl = "https://trial-sport.ru/search/?q=wrong-model";
+
+    const response = await GET(
+      new Request("https://example.com/go/test-board"),
+      { params: Promise.resolve({ slug: "test-board" }) },
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://trial-sport.ru/search/?q=Test+Board",
+    );
+  });
+
   it("does not let a stalled non-essential write block the exact merchant", async () => {
     vi.useFakeTimers(); vi.spyOn(console, "error").mockImplementation(() => undefined);
     mocks.canonicalLookup.mockResolvedValue(undefined);
