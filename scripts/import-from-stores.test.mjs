@@ -121,6 +121,110 @@ describe("trusted existing identity preservation", () => {
   });
 });
 
+describe("merchant media merge on empty extraction", () => {
+  it("preserves existing draft media when Trial Sport provides no image candidates", () => {
+    const existing = {
+      slug: "rome-boneless",
+      dataStatus: "draft",
+      boardLine: "unisex",
+      seasonLabel: "2025/2026",
+      sourceName: "Триал-Спорт",
+      imageUrl: "https://media.example/boneless.jpg",
+      galleryImages: ["https://media.example/boneless-detail.jpg"],
+    };
+    const imported = {
+      slug: "rome-boneless",
+      dataStatus: "draft",
+      boardLine: "unisex",
+      seasonLabel: "2025/2026",
+      sourceName: "Триал-Спорт",
+      imageUrl: "",
+      galleryImages: [],
+      importMeta: { boardLineEvidence: "known" },
+    };
+
+    expect(mergeWithExistingProduct(existing, imported)).toMatchObject({
+      imageUrl: existing.imageUrl,
+      galleryImages: existing.galleryImages,
+    });
+  });
+
+  it("still replaces prior media when the same identity has extracted candidates", () => {
+    const existing = {
+      dataStatus: "draft",
+      boardLine: "unisex",
+      seasonLabel: "2025/2026",
+      sourceName: "Триал-Спорт",
+      imageUrl: "https://media.example/old.jpg",
+      galleryImages: ["https://media.example/old-detail.jpg"],
+    };
+    const imported = {
+      boardLine: "unisex",
+      seasonLabel: "2025/2026",
+      sourceName: "Триал-Спорт",
+      imageUrl: "https://media.example/current.jpg",
+      galleryImages: [],
+    };
+
+    expect(mergeWithExistingProduct(existing, imported)).toMatchObject({
+      imageUrl: "https://media.example/current.jpg",
+      galleryImages: [],
+    });
+  });
+
+  it("does not carry media across a known season or model-identity conflict", () => {
+    const existing = {
+      dataStatus: "draft",
+      brand: "Rome",
+      modelName: "BONELESS",
+      boardLine: "unisex",
+      seasonLabel: "2024/2025",
+      imageUrl: "https://media.example/old-season.jpg",
+      galleryImages: ["https://media.example/old-season-detail.jpg"],
+    };
+    const imported = {
+      brand: "Rome",
+      modelName: "BONELESS",
+      boardLine: "unisex",
+      seasonLabel: "2025/2026",
+      imageUrl: "",
+      galleryImages: [],
+    };
+
+    expect(mergeWithExistingProduct(existing, imported)).toMatchObject({
+      imageUrl: "",
+      galleryImages: [],
+    });
+  });
+
+  it("does not carry media across merchant sources", () => {
+    const existing = {
+      dataStatus: "draft",
+      brand: "Rome",
+      modelName: "BONELESS",
+      boardLine: "unisex",
+      seasonLabel: "2025/2026",
+      sourceName: "Триал-Спорт",
+      imageUrl: "https://media.example/trial-sport.jpg",
+      galleryImages: [],
+    };
+    const imported = {
+      brand: "Rome",
+      modelName: "BONELESS",
+      boardLine: "unisex",
+      seasonLabel: "2025/2026",
+      sourceName: "Траектория",
+      imageUrl: "",
+      galleryImages: [],
+    };
+
+    expect(mergeWithExistingProduct(existing, imported)).toMatchObject({
+      imageUrl: "",
+      galleryImages: [],
+    });
+  });
+});
+
 describe("existing catalog recommendation shape", () => {
   it("loads the persisted camber profile instead of inventing a null-to-camber delta", async () => {
     const row = {

@@ -716,6 +716,37 @@ describe("Trial structured riding style fusion", () => {
 });
 
 describe("Trial live structure regression", () => {
+  it("resolves a product when the page has no extractable image candidates", async () => {
+    const result = await importTrialSportProducts({
+      fetchText: createFetchText({
+        listingIds: ["3131421"],
+        productPageTransform: () =>
+          buildProductPage({
+            brand: "Rome",
+            modelName: "BONELESS",
+            id: "3131421",
+          }).replace(/"big":\s*"[^"]+"/gu, ""),
+      }),
+      fetchArrayBuffer: async () => buildSpecWorkbook({ modelName: "BONELESS" }),
+      checkedAt: "2026-09-04T06:42:15.849Z",
+      concurrency: 1,
+      logger: silentLogger,
+    });
+
+    expect(result.products).toHaveLength(1);
+    expect(result.products[0]).toMatchObject({
+      brand: "Rome",
+      modelName: "BONELESS",
+      imageUrl: "",
+      galleryImages: [],
+    });
+    expect(result.diagnostics).toMatchObject({
+      resolvedCount: 1,
+      staleSafe: true,
+      unsafeFailureCount: 0,
+    });
+  });
+
   it("keeps conflicting AGENT 157 card/workbook waist evidence ambiguous", async () => {
     const productPage = buildStructuredProductPage({
       brand: "Rome",

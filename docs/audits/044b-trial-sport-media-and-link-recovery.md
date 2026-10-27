@@ -12,7 +12,7 @@
 2. Store destination recognition checked only the parsed hostname. A URL on an allowlisted host could still be HTTP, include URL credentials, or specify a nonstandard port and be treated as a direct destination.
 3. /go/[slug] redirected an unresolved product slug to /catalog, hiding that the destination record no longer existed. Database lookup failure remains a separate bounded 503 path.
 4. The Trial Sport importer extracts values from "big" properties in fetched page HTML and stores the first as the primary image. The current source alone does not prove that this extraction produced the reported Rome image, that a URL is currently reachable, or that an image is licensed for reuse.
-5. A source-level data-loss path is possible: if fetched Trial Sport HTML has no `"big"` properties, the importer produces `imageUrl: ""` and an empty gallery. The catalog upsert replaces `image_url` with that empty value on slug conflict and synchronizes `gallery_images` to the incoming array. This can remove previously stored media during an import. It is not linked to the Rome BONELESS record, and the repository does not specify whether an empty source observation should clear media or preserve an older URL. No change was made because preserving stale third-party URLs could extend use after source removal or rights changes.
+5. A source-level data-loss path is possible: if fetched Trial Sport HTML has no `"big"` properties, the importer produces `imageUrl: ""` and an empty gallery. The catalog upsert replaces `image_url` with that empty value on slug conflict and synchronizes `gallery_images` to the incoming array. This can remove previously stored media during an import. It is not linked to the Rome BONELESS record.
 
 ## Public Rome BONELESS observation
 
@@ -42,6 +42,18 @@
 - A previously valid HTTPS URL on an allowlisted merchant host may still have expired remotely; no local parser can establish merchant-side availability without a permitted request or authoritative refreshed record.
 - The historical user report of a broken image and the merchant failure have not been correlated with exact source records or request-linked diagnostics. The current public render confirms an empty gallery projection, but not why its source fields were empty or whether cached data is involved. No complete production root cause or merchant recovery is claimed.
 - The importer/upsert overwrite path is a confirmed mechanism, not a confirmed explanation for the served BONELESS page. The owner-run query below can show current source fields and timestamps, but cannot prove the prior value or when it was cleared; import history or an authoritative source capture would be needed for that link.
+
+## Follow-up importer media-preservation correction
+
+The Trial Sport parser has no source signal that distinguishes an intentional media removal from a page on which the extractor found no `"big"` image fields. The Traektoria parser likewise maps a missing or empty `photo_list` to an empty image set. Therefore an empty extracted list is treated as **not observed**, not as an explicit delete. The shared managed-store merge now preserves existing media for the same known product and source context when extraction is empty; newly extracted candidates still replace draft media, and known identity/source conflicts do not carry old media to the incoming product. A new product with no extracted media still starts with an empty gallery. The generic upsert behavior is unchanged for direct/admin import paths such as CSV upload and `/api/catalog-import`.
+
+This is a data-preservation rule based on confirmed parser/upsert behavior; it does not prove that the Rome BONELESS media was previously present or that it was cleared by an import. Preserved URLs may be stale or subject to rights restrictions. This correction establishes neither image reachability nor permission to use the media.
+
+## `/go` failure classification
+
+The outbound route wraps product lookup in public DB work. A missing product now returns an explicit noindex 404. A rejected/unavailable lookup or another propagated handler failure is caught by the route and returns a no-store 503 with **«Не удалось открыть магазин»**; safe logs use category `lookup_unavailable`. This is the failure path matching that presentation, but no request-linked production evidence establishes that it was the cause of the reported Rome click.
+
+For a product that was loaded, only HTTPS URLs on the exact supported merchant hosts are used as direct destinations. Unsupported or malformed stored destinations resolve to the general Trial Sport search URL, and the UI labels that action **«Искать в Trial Sport»** rather than claiming an exact product link. The generated search redirect does not establish that the model is present. A syntactically acceptable but expired merchant product URL is not checked remotely. The candidate's missing-product 404 and URL-scheme/host checks improve separate edge cases; they do not resolve lookup-unavailable 503s or prove the reported merchant destination works. No merchant URL was followed during this review.
 
 ## Minimum read-only source record for the remaining diagnosis
 

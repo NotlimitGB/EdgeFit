@@ -294,8 +294,31 @@ export function mergeWithExistingProduct(existingProduct, importedProduct) {
   }
 
   if (existingProduct.dataStatus !== "verified") {
+    const importedMedia = getProductMedia(importedProduct);
+    const existingMedia = getProductMedia(existingProduct);
+    const hasMediaContextConflict = [
+      "brand",
+      "modelName",
+      "seasonLabel",
+      "boardLine",
+      "familyId",
+      "sourceName",
+    ].some((key) => {
+      const existingValue = String(existingProduct[key] ?? "").trim().toLowerCase();
+      const importedValue = String(importedProduct[key] ?? "").trim().toLowerCase();
+      return Boolean(existingValue && importedValue && existingValue !== importedValue);
+    });
+    // The source parser has no explicit media-removal signal, so an empty result
+    // means "not observed" and must not erase same-identity historical media.
+    const media =
+      importedMedia.length > 0 || hasMediaContextConflict
+        ? importedMedia
+        : existingMedia;
+
     return {
       ...importedProduct,
+      imageUrl: media[0] ?? "",
+      galleryImages: media.slice(1),
       boardLine:
         importedProduct.importMeta?.boardLineEvidence === "missing" &&
         (existingProduct.boardLine === "men" ||
@@ -319,18 +342,8 @@ export function mergeWithExistingProduct(existingProduct, importedProduct) {
     return importedProduct;
   }
 
-  const importedMedia = [
-    importedProduct.imageUrl,
-    ...(importedProduct.galleryImages ?? []),
-  ]
-    .map((image) => String(image ?? "").trim())
-    .filter(Boolean);
-  const rawExistingMedia = [
-    existingProduct.imageUrl,
-    ...(existingProduct.galleryImages ?? []),
-  ]
-    .map((image) => String(image ?? "").trim())
-    .filter(Boolean);
+  const importedMedia = getProductMedia(importedProduct);
+  const rawExistingMedia = getProductMedia(existingProduct);
   const existingHasCuratedMedia = rawExistingMedia.some(
     (image) => !isLocalCatalogPlaceholderImage(image),
   );
@@ -373,6 +386,12 @@ export function mergeWithExistingProduct(existingProduct, importedProduct) {
       null,
     isActive: importedProduct.isActive,
   };
+}
+
+function getProductMedia(product) {
+  return [product.imageUrl, ...(product.galleryImages ?? [])]
+    .map((image) => String(image ?? "").trim())
+    .filter(Boolean);
 }
 
 function isManagedStoreProduct(product) {
