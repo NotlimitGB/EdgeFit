@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { hydrateRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { BoardGallery } from "./board-gallery";
 
 const originalComplete = Object.getOwnPropertyDescriptor(
@@ -199,3 +199,6 @@ describe("board gallery keyboard presentation", () => {
     expect(document.body.style.overflow).toBe("");
   });
 });
+
+// Exercise existing gallery behavior with the temporary shutdown simulated as disabled.
+vi.mock("@/lib/public-product-media", () => ({ publicProductMedia: (urls: (string | null | undefined)[]) => [...new Set(urls.map(url => (url ?? "").trim()).filter(Boolean))] }));

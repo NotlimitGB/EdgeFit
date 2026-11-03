@@ -1,3 +1,5 @@
+
+import { publicProductMedia } from "@/lib/public-product-media";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
@@ -167,8 +169,8 @@ export default async function BoardPage({ params }: BoardPageProps) {
 
         <section className={styles.hero} aria-labelledby="board-title">
           <BoardGallery
-            primaryImage={board.media[0] ?? ""}
-            galleryImages={board.media.slice(1)}
+            primaryImage={publicProductMedia(board.media)[0] ?? ""}
+            galleryImages={publicProductMedia(board.media).slice(1)}
             brand={board.brand}
             modelName={board.modelName}
           />

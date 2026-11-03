@@ -1,3 +1,5 @@
+
+import { withoutProductPhotos } from "@/lib/public-product-media";
 import type { Metadata } from "next";
 import { randomUUID } from "node:crypto";
 import { notFound } from "next/navigation";
@@ -37,7 +39,7 @@ export default async function SavedResultPage({ params }: SavedResultPageProps) 
 
   return (
     <ResultView
-      initialRecommendation={savedResult.recommendation}
+      initialRecommendation={withoutProductPhotos(savedResult.recommendation)}
       initialPurchasePreferences={savedResult.purchasePreferences}
       mode="saved"
     />

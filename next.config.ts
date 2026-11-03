@@ -5,6 +5,8 @@ import { getHostingProvider, TIMEWEB_INDEXABLE_HOST_PATTERN } from "./src/lib/de
 getHostingProvider();
 
 const nextConfig: NextConfig = {
+  // The default image optimizer may not fetch remote product photos during shutdown.
+  images: { remotePatterns: [] },
   // Opt-in at build time; ordinary Vercel builds keep their existing output.
   ...(process.env.SNOWDEX_STANDALONE === "true" ? { output: "standalone" as const } : {}),
   async headers() {

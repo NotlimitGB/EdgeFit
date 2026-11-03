@@ -1,3 +1,5 @@
+
+import { withoutProductPhotos } from "@/lib/public-product-media";
 import { publicApiError } from "@/lib/public-api-error";
 import { randomUUID } from "node:crypto";
 import { withDbDiagnosticContext, withDbDiagnosticStage } from "@/lib/database/lifecycle-diagnostics";
@@ -154,7 +156,7 @@ async function handlePost(request: Request, signal: AbortSignal, requestId: stri
     }
     signal.throwIfAborted();
 
-    const response = NextResponse.json(responseRecommendation);
+    const response = NextResponse.json(withoutProductPhotos(responseRecommendation));
 
     if (savedResultToken) {
       response.headers.set(SAVED_RESULT_TOKEN_HEADER, savedResultToken);

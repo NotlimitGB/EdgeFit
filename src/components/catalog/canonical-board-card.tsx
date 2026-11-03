@@ -1,5 +1,7 @@
 "use client";
 
+import { publicProductMedia } from "@/lib/public-product-media";
+
 import Link from "next/link";
 import { memo, useState } from "react";
 import { TrackedStoreLink } from "@/components/analytics/tracked-store-link";
@@ -39,7 +41,7 @@ export const CanonicalBoardCard = memo(function CanonicalBoardCard({
   storePlacement = "catalog",
 }: CanonicalBoardCardProps) {
   const [failedImageUrls, setFailedImageUrls] = useState<string[]>([]);
-  const imageCandidates = board.media;
+  const imageCandidates = publicProductMedia(board.media);
   const activeImageUrl = imageCandidates.find(
     (imageUrl) => !failedImageUrls.includes(imageUrl),
   );

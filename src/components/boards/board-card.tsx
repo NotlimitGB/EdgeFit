@@ -1,5 +1,7 @@
 "use client";
 
+import { publicProductMedia } from "@/lib/public-product-media";
+
 import Link from "next/link";
 import { useState } from "react";
 import { TrackedStoreLink } from "@/components/analytics/tracked-store-link";
@@ -85,13 +87,7 @@ function buildCatalogCardDescription(product: Product) {
 }
 
 function getCatalogImageCandidates(product: Product) {
-  return Array.from(
-    new Set(
-      [product.imageUrl, ...(product.galleryImages ?? [])]
-        .map((imageUrl) => imageUrl.trim())
-        .filter(Boolean),
-    ),
-  );
+  return publicProductMedia([product.imageUrl, ...(product.galleryImages ?? [])]);
 }
 
 interface CatalogBoardCardProps {

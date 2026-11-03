@@ -1,5 +1,7 @@
 "use client";
 
+import { publicProductMedia } from "@/lib/public-product-media";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./board-gallery.module.css";
 
@@ -14,13 +16,7 @@ function normalizeImages(
   primaryImage: string | null | undefined,
   galleryImages?: string[] | null,
 ) {
-  return Array.from(
-    new Set(
-      [primaryImage, ...(galleryImages ?? [])]
-        .map((image) => String(image ?? "").trim())
-        .filter(Boolean),
-    ),
-  );
+  return publicProductMedia([primaryImage, ...(galleryImages ?? [])]);
 }
 
 export function BoardGallery({

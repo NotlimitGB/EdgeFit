@@ -103,3 +103,6 @@ it("uses factual fallback and preserves safe description and source-search norma
     expect(ui.matchesCanonicalCatalogSearch(dto, query)).toBe(ui.matchesCanonicalCatalogSearch(board, query));
   expect(JSON.stringify(dto)).not.toMatch(/"sizes"|"offers"|sourceCheckedAt|dataStatus|sourceUrl/);
 });
+
+// Exercise existing gallery behavior with the temporary shutdown simulated as disabled.
+vi.mock("@/lib/public-product-media", () => ({ publicProductMedia: (urls: (string | null | undefined)[]) => [...new Set(urls.map(url => (url ?? "").trim()).filter(Boolean))] }));

@@ -1,3 +1,5 @@
+
+import { publicProductMedia } from "@/lib/public-product-media";
 import type { CanonicalCatalogItem, CanonicalSizeVariant } from "@/types/canonical-catalog";
 import { compareCanonicalFeatured, compareCanonicalPriceAsc, compareCanonicalPriceDesc,
   getCanonicalAvailabilityPreview, getCanonicalDescription, getCanonicalWidthTypes,
@@ -33,7 +35,7 @@ export function toPublicCatalogItem(board: CanonicalCatalogItem): PublicCatalogI
     slug: board.slug, brand: board.brand, modelName: board.modelName,
     seasonLabel: board.seasonLabel, priceFrom: board.priceFrom,
     defaultOfferSlug: board.defaultOfferSlug,
-    media: [...new Set(board.media.map((url) => url.trim()).filter(Boolean))],
+    media: publicProductMedia(board.media),
     canonicalSpecs: { descriptionShort: getCanonicalDescription(board), ridingStyle, skillLevel, boardLine,
       shapeType, camberProfile },
     searchText: normalizeCatalogSearch([board.brand, board.modelName, board.slug,

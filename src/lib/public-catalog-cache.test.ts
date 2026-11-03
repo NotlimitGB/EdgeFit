@@ -120,7 +120,7 @@ describe("public catalog cache", () => {
     expect(mocks.unstableCache).toHaveBeenCalledTimes(1);
     expect(mocks.unstableCache).toHaveBeenCalledWith(
       expect.any(Function),
-      ["edgefit-public-canonical-catalog-v7"],
+      ["edgefit-public-canonical-catalog-v8-photo-shutdown"],
       {
         revalidate: 300,
         tags: ["edgefit-public-canonical-catalog"],
@@ -202,7 +202,8 @@ describe("public catalog cache", () => {
       expect(matchesCanonicalCatalogSearch(projected, query)).toBe(matchesCanonicalCatalogSearch(original, query));
     for (const present of [getCanonicalAvailabilityHeadline, getCanonicalAvailabilityPreview, getCanonicalWidthSummary])
       expect(present(projected)).toBe(present(original));
-    expect(projected.media).toEqual(original.media);
+    expect(projected.media).toEqual([]);
+    expect(original.media).toEqual(["https://example.com/board.jpg"]);
     expect(projected.canonicalSpecs.descriptionShort).toBe(original.canonicalSpecs.descriptionShort);
     expect(JSON.stringify(projected)).not.toMatch(/sourceUrl|waistWidthMm|descriptionFull|familyMatch/);
   });

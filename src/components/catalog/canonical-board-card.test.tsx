@@ -132,3 +132,6 @@ describe("CanonicalBoardCard route prefetch", () => {
     expect(markup).toContain("catalog");
   });
 });
+
+// Exercise existing gallery behavior with the temporary shutdown simulated as disabled.
+vi.mock("@/lib/public-product-media", () => ({ publicProductMedia: (urls: (string | null | undefined)[]) => [...new Set(urls.map(url => (url ?? "").trim()).filter(Boolean))] }));
