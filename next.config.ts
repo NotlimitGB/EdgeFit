@@ -28,7 +28,7 @@ const nextConfig: NextConfig = {
         permanent: true,
       },
       ...(getHostingProvider() === "timeweb" ? [{
-        source: "/:path((?!health$|google10fccbce44c29493\\.html$|api(?:/|$)|go(?:/|$)|internal(?:/|$)|_next(?:/|$)).*)",
+        source: "/:path((?!favicon\\.ico$|favicon\\.svg$|health$|google10fccbce44c29493\\.html$|api(?:/|$)|go(?:/|$)|internal(?:/|$)|_next(?:/|$)).*)",
         has: [{ type: "host" as const, value: "www\\.snowdex\\.ru" }],
         destination: "https://snowdex.ru/:path",
         permanent: true,

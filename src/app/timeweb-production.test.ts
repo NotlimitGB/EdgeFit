@@ -42,6 +42,14 @@ describe("Timeweb production host routing", () => {
       expect(response.status).toBe(200); expect(response.headers.get("location")).toBeNull();
       expect(response.headers.get("x-robots-tag")).toBeNull();
     });
+  it.each(["/favicon.svg", "/favicon.ico"])("serves www favicon without redirect or noindex: %s", async path => {
+    for (const host of ["snowdex.ru", "www.snowdex.ru"]) {
+      const response = await unstable_getResponseFromNextConfig({ url: `https://${host}${path}`, nextConfig: await config() });
+      expect(response.status).toBe(200);
+      expect(response.headers.get("location")).toBeNull();
+      expect(response.headers.get("x-robots-tag")).toBeNull();
+    }
+  });
   it("does not trust a forwarded canonical host", async () => {
     const response = await unstable_getResponseFromNextConfig({ url: "https://notlimitgb-edgefit-0277.twc1.net/", headers: { "x-forwarded-host": "snowdex.ru" }, nextConfig: await config() });
     expect(response.headers.get("x-robots-tag")).toContain("noindex");

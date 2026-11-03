@@ -18,6 +18,7 @@ const headingFont = Space_Grotesk({
 
 export const metadata: Metadata = {
   metadataBase: getSiteMetadataBase(),
+  icons: { icon: [{ url: "/favicon.svg", type: "image/svg+xml" }], apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }] },
   title: {
     default: "SnowDex",
     template: "%s | SnowDex",

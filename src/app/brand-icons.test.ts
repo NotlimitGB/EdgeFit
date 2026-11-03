@@ -9,7 +9,7 @@ const paths = ["M3 25 12 7l5 10 4-7 8 15H3Z", "m9 20 3-6 3 6h-6Zm10 0 2-4 2 4h-4
 
 describe("SnowDex icon pack", () => {
   it("keeps the existing header geometry with explicit brand colors", () => {
-    const svg = read("src/app/icon.svg").toString();
+    const svg = read("public/favicon.svg").toString();
     const header = read("src/components/site/site-header.tsx").toString();
     for (const geometry of paths) {
       expect(svg).toContain(`d="${geometry}"`);
@@ -22,7 +22,7 @@ describe("SnowDex icon pack", () => {
   });
 
   it("is a compact real ICO with independently rendered 16/32/48 PNG frames", async () => {
-    const ico = read("src/app/favicon.ico");
+    const ico = read("public/favicon.ico");
     expect(ico.readUInt16LE(0)).toBe(0);
     expect(ico.readUInt16LE(2)).toBe(1);
     expect(ico.readUInt16LE(4)).toBe(3);
@@ -39,7 +39,7 @@ describe("SnowDex icon pack", () => {
       const metadata = await sharp(frame).metadata();
       expect([metadata.format, metadata.width, metadata.height, metadata.hasAlpha])
         .toEqual(["png", size, size, true]);
-      const expected = await sharp(read("src/app/icon.svg"), { density: size * 72 / 32 })
+      const expected = await sharp(read("public/favicon.svg"), { density: size * 72 / 32 })
         .resize(size, size).flatten({ background: "#bf460c" }).ensureAlpha().png().toBuffer();
       const pixels = await sharp(frame).raw().toBuffer();
       for (let alpha = 3; alpha < pixels.length; alpha += 4) expect(pixels[alpha]).toBe(255);
