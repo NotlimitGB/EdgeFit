@@ -3,6 +3,15 @@ on:
   schedule:
     - cron: '30 6 * * 1'
     - cron: '15 8 * * *'
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'Analytics operation'
+        type: choice
+        required: true
+        options:
+          - weekly
+          - retry
 permissions:
   contents: read
 concurrency:
@@ -11,7 +20,7 @@ concurrency:
 jobs:
   deliver:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
@@ -20,9 +29,13 @@ jobs:
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           SCHEDULE: ${{ github.event.schedule }}
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_OPERATION: ${{ inputs.operation }}
         run: |
-          case "$SCHEDULE" in
-            '30 6 * * 1') node scripts/analytics-scheduler.mjs weekly ;;
-            '15 8 * * *') node scripts/analytics-scheduler.mjs retry ;;
+          case "$EVENT_NAME:$SCHEDULE:$MANUAL_OPERATION" in
+            'schedule:30 6 * * 1:') node scripts/analytics-scheduler.mjs weekly ;;
+            'schedule:15 8 * * *:') node scripts/analytics-scheduler.mjs retry ;;
+            'workflow_dispatch::weekly') node scripts/analytics-scheduler.mjs weekly ;;
+            'workflow_dispatch::retry') node scripts/analytics-scheduler.mjs retry ;;
             *) exit 1 ;;
           esac
