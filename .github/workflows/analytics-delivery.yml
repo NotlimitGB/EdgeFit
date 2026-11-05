@@ -1,0 +1,28 @@
+name: Analytics delivery
+on:
+  schedule:
+    - cron: '30 6 * * 1'
+    - cron: '15 8 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: snowdex-analytics-delivery
+  cancel-in-progress: false
+jobs:
+  deliver:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Invoke scheduled delivery
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          case "$SCHEDULE" in
+            '30 6 * * 1') node scripts/analytics-scheduler.mjs weekly ;;
+            '15 8 * * *') node scripts/analytics-scheduler.mjs retry ;;
+            *) exit 1 ;;
+          esac

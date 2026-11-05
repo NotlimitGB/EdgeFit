@@ -1,0 +1,18 @@
+# Analytics scheduler recovery (048A)
+
+The former Vercel project was deleted. The workflow schedules the existing weekly route at 06:30 UTC Monday and retry at 08:15 UTC daily. It serializes both jobs in one concurrency group; GitHub Actions schedules can be delayed or dropped, and concurrency is not a durable queue. Monitor workflow failures and missed Monday runs, plus the delivery ledger and provider events. A successful HTTP response alone does not prove inbox delivery. The retry route processes stored pending claims, not a weekly digest that was never generated.
+
+## Activation — separate owner approval required
+
+1. Confirm the former Vercel scheduler remains absent; never run two schedulers.
+2. On Timeweb, configure existing `DATABASE_URL`, `CRON_SECRET`, `RESEND_API_KEY`, `ANALYTICS_DELIVERY_SENDER`, `ANALYTICS_DELIVERY_RECIPIENT`, `YANDEX_METRIKA_OAUTH_TOKEN`, and the server-side Yandex counter configuration used by the reporting service. Verify sender and recipient and credential validity without disclosing values. Old Vercel credentials may no longer exist.
+3. Set the same `CRON_SECRET` as a GitHub Actions secret. No database, Resend, or Yandex secret belongs in GitHub Actions. Until explicitly enabled, leave `ANALYTICS_DELIVERY_ENABLED=false`; the job fails visibly when disabled.
+4. After an authorized deployment and explicit enablement, monitor the first scheduled execution and reconcile ledger and Resend. Do not manually call the ordinary weekly route to regenerate a past week.
+
+## W44 investigation
+
+`POST /api/cron/analytics-w44-preflight` is a fixed-period preview, unavailable unless `ANALYTICS_W44_PREFLIGHT_ENABLED=true` on Timeweb and a valid `CRON_SECRET` is provided. Set the gate only temporarily after separate approval. It reads reporting sources, validates the built digest's W44 identity and dates, and returns only source status and period. It neither claims the ledger nor sends mail. It does not assert that historical inputs are complete, immutable, or identical to those available on 2 November.
+
+The reporting anchor is 2026-11-02 06:30 UTC, producing the Moscow week 2026-10-26 through 2026-11-01. Confirm source history, retention, Metrika attribution and any data changed after that date. An `ok` source response is not proof of historical completeness. The preview is not a delivery endpoint; recovery and any partial report require an independently reviewed, separately authorized delivery procedure. Reconcile ledger state and Resend first, especially unknown provider outcomes. Never replay based solely on a missing inbox message.
+
+Timeweb's production default must keep both `ANALYTICS_DELIVERY_ENABLED` and `ANALYTICS_W44_PREFLIGHT_ENABLED` disabled. Deploying this package is not approval to activate or send.
