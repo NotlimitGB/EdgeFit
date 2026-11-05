@@ -358,6 +358,15 @@ describe("generated analytics delivery", () => {
 });
 
 describe("retry and retention orchestration", () => {
+  it("classifies an ambiguous provider exception as reconciliation, not a retry", async () => {
+    const { dependencies, repository, mailer } = makeDependencies({
+      mailer: { send: vi.fn(async () => { throw new Error("private provider text"); }) },
+    });
+    await runWeeklyAnalyticsDelivery({ dependencies });
+    expect(mailer.send).toHaveBeenCalledTimes(1);
+    expect(repository.finish).toHaveBeenCalledWith(expect.anything(), expect.anything(),
+      { type: "failed", category: "provider_reconciliation_required" }, expect.any(Date));
+  });
   it("reuses a stored immutable digest, generatedAt and original provider key", async () => {
     const digest = makeServerDigest();
     const row = ledgerRow(digest);
@@ -419,7 +428,7 @@ describe("retry and retention orchestration", () => {
     const result = await runAnalyticsDeliveryRetrySweep({ now, dependencies });
     expect(result).toMatchObject({
       status: "failed",
-      category: "provider_outcome_unknown_expired",
+      category: "provider_reconciliation_required",
     });
     expect(mailer.send).not.toHaveBeenCalled();
   });

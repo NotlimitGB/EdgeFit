@@ -80,6 +80,7 @@ export interface AnalyticsDeliveryDependencies {
   repositoryFactory(config: AnalyticsDeliveryConfig): AnalyticsDeliveryRepository;
   mailerFactory(config: AnalyticsDeliveryConfig): AnalyticsMailer;
   logger: Pick<Console, "info" | "error">;
+  failureNotices?: boolean;
 }
 
 const defaultDependencies: AnalyticsDeliveryDependencies = {
@@ -456,12 +457,12 @@ async function runGeneratedDelivery(
     const report = await dependencies.reportLoader({ now });
     digest = kind === "daily" ? buildDailyAnalyticsDigest(report) : buildWeeklyAnalyticsDigest(report);
   } catch {
-    await attemptFailureNotice(kind, kind, "report_generation_failed", parsed.config, mailer);
+    if (dependencies.failureNotices !== false) await attemptFailureNotice(kind, kind, "report_generation_failed", parsed.config, mailer);
     return { status: "failed", category: "report_generation_failed" };
   }
 
   if (digest.sourceStatus.firstParty.status !== "ok") {
-    await attemptFailureNotice(
+    if (dependencies.failureNotices !== false) await attemptFailureNotice(
       kind,
       digest.logicalId,
       "first_party_unavailable",
@@ -476,7 +477,7 @@ async function runGeneratedDelivery(
     const claim = await repository.claim(digest, now);
     return await sendClaimedDigest(claim, parsed.config, repository, mailer, now);
   } catch {
-    await attemptFailureNotice(kind, digest.logicalId, "delivery_storage_unavailable", parsed.config, mailer);
+    if (dependencies.failureNotices !== false) await attemptFailureNotice(kind, digest.logicalId, "delivery_storage_unavailable", parsed.config, mailer);
     return { status: "failed", logicalId: digest.logicalId, category: "delivery_storage_unavailable" };
   }
 }

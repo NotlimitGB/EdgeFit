@@ -19,23 +19,36 @@ concurrency:
   cancel-in-progress: false
 jobs:
   deliver:
+    if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    environment: analytics-production
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --include=dev
       - name: Invoke scheduled delivery
         env:
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          ANALYTICS_DELIVERY_ENABLED: ${{ vars.ANALYTICS_DELIVERY_ENABLED }}
+          DATABASE_URL: ${{ secrets.ANALYTICS_DATABASE_URL }}
+          DATABASE_SSL: require
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          ANALYTICS_DELIVERY_SENDER: ${{ secrets.ANALYTICS_DELIVERY_SENDER }}
+          ANALYTICS_DELIVERY_RECIPIENT: ${{ secrets.ANALYTICS_DELIVERY_RECIPIENT }}
+          YANDEX_METRIKA_OAUTH_TOKEN: ${{ secrets.YANDEX_METRIKA_OAUTH_TOKEN }}
+          NEXT_PUBLIC_YANDEX_METRIKA_ID: ${{ vars.YANDEX_METRIKA_ID }}
           SCHEDULE: ${{ github.event.schedule }}
           EVENT_NAME: ${{ github.event_name }}
           MANUAL_OPERATION: ${{ inputs.operation }}
         run: |
           case "$EVENT_NAME:$SCHEDULE:$MANUAL_OPERATION" in
-            'schedule:30 6 * * 1:') node scripts/analytics-scheduler.mjs weekly ;;
-            'schedule:15 8 * * *:') node scripts/analytics-scheduler.mjs retry ;;
-            'workflow_dispatch::weekly') node scripts/analytics-scheduler.mjs weekly ;;
-            'workflow_dispatch::retry') node scripts/analytics-scheduler.mjs retry ;;
+            'schedule:30 6 * * 1:') node scripts/analytics-direct-runner.mjs weekly ;;
+            'schedule:15 8 * * *:') node scripts/analytics-direct-runner.mjs retry ;;
+            'workflow_dispatch::weekly') node scripts/analytics-direct-runner.mjs weekly ;;
+            'workflow_dispatch::retry') node scripts/analytics-direct-runner.mjs retry ;;
             *) exit 1 ;;
           esac

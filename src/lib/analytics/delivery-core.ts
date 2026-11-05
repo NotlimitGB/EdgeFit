@@ -11,7 +11,6 @@ export const ANALYTICS_DELIVERY_MAX_ATTEMPTS = 5;
 export const ANALYTICS_DELIVERY_RETRY_BATCH_SIZE = 10;
 export const ANALYTICS_DELIVERY_RETENTION_DAYS = 90;
 export const ANALYTICS_DELIVERY_RETENTION_BATCH_SIZE = 100;
-export const ANALYTICS_DELIVERY_UNKNOWN_OUTCOME_GUARD_MS = 23 * 60 * 60 * 1000;
 
 export type AnalyticsDeliveryStatus =
   | "pending"
@@ -279,27 +278,18 @@ export function getAnalyticsDeliveryClaimDecision(
   ) {
     return { action: "busy" };
   }
-  if (
-    existing.deliveryStatus === "sending" &&
-    existing.lastAttemptAt &&
-    now.getTime() - existing.lastAttemptAt.getTime() >=
-      ANALYTICS_DELIVERY_UNKNOWN_OUTCOME_GUARD_MS
-  ) {
-    return { action: "fail", category: "provider_outcome_unknown_expired" };
+  if (existing.deliveryStatus === "sending") {
+    return { action: "fail", category: "provider_reconciliation_required" };
+  }
+  if (existing.lastErrorCategory === "provider_outcome_unknown" ||
+      existing.lastErrorCategory === "provider_reconciliation_required") {
+    return { action: "fail", category: "provider_reconciliation_required" };
   }
   if (existing.attemptCount >= ANALYTICS_DELIVERY_MAX_ATTEMPTS) {
     return { action: "fail", category: "delivery_attempts_exhausted" };
   }
   if (existing.nextAttemptAt && existing.nextAttemptAt.getTime() > now.getTime()) {
     return { action: "busy" };
-  }
-  if (
-    existing.lastErrorCategory === "provider_outcome_unknown" &&
-    existing.lastAttemptAt &&
-    now.getTime() - existing.lastAttemptAt.getTime() >=
-      ANALYTICS_DELIVERY_UNKNOWN_OUTCOME_GUARD_MS
-  ) {
-    return { action: "fail", category: "provider_outcome_unknown_expired" };
   }
   return { action: "claim_stored" };
 }
@@ -318,22 +308,22 @@ export function classifyAnalyticsProviderResult(input: {
     return { type: "success", messageId: input.messageId };
   }
   if (input.threw || !input.error) {
-    return { type: "retry", category: "provider_outcome_unknown", unknownOutcome: true };
+    return { type: "failed", category: "provider_reconciliation_required" };
   }
   if (input.error.name === "invalid_idempotent_request") {
     return { type: "conflict", category: "provider_idempotency_conflict" };
   }
   if (input.error.name === "concurrent_idempotent_requests") {
-    return { type: "retry", category: "provider_concurrent_request", unknownOutcome: false };
+    return { type: "failed", category: "provider_reconciliation_required" };
   }
   if (input.error.statusCode === 429 || input.error.name === "rate_limit_exceeded") {
     return { type: "retry", category: "provider_rate_limited", unknownOutcome: false };
   }
   if (input.error.statusCode == null) {
-    return { type: "retry", category: "provider_outcome_unknown", unknownOutcome: true };
+    return { type: "failed", category: "provider_reconciliation_required" };
   }
   if ((input.error.statusCode ?? 0) >= 500) {
-    return { type: "retry", category: "provider_unavailable", unknownOutcome: false };
+    return { type: "failed", category: "provider_reconciliation_required" };
   }
   return { type: "failed", category: "provider_request_rejected" };
 }

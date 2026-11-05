@@ -369,7 +369,7 @@ describe("analytics delivery state decisions", () => {
     ).toEqual({ action: "busy" });
   });
 
-  it("reclaims an expired lease", () => {
+  it("requires reconciliation for an expired sending lease", () => {
     expect(
       getAnalyticsDeliveryClaimDecision(
         makeRow(digest, {
@@ -379,7 +379,7 @@ describe("analytics delivery state decisions", () => {
         digest,
         now,
       ),
-    ).toEqual({ action: "claim_stored" });
+    ).toEqual({ action: "fail", category: "provider_reconciliation_required" });
   });
 
   it("fails stale sending without requiring a persisted unknown category", () => {
@@ -396,7 +396,7 @@ describe("analytics delivery state decisions", () => {
       ),
     ).toEqual({
       action: "fail",
-      category: "provider_outcome_unknown_expired",
+      category: "provider_reconciliation_required",
     });
   });
 
@@ -434,7 +434,14 @@ describe("analytics delivery state decisions", () => {
         digest,
         now,
       ),
-    ).toMatchObject({ action: "fail", category: "provider_outcome_unknown_expired" });
+    ).toMatchObject({ action: "fail", category: "provider_reconciliation_required" });
+  });
+  it("requires reconciliation even for a recent unknown outcome", () => {
+    expect(getAnalyticsDeliveryClaimDecision(makeRow(digest, {
+      lastErrorCategory: "provider_outcome_unknown", lastAttemptAt: new Date("2026-08-10T06:00:00Z"),
+      attemptCount: ANALYTICS_DELIVERY_MAX_ATTEMPTS,
+      nextAttemptAt: new Date("2026-08-11T00:00:00Z"),
+    }), digest, now)).toEqual({ action: "fail", category: "provider_reconciliation_required" });
   });
 });
 
@@ -453,7 +460,7 @@ describe("provider, stored digest and retention safety", () => {
       classifyAnalyticsProviderResult({
         error: { name: "internal_server_error", statusCode: 503 },
       }),
-    ).toMatchObject({ type: "retry", category: "provider_unavailable" });
+    ).toMatchObject({ type: "failed", category: "provider_reconciliation_required" });
     expect(
       classifyAnalyticsProviderResult({
         error: { name: "invalid_idempotent_request", statusCode: 409 },
@@ -463,25 +470,23 @@ describe("provider, stored digest and retention safety", () => {
       classifyAnalyticsProviderResult({
         error: { name: "concurrent_idempotent_requests", statusCode: 409 },
       }),
-    ).toMatchObject({ type: "retry", category: "provider_concurrent_request" });
+    ).toMatchObject({ type: "failed", category: "provider_reconciliation_required" });
     expect(
       classifyAnalyticsProviderResult({
         error: { name: "invalid_api_key", statusCode: 401 },
       }),
     ).toMatchObject({ type: "failed", category: "provider_request_rejected" });
     expect(classifyAnalyticsProviderResult({ threw: true })).toMatchObject({
-      type: "retry",
-      category: "provider_outcome_unknown",
-      unknownOutcome: true,
+      type: "failed",
+      category: "provider_reconciliation_required",
     });
     expect(
       classifyAnalyticsProviderResult({
         error: { name: "application_error", statusCode: null },
       }),
     ).toMatchObject({
-      type: "retry",
-      category: "provider_outcome_unknown",
-      unknownOutcome: true,
+      type: "failed",
+      category: "provider_reconciliation_required",
     });
   });
 
