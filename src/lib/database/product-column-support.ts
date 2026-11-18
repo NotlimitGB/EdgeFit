@@ -1,5 +1,5 @@
 import "server-only";
-import type { Sql } from "postgres";
+import type { ISql } from "postgres";
 
 export interface ProductColumnSupport {
   seasonLabel: boolean;
@@ -92,7 +92,7 @@ export function buildProductColumnSupport(
 
 let cachedColumnSupport: ProductColumnSupport | null = null;
 
-export async function getProductColumnSupport(sql: Sql): Promise<ProductColumnSupport> {
+export async function getProductColumnSupport(sql: ISql): Promise<ProductColumnSupport> {
   if (cachedColumnSupport) {
     return cachedColumnSupport;
   }
@@ -102,7 +102,7 @@ export async function getProductColumnSupport(sql: Sql): Promise<ProductColumnSu
 }
 
 /** Uncached schema read for bounded, configuration-scoped public caching. */
-export async function readProductColumnSupport(sql: Sql): Promise<ProductColumnSupport> {
+export async function readProductColumnSupport(sql: ISql): Promise<ProductColumnSupport> {
   const rows = await sql<SchemaColumnRow[]>`
     select table_name, column_name
     from information_schema.columns

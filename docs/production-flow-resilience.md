@@ -22,7 +22,7 @@ Timers are cleaned on settlement/unmount. Server timers are unref'd. Budgets are
 initial safeguards, not measured SLOs. Healthy results, token format, events,
 destinations, historical offer presentation and scoring remain unchanged.
 
-## One application client; admission rather than destructive recovery
+## Shared application client and admission
 
 There is one shared postgres.js 3.4.9 application client per process. Public
 timeouts NEVER call `end`, `cancel`, `reserve`, create another generation or
@@ -119,6 +119,33 @@ not commit. Tokens are exposed only after acknowledged snapshot persistence;
 a late save can remain unexposed. No automatic write retries exist. A manual new
 quiz submission may create another record after an unknown-commit timeout;
 navigation-only retry never submits a new recommendation.
+
+## Catalog refresh isolation
+
+`/catalog` looks up the complete DTO in its 300-second Next.js Data Cache before
+reading schema support. A cache hit has no database prerequisite. On a stale hit,
+Next can serve the last successful DTO while revalidating. Failed refreshes leave
+that entry intact. A cold load without usable data fails visibly.
+
+Cold loads and background revalidations share one in-flight refresh per database
+namespace in a process. Each refresh opens one connection to the configured
+single database endpoint for the schema, family and offer reads. A read-only
+transaction applies 10-second PostgreSQL limits per statement and for idle time
+inside the transaction. This prevents repeated refreshes from leaving backends
+waiting indefinitely on locks when the client socket closes. The settings expire
+with the transaction. A separate 12-second deadline destroys only the private
+transport, including during TLS or an unanswered read. The refresh remains
+registered until its work settles and the socket closes. The next request can
+open a fresh connection. There is no automatic SQL replay or timer-driven retry.
+Socket closure settles local driver work. PostgreSQL cancels timed-out statements
+when responsive enough to enforce the configured limits.
+
+The shared client, write safeguards, and board/sitemap/recommendation loaders
+retain their original behavior. Catalog refresh adds at most one connection per
+process alongside the shared connection and one schema read per refresh. A new
+cache version starts cold and depends on a healthy database for the
+first successful load. Cached data is available only while the platform retains
+the Next.js cache entry.
 
 ## Local acceptance and limitations
 
