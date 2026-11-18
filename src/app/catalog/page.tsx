@@ -20,7 +20,8 @@ export default async function CatalogPage({ searchParams }: { searchParams?: Pro
   return <div className={styles.catalogPage}><div className={styles.catalogShell}>
     <header className={styles.hero}>
       <div><p className={styles.eyebrow}>SnowDex / справочник моделей</p><h1>Каталог сноубордов</h1>
-        <p className={styles.heroLead}>Характеристики моделей и сохранённые цены. Текущее наличие проверяй у продавца.</p></div>
+        <p className={styles.heroLead}>Характеристики моделей и сохранённые цены. Текущее наличие проверяй у продавца.</p>
+        <Link href="/catalog/models" prefetch={false} className="mt-3 inline-block underline underline-offset-4">Все модели по брендам</Link></div>
       <Link href="/quiz" className={styles.secondaryAction}>Подобрать сноуборд <span aria-hidden="true">↗</span></Link>
     </header>
     <CatalogView boards={boards} initialSearch={params.toString()} />

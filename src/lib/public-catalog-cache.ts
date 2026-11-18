@@ -43,18 +43,25 @@ function refreshPublicCatalog(namespace: string) {
   return refresh;
 }
 
-const loadCachedPublicCatalog = unstable_cache(
-  refreshPublicCatalog,
-  [PUBLIC_CATALOG_CACHE_KEY],
-  {
+// Next builds the HTML and metadata routes in separate server module graphs.
+// Use one wrapper per process so they share the Data Cache key and in-flight work.
+const runtimeCacheKey = Symbol.for(PUBLIC_CATALOG_CACHE_KEY);
+const runtime = globalThis as typeof globalThis & {
+  [runtimeCacheKey]?: (namespace: string) => Promise<PublicCatalogItem[]>;
+};
+function createCatalogCache() {
+  return unstable_cache(refreshPublicCatalog, [PUBLIC_CATALOG_CACHE_KEY], {
     revalidate: PUBLIC_CATALOG_CACHE_REVALIDATE_SECONDS,
     tags: [PUBLIC_CATALOG_CACHE_TAG],
-  },
-);
+  });
+}
+const loadCachedPublicCatalog = process.env.NODE_ENV === "production"
+  ? (runtime[runtimeCacheKey] ??= createCatalogCache())
+  : createCatalogCache();
 
-export async function getPublicCanonicalCatalogItems() {
+export async function getPublicCanonicalCatalogItems(scope: "canonical_catalog" | "sitemap" = "canonical_catalog") {
   return withDbDiagnosticContext(
-    { scope: "canonical_catalog", stage: "public_catalog_loading", traceId: randomUUID() },
+    { scope, stage: scope === "sitemap" ? "canonical_corpus" : "public_catalog_loading", traceId: randomUUID() },
     () => runPublicDbWork("critical", 15_000, loadPublicCatalog));
 }
 

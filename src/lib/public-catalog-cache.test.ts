@@ -202,6 +202,27 @@ describe("public catalog cache", () => {
     expect(mocks.withClient).toHaveBeenCalledTimes(3);
   });
 
+  it("shares concurrent cold work across separately loaded production modules", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      vi.resetModules();
+      const htmlModule = await import("@/lib/public-catalog-cache");
+      vi.resetModules();
+      const xmlModule = await import("@/lib/public-catalog-cache");
+      mocks.getAllCanonicalCatalogItems.mockResolvedValue(boards);
+
+      const catalogs = await Promise.all([
+        htmlModule.getPublicCanonicalCatalogItems(),
+        xmlModule.getPublicCanonicalCatalogItems("sitemap"),
+      ]);
+      expect(catalogs).toEqual([toPublicCatalogItems(boards), toPublicCatalogItems(boards)]);
+      expect(mocks.withClient).toHaveBeenCalledOnce();
+    } finally {
+      Reflect.deleteProperty(globalThis, Symbol.for("edgefit-public-canonical-catalog-v9"));
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("fails visibly instead of returning a successful empty catalog when the database is disabled", async () => {
     mocks.configured = false;
     await expect(getPublicCanonicalCatalogItems()).rejects.toMatchObject({ code: "PUBLIC_DB_UNAVAILABLE" });

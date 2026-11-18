@@ -140,12 +140,20 @@ open a fresh connection. There is no automatic SQL replay or timer-driven retry.
 Socket closure settles local driver work. PostgreSQL cancels timed-out statements
 when responsive enough to enforce the configured limits.
 
-The shared client, write safeguards, and board/sitemap/recommendation loaders
-retain their original behavior. Catalog refresh adds at most one connection per
-process alongside the shared connection and one schema read per refresh. A new
-cache version starts cold and depends on a healthy database for the
-first successful load. Cached data is available only while the platform retains
-the Next.js cache entry.
+The sitemap and server-rendered brand directory read the same catalog cache.
+They keep the existing canonical board identities and exclude explicit redirect
+aliases. No database failure is converted into a successful partial sitemap.
+The XML response declares its UTF-8 byte length and disables transformations
+that would remove that boundary. HTTP/1 clients can read the complete sitemap
+while Next.js waits for pending revalidation before closing the response.
+The sitemap's origin response also sends `Connection: close` so a proxy opens
+another upstream connection for the next request. HTTP/2 clients can keep using
+their connection to the proxy.
+
+The shared client, write safeguards, and board and recommendation loaders retain
+their original behavior. Catalog refresh adds at most one connection per process
+alongside the shared connection and one schema read per refresh. When no cache
+entry has been retained, the first load requires a healthy database.
 
 ## Local acceptance and limitations
 

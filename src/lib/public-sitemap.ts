@@ -1,16 +1,9 @@
 import type { MetadataRoute } from "next";
-import { randomUUID } from "node:crypto";
-import { getAllCanonicalBoardSlugs } from "@/lib/canonical-catalog";
+import { connection } from "next/server";
 import { LEGACY_CANONICAL_BOARD_SLUG_ALIASES } from "@/lib/canonical-board-route";
-import { базаНастроена } from "@/lib/database/config";
-import { PublicDbUnavailableError } from "@/lib/database/operation-boundary";
-import { runPublicDbWork } from "@/lib/database/public-work";
-import { withDbDiagnosticContext } from "@/lib/database/lifecycle-diagnostics";
+import { getPublicCanonicalCatalogItems } from "@/lib/public-catalog-cache";
 import { getSeoLandingPath, seoLandingPages } from "@/lib/seo-pages";
 import { getAbsoluteSiteUrl } from "@/lib/site-url";
-
-// Build without DB access; resolve the current corpus on every runtime request.
-export const dynamic = "force-dynamic";
 
 const explicitLegacyAliasSources = new Set(
   Object.keys(LEGACY_CANONICAL_BOARD_SLUG_ALIASES),
@@ -22,6 +15,8 @@ class SitemapUnavailableError extends Error {
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  // Keep XML request-time while allowing the shared Next.js Data Cache lookup.
+  await connection();
   const routes = [
     "",
     "/quiz",
@@ -35,11 +30,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   let slugs: string[];
   try {
-    if (!базаНастроена()) throw new PublicDbUnavailableError("PUBLIC_DB_UNAVAILABLE");
-    slugs = await withDbDiagnosticContext(
-      { scope: "sitemap", stage: "canonical_corpus", traceId: randomUUID() },
-      () => runPublicDbWork("critical", 15_000, () => getAllCanonicalBoardSlugs()),
-    );
+    const models = await getPublicCanonicalCatalogItems("sitemap");
+    slugs = models.map(({ slug }) => slug);
   } catch (error) {
     let code: unknown;
     try { code = (error as { code?: unknown } | null)?.code; } catch { /* hostile error getter */ }

@@ -2,16 +2,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 const loadSitemapSlugs = vi.hoisted(() => vi.fn());
+const connection = vi.hoisted(() => vi.fn());
 vi.mock("next/font/google", () => ({
   Manrope: () => ({ variable: "body-font" }),
   Space_Grotesk: () => ({ variable: "heading-font" }),
 }));
 vi.mock("@/components/analytics/site-analytics", () => ({ SiteAnalytics: () => null }));
-vi.mock("@/lib/public-catalog-cache", () => ({ getPublicCanonicalCatalogItems: async () => [] }));
-vi.mock("@/lib/saved-results", () => ({ isSavedResultsEnabled: () => false }));
-vi.mock("@/lib/canonical-catalog", () => ({
-  getAllCanonicalBoardSlugs: loadSitemapSlugs,
+vi.mock("next/server", async (importOriginal) => ({ ...await importOriginal<typeof import("next/server")>(), connection }));
+vi.mock("@/lib/public-catalog-cache", () => ({
+  getPublicCanonicalCatalogItems: async (scope: string) => (await loadSitemapSlugs(scope)).map((slug: string) => ({ slug })),
 }));
+vi.mock("@/lib/saved-results", () => ({ isSavedResultsEnabled: () => false }));
 import { metadata as root } from "./layout";
 import { metadata as home } from "./page";
 import { metadata as catalog } from "./catalog/page";
@@ -22,17 +23,18 @@ import { metadata as privacy } from "./privacy/page";
 import { metadata as terms } from "./terms/page";
 import { metadata as result } from "./result/page";
 import robots from "./robots";
-import sitemap, { dynamic as sitemapDynamic } from "./sitemap";
+import sitemap from "@/lib/public-sitemap";
+import { GET as getSitemap } from "./sitemap.xml/route";
 import { LEGACY_CANONICAL_BOARD_SLUG_ALIASES } from "@/lib/canonical-board-route";
 import { getAbsoluteSiteUrl } from "@/lib/site-url";
+import { OperationDeadlineError } from "@/lib/operation-deadline";
 
 beforeEach(() => {
   loadSitemapSlugs.mockReset().mockResolvedValue(["test-board", "bataleon-evil-twin-trial-sport-3131268", "nitro-team-2025-2026", "nitro-team"]);
-  vi.stubEnv("DATABASE_URL", "postgres://local-fixture");
-  vi.stubEnv("DATABASE_SSL", "disable");
+  connection.mockReset().mockResolvedValue(undefined);
   for (const name of ["NEXT_PUBLIC_SITE_URL", "VERCEL_PROJECT_PRODUCTION_URL", "VERCEL_URL"]) vi.stubEnv(name, "");
 });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe("public SnowDex metadata migration", () => {
   it("uses a SnowDex root template without imposing a homepage canonical on children", () => {
@@ -56,6 +58,7 @@ describe("public SnowDex metadata migration", () => {
   it("preserves SnowDex origin and robots policy with live board routes", async () => {
     expect(robots()).toEqual({ rules: { userAgent: "*", allow: "/" }, sitemap: "https://snowdex.ru/sitemap.xml" });
     const entries = await sitemap();
+    expect(loadSitemapSlugs).toHaveBeenCalledWith("sitemap");
     expect(entries).toHaveLength(21);
     expect(entries.every(({ url }) => new URL(url).origin === "https://snowdex.ru")).toBe(true);
     expect(entries.map(({ url }) => new URL(url).pathname)).toContain("/boards/bataleon-evil-twin-trial-sport-3131268");
@@ -65,7 +68,6 @@ describe("public SnowDex metadata migration", () => {
   });
 
   it("fails closed on unavailable canonical data rather than serving a partial successful sitemap", async () => {
-    expect(sitemapDynamic).toBe("force-dynamic");
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     loadSitemapSlugs.mockRejectedValueOnce(new Error("audit-private-db-detail"))
       .mockResolvedValueOnce([]).mockResolvedValueOnce(["runtime-board"]);
@@ -81,20 +83,36 @@ describe("public SnowDex metadata migration", () => {
     expect(JSON.stringify(log.mock.calls)).not.toContain("audit-private-db-detail");
   });
 
-  it("does not treat missing database configuration as a complete static-only sitemap", async () => {
-    vi.stubEnv("DATABASE_URL", " ");
-
-    await expect(sitemap()).rejects.toMatchObject({ code: "SITEMAP_UNAVAILABLE" });
+  it("waits for a request before reading the shared catalog data", async () => {
+    const request = Promise.withResolvers<void>();
+    connection.mockReturnValueOnce(request.promise);
+    const pending = sitemap();
     expect(loadSitemapSlugs).not.toHaveBeenCalled();
+    request.resolve();
+    await pending;
+    expect(loadSitemapSlugs).toHaveBeenCalledOnce();
   });
 
-  it("returns a bounded error when canonical sitemap data never settles", async () => {
-    vi.useFakeTimers();
-    loadSitemapSlugs.mockImplementation(() => new Promise(() => undefined));
-    const pending = sitemap().catch(error => error);
+  it("fails closed and records the shared loader deadline category", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    loadSitemapSlugs.mockRejectedValueOnce(new OperationDeadlineError());
+    await expect(sitemap()).rejects.toMatchObject({ code: "SITEMAP_UNAVAILABLE" });
+    expect(log).toHaveBeenCalledWith(JSON.stringify({
+      event: "public_route_failure", route: "sitemap", category: "operation_deadline",
+    }));
+  });
 
-    await vi.advanceTimersByTimeAsync(15_000);
-    await expect(pending).resolves.toMatchObject({ code: "SITEMAP_UNAVAILABLE" });
+  it("frames the public XML response by bytes and retires the upstream connection", async () => {
+    loadSitemapSlugs.mockResolvedValueOnce(["test-вход&more"]);
+    const response = await getSitemap();
+    const xml = await response.text();
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("application/xml; charset=utf-8");
+    expect(response.headers.get("cache-control")).toContain("no-transform");
+    expect(response.headers.get("content-length")).toBe(String(Buffer.byteLength(xml, "utf8")));
+    expect(response.headers.get("connection")).toBe("close");
+    expect(xml).toContain("<loc>https://snowdex.ru/boards/test-%D0%B2%D1%85%D0%BE%D0%B4&amp;more</loc>");
+    expect(xml.endsWith("</urlset>\n")).toBe(true);
   });
 
   it("generates a unique full fixture corpus on SnowDex, excluding only explicit alias sources", async () => {
