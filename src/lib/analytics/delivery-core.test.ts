@@ -299,7 +299,25 @@ describe("analytics delivery envelopes", () => {
       "EdgeFit Weekly Analytics — 2026-W32 [weekly:2026-W32]",
     );
     expect(envelope.message.text).toContain("Status: PARTIAL");
+    expect(envelope.message.text).not.toContain("Reporting period:");
     expect(envelope.message.attachments?.[0].filename).toBe("edgefit-weekly-2026-W32.json");
+  });
+  it("labels real weekly users, visits and engagement separately and does not zero-fill gaps", () => {
+    const digest = makeDigest({
+      kind: "weekly", logicalId: "weekly:2026-W32", weeklySummary: true, status: "partial",
+      dataQuality: [
+        { code: "first_party_week_coverage_incomplete", severity: "warning", message: "Incomplete." },
+        { code: "first_party_month_coverage_incomplete", severity: "warning", message: "Incomplete." },
+      ],
+    });
+    digest.traffic.last7Days = { users: 11, visits: 17, bounceRate: 0.25, pageDepth: 1.8, avgVisitDurationSeconds: 84 };
+    digest.acquisition.last7Days = null;
+    const { message } = buildAnalyticsDigestEmailEnvelope(digest, config);
+    expect(message.text).toContain("Traffic 7d (Metrika): 11 users / 17 visits");
+    expect(message.text).toContain("25% bounce rate / 1.8 pages per visit / 84 s per visit");
+    expect(message.text).toContain("quiz starts —, results —, store clicks —");
+    expect(message.text).toContain("Conversions 7d (first-party sessions): — (incomplete or unavailable source)");
+    expect(message.text).toContain("Store clicks 30d: — sessions / — events");
   });
 
   it("escapes dynamic display values in HTML", () => {
@@ -343,6 +361,9 @@ describe("analytics delivery state decisions", () => {
   it.each(["sent", "partial_sent"] as const)("returns a zero-write noop for %s", (status) => {
     expect(
       getAnalyticsDeliveryClaimDecision(makeRow(digest, { deliveryStatus: status }), digest, now),
+    ).toEqual({ action: "noop" });
+    expect(
+      getAnalyticsDeliveryClaimDecision(makeRow(digest, { deliveryStatus: status, contentHash: "revised-report" }), digest, now),
     ).toEqual({ action: "noop" });
   });
 

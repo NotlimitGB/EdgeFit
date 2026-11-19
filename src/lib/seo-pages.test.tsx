@@ -3,6 +3,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ prefetch: vi.fn() }), usePathname: () => "/" }));
+vi.mock("next/server", async (importOriginal) => ({
+  ...await importOriginal<typeof import("next/server")>(), connection: async () => undefined,
+}));
 
 const sitemapBoardSlugs = vi.hoisted(() => [
   "test-board",
@@ -40,13 +43,13 @@ vi.mock("@/lib/saved-results", () => ({
   isSavedResultsEnabled: () => false,
 }));
 
-vi.mock("@/lib/canonical-catalog", () => ({
-  getAllCanonicalBoardSlugs: vi.fn().mockResolvedValue(sitemapBoardSlugs),
+vi.mock("@/lib/public-catalog-cache", () => ({
+  getPublicCanonicalCatalogItems: async () => sitemapBoardSlugs.map((slug) => ({ slug })),
 }));
 
 import { generateMetadata } from "@/app/[seoSlug]/page";
 import { metadata as resultMetadata } from "@/app/result/page";
-import sitemap from "@/app/sitemap";
+import sitemap from "@/lib/public-sitemap";
 import { SeoLandingPageView } from "@/components/seo/landing-page";
 import {
   getRelatedSeoLandingPages,
@@ -397,14 +400,7 @@ describe("SEO indexing hygiene", () => {
   });
 
   it("excludes explicit alias sources while preserving canonical and unrelated URLs", async () => {
-    vi.stubEnv("DATABASE_URL", "postgres://local-fixture");
-    vi.stubEnv("DATABASE_SSL", "disable");
-    let entries: Awaited<ReturnType<typeof sitemap>>;
-    try {
-      entries = await sitemap();
-    } finally {
-      vi.unstubAllEnvs();
-    }
+    const entries = await sitemap();
     const paths = entries.map((entry) => new URL(entry.url).pathname);
 
     expect(paths).not.toContain("/result");

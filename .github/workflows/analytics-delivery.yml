@@ -12,6 +12,22 @@ on:
         options:
           - weekly
           - retry
+          - historical-audit
+          - historical-recover
+      historical_week:
+        description: 'Exact historical week for audit or recovery'
+        type: choice
+        required: false
+        options:
+          - none
+          - 2026-W44
+          - 2026-W45
+          - 2026-W46
+        default: none
+      provider_checked:
+        description: 'For recovery only: verified no previous provider acceptance for this week'
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -34,6 +50,8 @@ jobs:
       - name: Invoke scheduled delivery
         env:
           ANALYTICS_DELIVERY_ENABLED: ${{ vars.ANALYTICS_DELIVERY_ENABLED }}
+          ANALYTICS_HISTORICAL_RECOVERY_ENABLED: ${{ vars.ANALYTICS_HISTORICAL_RECOVERY_ENABLED }}
+          ANALYTICS_HISTORICAL_NO_REPLAY: ${{ vars.ANALYTICS_HISTORICAL_NO_REPLAY }}
           DATABASE_URL: ${{ secrets.ANALYTICS_DATABASE_URL }}
           DATABASE_SSL: require
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
@@ -44,11 +62,15 @@ jobs:
           SCHEDULE: ${{ github.event.schedule }}
           EVENT_NAME: ${{ github.event_name }}
           MANUAL_OPERATION: ${{ inputs.operation }}
+          HISTORICAL_WEEK: ${{ inputs.historical_week }}
+          PROVIDER_CHECKED: ${{ inputs.provider_checked }}
         run: |
           case "$EVENT_NAME:$SCHEDULE:$MANUAL_OPERATION" in
             'schedule:30 6 * * 1:') node scripts/analytics-direct-runner.mjs weekly ;;
             'schedule:15 8 * * *:') node scripts/analytics-direct-runner.mjs retry ;;
             'workflow_dispatch::weekly') node scripts/analytics-direct-runner.mjs weekly ;;
             'workflow_dispatch::retry') node scripts/analytics-direct-runner.mjs retry ;;
+            'workflow_dispatch::historical-audit') node scripts/analytics-direct-runner.mjs historical-audit ;;
+            'workflow_dispatch::historical-recover') node scripts/analytics-direct-runner.mjs historical-recover ;;
             *) exit 1 ;;
           esac

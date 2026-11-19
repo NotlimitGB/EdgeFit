@@ -56,14 +56,14 @@ export interface AnalyticsDeliveryClaim {
 }
 
 export interface AnalyticsDeliveryRepository {
-  claim(digest: AnalyticsDigest, now: Date): Promise<AnalyticsDeliveryClaim>;
+  claim(digest: AnalyticsDigest, now: Date, onlyIfAbsent?: boolean): Promise<AnalyticsDeliveryClaim>;
   finish(
     claim: Required<Pick<AnalyticsDeliveryClaim, "logicalId" | "leaseToken" | "attemptCount">>,
     digest: AnalyticsDigest,
     outcome: AnalyticsProviderOutcome,
     now: Date,
   ): Promise<AnalyticsDeliveryResult>;
-  listDue(now: Date, limit: number): Promise<AnalyticsDeliveryLedgerRow[]>;
+  listDue(now: Date, limit: number, weeklyFrom?: string): Promise<AnalyticsDeliveryLedgerRow[]>;
   reject(logicalId: string, category: string, now: Date): Promise<void>;
   cleanup(now: Date, limit: number): Promise<number>;
 }
@@ -123,7 +123,7 @@ export function createPostgresAnalyticsDeliveryRepository(
   sql: Sql,
 ): AnalyticsDeliveryRepository {
   return {
-    async claim(digest, now) {
+    async claim(digest, now, onlyIfAbsent) {
       return sql.begin(async (tx) => {
         await tx`select pg_advisory_xact_lock(hashtextextended(${digest.logicalId}, 0))`;
         const rows = await tx<RawDeliveryRow[]>`
@@ -151,6 +151,9 @@ export function createPostgresAnalyticsDeliveryRepository(
 
         if (decision.action === "noop" || decision.action === "busy") {
           return { status: decision.action, logicalId: digest.logicalId };
+        }
+        if (onlyIfAbsent && existing) {
+          return { status: "failed", logicalId: digest.logicalId, category: "delivery_ledger_exists" };
         }
         if (decision.action === "conflict") {
           await tx`
@@ -309,7 +312,7 @@ export function createPostgresAnalyticsDeliveryRepository(
       });
     },
 
-    async listDue(now, limit) {
+    async listDue(now, limit, weeklyFrom) {
       const safeLimit = Math.min(Math.max(limit, 0), ANALYTICS_DELIVERY_RETRY_BATCH_SIZE);
       const rows = await sql<RawDeliveryRow[]>`
         select
@@ -326,6 +329,7 @@ export function createPostgresAnalyticsDeliveryRepository(
             or
             (delivery_status = 'sending' and lease_expires_at <= ${now})
           )
+          and (${weeklyFrom ?? null}::date is null or (kind = 'weekly' and period_start >= ${weeklyFrom ?? null}::date))
         order by coalesce(next_attempt_at, lease_expires_at, created_at), logical_id
         limit ${safeLimit}
       `;
@@ -446,7 +450,9 @@ async function runGeneratedDelivery(
   kind: AnalyticsDigest["kind"],
   now: Date,
   dependencies: AnalyticsDeliveryDependencies,
+  options?: { historical?: { reportNow: Date; now: () => Date }; onlyIfAbsent?: boolean },
 ): Promise<AnalyticsDeliveryResult> {
+  const historical = options?.historical;
   const parsed = parseAnalyticsDeliveryConfig(dependencies.env);
   if (parsed.state === "disabled") return { status: "disabled" };
   if (parsed.state === "invalid") return { status: "failed", category: parsed.category };
@@ -454,7 +460,7 @@ async function runGeneratedDelivery(
   const mailer = dependencies.mailerFactory(parsed.config);
   let digest: AnalyticsDigest;
   try {
-    const report = await dependencies.reportLoader({ now });
+    const report = await dependencies.reportLoader({ now: historical?.reportNow ?? now });
     digest = kind === "daily" ? buildDailyAnalyticsDigest(report) : buildWeeklyAnalyticsDigest(report);
   } catch {
     if (dependencies.failureNotices !== false) await attemptFailureNotice(kind, kind, "report_generation_failed", parsed.config, mailer);
@@ -471,11 +477,16 @@ async function runGeneratedDelivery(
     );
     return { status: "failed", logicalId: digest.logicalId, category: "first_party_unavailable" };
   }
+  if (historical && digest.status !== "complete") {
+    return { status: "failed", logicalId: digest.logicalId, category: "historical_sources_incomplete" };
+  }
 
   try {
     const repository = dependencies.repositoryFactory(parsed.config);
-    const claim = await repository.claim(digest, now);
-    return await sendClaimedDigest(claim, parsed.config, repository, mailer, now);
+    const claim = historical || options?.onlyIfAbsent
+      ? await repository.claim(digest, historical?.now() ?? now, true)
+      : await repository.claim(digest, now);
+    return await sendClaimedDigest(claim, parsed.config, repository, mailer, historical?.now() ?? now);
   } catch {
     if (dependencies.failureNotices !== false) await attemptFailureNotice(kind, digest.logicalId, "delivery_storage_unavailable", parsed.config, mailer);
     return { status: "failed", logicalId: digest.logicalId, category: "delivery_storage_unavailable" };
@@ -495,11 +506,15 @@ export function runDailyAnalyticsDelivery({
 export function runWeeklyAnalyticsDelivery({
   now = new Date(),
   dependencies = defaultDependencies,
+  historical,
+  onlyIfAbsent,
 }: {
   now?: Date;
   dependencies?: AnalyticsDeliveryDependencies;
+  historical?: { reportNow: Date; now: () => Date };
+  onlyIfAbsent?: boolean;
 } = {}) {
-  return runGeneratedDelivery("weekly", now, dependencies);
+  return runGeneratedDelivery("weekly", now, dependencies, { historical, onlyIfAbsent });
 }
 
 export async function runAnalyticsDeliveryRetrySweep({

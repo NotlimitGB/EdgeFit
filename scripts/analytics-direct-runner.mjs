@@ -3,9 +3,14 @@ import path from "node:path";
 
 // This entrypoint runs only on the protected default branch, never from PRs.
 const kind = process.argv[2];
+const historical = ["historical-audit", "historical-recover"].includes(kind);
 if (process.env.GITHUB_ACTIONS !== "true" || process.env.GITHUB_REF !== "refs/heads/main" ||
     !["schedule", "workflow_dispatch"].includes(process.env.GITHUB_EVENT_NAME) ||
-    !["weekly", "retry"].includes(kind)) {
+    (historical
+      ? process.env.GITHUB_EVENT_NAME !== "workflow_dispatch"
+      : !["weekly", "retry"].includes(kind) ||
+        ![undefined, "", "none"].includes(process.env.HISTORICAL_WEEK) ||
+        process.env.PROVIDER_CHECKED === "true")) {
   console.error("analytics_direct_runner: execution_not_authorized");
   process.exitCode = 1;
 } else {
@@ -17,11 +22,18 @@ if (process.env.GITHUB_ACTIONS !== "true" || process.env.GITHUB_REF !== "refs/he
       resolve: { alias: { "@": path.join(root, "src"), "server-only": path.join(root, "node_modules/next/dist/compiled/server-only/empty.js") } },
     });
     const { runDirectDelivery } = await vite.ssrLoadModule("/src/lib/analytics/direct-runner.ts");
-    const result = await runDirectDelivery(kind);
+    const result = await runDirectDelivery(kind, {
+      historicalWeek: process.env.HISTORICAL_WEEK,
+      providerChecked: process.env.PROVIDER_CHECKED === "true",
+      scheduledRetry: kind === "retry" && process.env.GITHUB_EVENT_NAME === "schedule",
+    });
     const statuses = ["sent", "partial_sent", "noop", "busy", "pending", "failed", "conflict"];
     const categories = ["delivery_disabled", "delivery_config_missing", "database_config_invalid",
       "metrika_config_invalid", "invalid_operation", "direct_execution_failed", "historical_week_not_supported",
-      "historical_w44_requires_owner_action",
+      "historical_recovery_not_authorized", "historical_period_invalid", "historical_already_sent",
+      "historical_ledger_exists", "historical_sources_incomplete", "historical_sources_ready",
+      "historical_closed_without_replay", "historical_closure_config_invalid",
+      "delivery_ledger_exists",
       "missed_week_reconciliation_required", "weekly_identity_mismatch", "provider_reconciliation_required",
       "provider_rate_limited", "provider_request_rejected", "delivery_lease_lost", "report_generation_failed",
       "first_party_unavailable", "delivery_storage_unavailable", "stored_digest_invalid", "stored_digest_hash_mismatch",

@@ -66,6 +66,7 @@ export interface AnalyticsDigest {
   asOfDate: string;
   timezone: "Europe/Moscow";
   status: "complete" | "partial";
+  weeklySummary?: boolean;
   sourceReport: {
     version: string;
     evidenceHash: string;
@@ -76,7 +77,13 @@ export interface AnalyticsDigest {
     metrika: AnalyticsDigestSourceStatus;
     acquisition: AnalyticsDigestSourceStatus;
   };
-  traffic: Record<WindowKey, { users: number; visits: number } | null>;
+  traffic: Record<WindowKey, {
+    users: number;
+    visits: number;
+    bounceRate?: number;
+    pageDepth?: number;
+    avgVisitDurationSeconds?: number;
+  } | null>;
   acquisition: {
     last7Days: { goals: Record<AcquisitionGoalKey, AnalyticsDigestGoalMetric> } | null;
     last30Days: { goals: Record<AcquisitionGoalKey, AnalyticsDigestGoalMetric> } | null;
@@ -306,11 +313,19 @@ function projectPeriods(report: AnalyticsReport): AnalyticsDigest["periods"] {
   ) as AnalyticsDigest["periods"];
 }
 
-function projectTraffic(report: AnalyticsReport): AnalyticsDigest["traffic"] {
+function projectTraffic(report: AnalyticsReport, kind: DigestKind): AnalyticsDigest["traffic"] {
   return Object.fromEntries(
     WINDOW_KEYS.map((key) => {
       const window = report.traffic[key];
-      return [key, window ? { users: window.users, visits: window.visits } : null];
+      return [key, window ? {
+        users: window.users,
+        visits: window.visits,
+        ...(kind === "weekly" && key === "last7Days" ? {
+          bounceRate: window.bounceRate,
+          pageDepth: window.pageDepth,
+          avgVisitDurationSeconds: window.avgVisitDurationSeconds,
+        } : {}),
+      } : null];
     }),
   ) as AnalyticsDigest["traffic"];
 }
@@ -635,7 +650,13 @@ const periodSchema: Schema = {
 };
 const trafficWindowSchema: Schema = {
   type: "object",
-  fields: { users: { schema: numberSchema }, visits: { schema: numberSchema } },
+  fields: {
+    users: { schema: numberSchema },
+    visits: { schema: numberSchema },
+    bounceRate: { schema: numberSchema, optional: true },
+    pageDepth: { schema: numberSchema, optional: true },
+    avgVisitDurationSeconds: { schema: numberSchema, optional: true },
+  },
 };
 const funnelWindowSchema: Schema = {
   type: "object",
@@ -761,6 +782,7 @@ const digestSchema: Schema = {
     asOfDate: { schema: dateSchema },
     timezone: { schema: stringSchema({ values: ["Europe/Moscow"] }) },
     status: { schema: stringSchema({ values: ["complete", "partial"] }) },
+    weeklySummary: { schema: { type: "boolean" }, optional: true },
     sourceReport: {
       schema: {
         type: "object",
@@ -1393,7 +1415,7 @@ function buildAnalyticsDigest(report: AnalyticsReport, kind: DigestKind): Analyt
     metrika: projectSourceStatus(report.sourceStatus.metrika),
     acquisition: projectSourceStatus(report.acquisition.sourceStatus),
   };
-  const traffic = projectTraffic(report);
+  const traffic = projectTraffic(report, kind);
   const acquisition = projectAcquisition(report);
   const funnel = projectFunnel(report);
   const quizAbandonment = report.quizAbandonment;
@@ -1411,7 +1433,8 @@ function buildAnalyticsDigest(report: AnalyticsReport, kind: DigestKind): Analyt
   const status =
     sourceStatus.firstParty.status === "ok" &&
     sourceStatus.metrika.status === "ok" &&
-    sourceStatus.acquisition.status === "ok"
+    sourceStatus.acquisition.status === "ok" &&
+    !(kind === "weekly" && dataQuality.some(({ code }) => code === "first_party_week_coverage_incomplete"))
       ? "complete"
       : "partial";
   const logicalId =
@@ -1420,6 +1443,7 @@ function buildAnalyticsDigest(report: AnalyticsReport, kind: DigestKind): Analyt
       : `weekly:${getIsoWeekIdentity(report.asOfDate)}`;
 
   const projectedEvidence = {
+    ...(kind === "weekly" ? { weeklySummary: true } : {}),
     asOfDate: report.asOfDate,
     timezone: "Europe/Moscow" as const,
     periods,
@@ -1456,6 +1480,7 @@ function buildAnalyticsDigest(report: AnalyticsReport, kind: DigestKind): Analyt
     asOfDate: report.asOfDate,
     timezone: "Europe/Moscow",
     status,
+    ...(kind === "weekly" ? { weeklySummary: true } : {}),
     sourceReport: { version: report.version, evidenceHash },
     periods,
     sourceStatus,

@@ -180,16 +180,38 @@ export function buildAnalyticsDigestEmailEnvelope(
       ? `edgefit-daily-${digest.asOfDate}.json`
       : `edgefit-weekly-${digest.logicalId.slice("weekly:".length)}.json`;
   const warningCodes = digest.dataQuality.map((warning) => warning.code).join(", ") || "none";
+  const traffic = digest.traffic.last7Days;
+  const goals = digest.acquisition.last7Days?.goals;
+  const weeklyFunnel = digest.funnel.last7Days;
+  const weeklyClicks = digest.commerce.windows.last7Days;
+  const firstPartyAvailable = digest.sourceStatus.firstParty.status === "ok";
+  const hasWeeklySummary = digest.kind === "weekly" && digest.weeklySummary === true;
+  const firstPartyWeekComplete = firstPartyAvailable &&
+    !digest.dataQuality.some(({ code }) => code === "first_party_week_coverage_incomplete");
+  const firstPartyMonthComplete = !hasWeeklySummary || (firstPartyAvailable &&
+    !digest.dataQuality.some(({ code }) => code === "first_party_month_coverage_incomplete"));
+  const weeklyLines = hasWeeklySummary ? [
+    `Reporting period: ${digest.periods.last7Days.startDate} – ${digest.periods.last7Days.endDate} (Europe/Moscow)`,
+    `Traffic 7d (Metrika): ${formatMetric(traffic?.users)} users / ${formatMetric(traffic?.visits)} visits`,
+    `Engagement 7d (Metrika): ${formatRate(traffic?.bounceRate)} bounce rate / ${formatMetric(traffic?.pageDepth)} pages per visit / ${formatMetric(traffic?.avgVisitDurationSeconds)} s per visit`,
+    `Acquisition 7d (Metrika goal visits): quiz starts ${formatMetric(goals?.quizStarted.visits)}, results ${formatMetric(goals?.resultViewed.visits)}, store clicks ${formatMetric(goals?.productClicked.visits)}`,
+    firstPartyWeekComplete
+      ? `Conversions 7d (first-party sessions): ${weeklyFunnel.quizCompletedSessions} quiz completions / ${weeklyFunnel.resultToStoreSessions} result-to-store / ${weeklyClicks.uniqueClickSessions} store-click sessions (${weeklyClicks.clickEvents} events)`
+      : "Conversions 7d (first-party sessions): — (incomplete or unavailable source)",
+  ] : [];
   const lines = [
     "PRIVATE — EDGEFIT ANALYTICS",
     `Status: ${status}`,
     `Logical ID: ${digest.logicalId}`,
     `As of: ${digest.asOfDate}`,
+    ...weeklyLines,
     `Traffic 30d: ${formatMetric(last30Traffic?.users)} users / ${formatMetric(last30Traffic?.visits)} visits`,
     `Acquisition 30d: quiz ${formatMetric(last30Acquisition?.quizStarted.visits)}, result ${formatMetric(last30Acquisition?.resultViewed.visits)}, store ${formatMetric(last30Acquisition?.productClicked.visits)}`,
-    `First-party 30d: ${funnel.quizCompletedSessions} quiz completions / ${funnel.resultViewedSessions} results / ${funnel.resultToStoreSessions} result-to-store`,
-    `Store clicks 30d: ${commerce.uniqueClickSessions} sessions / ${commerce.clickEvents} events`,
-    `Recommendation feedback 30d: ${feedback.feedbackSessions} sessions / ${formatRate(feedback.wouldConsiderRate)} consideration rate`,
+    firstPartyMonthComplete
+      ? `First-party 30d: ${funnel.quizCompletedSessions} quiz completions / ${funnel.resultViewedSessions} results / ${funnel.resultToStoreSessions} result-to-store`
+      : "First-party 30d: — (incomplete or unavailable source)",
+    `Store clicks 30d: ${formatMetric(firstPartyMonthComplete ? commerce.uniqueClickSessions : null)} sessions / ${formatMetric(firstPartyMonthComplete ? commerce.clickEvents : null)} events`,
+    `Recommendation feedback 30d: ${formatMetric(firstPartyMonthComplete ? feedback.feedbackSessions : null)} sessions / ${formatRate(firstPartyMonthComplete ? feedback.wouldConsiderRate : null)} consideration rate`,
     `Partner readiness: ${formatMetric(readiness.score)} / ${readiness.status}`,
     `Data quality: ${warningCodes}`,
     `Content hash: ${digest.delivery.contentHash}`,
@@ -259,9 +281,6 @@ export function getAnalyticsDeliveryClaimDecision(
   if (!existing) {
     return { action: "create_and_claim" };
   }
-  if (existing.contentHash !== digest.delivery.contentHash) {
-    return { action: "conflict", category: "logical_id_content_conflict" };
-  }
   if (existing.deliveryStatus === "sent" || existing.deliveryStatus === "partial_sent") {
     return { action: "noop" };
   }
@@ -284,6 +303,9 @@ export function getAnalyticsDeliveryClaimDecision(
   if (existing.lastErrorCategory === "provider_outcome_unknown" ||
       existing.lastErrorCategory === "provider_reconciliation_required") {
     return { action: "fail", category: "provider_reconciliation_required" };
+  }
+  if (existing.contentHash !== digest.delivery.contentHash) {
+    return { action: "conflict", category: "logical_id_content_conflict" };
   }
   if (existing.attemptCount >= ANALYTICS_DELIVERY_MAX_ATTEMPTS) {
     return { action: "fail", category: "delivery_attempts_exhausted" };

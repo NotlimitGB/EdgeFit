@@ -15,10 +15,27 @@ describe("analytics direct workflow", () => {
     expect(workflow).toContain("15 8 * * *");
     expect(workflow).toContain("'workflow_dispatch::weekly'");
     expect(workflow).toContain("'workflow_dispatch::retry'");
+    expect(workflow).toContain("'workflow_dispatch::historical-audit'");
+    expect(workflow).toContain("'workflow_dispatch::historical-recover'");
+    expect(workflow).toContain("ANALYTICS_HISTORICAL_RECOVERY_ENABLED");
+    expect(workflow).toContain("vars.ANALYTICS_HISTORICAL_NO_REPLAY");
     expect(workflow).toContain("node scripts/analytics-direct-runner.mjs");
     expect(workflow).not.toContain("CRON_SECRET");
     expect(workflow).not.toContain("/api/cron/");
+    expect(JSON.parse(readFileSync("vercel.json", "utf8")).crons).toEqual([
+      { path: "/api/cron/catalog-refresh", schedule: "0 0 * * *" },
+    ]);
   });
+  it("cannot run historic recovery from a scheduled event even when a week is selected", () => {
+    const run = spawnSync(process.execPath, ["scripts/analytics-direct-runner.mjs", "historical-recover"], {
+      encoding: "utf8", timeout: 20_000,
+      env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, NODE_ENV: "test", GITHUB_ACTIONS: "true",
+        GITHUB_REF: "refs/heads/main", GITHUB_EVENT_NAME: "schedule", HISTORICAL_WEEK: "2026-W44",
+        PROVIDER_CHECKED: "true", ANALYTICS_HISTORICAL_RECOVERY_ENABLED: "true" },
+    });
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain("execution_not_authorized");
+  }, 25_000);
   it("permits only the immediately preceding ISO week on Moscow Monday", () => {
     expect(expectedWeeklyId(new Date("2026-11-02T06:30:00Z"))).toBe("weekly:2026-W44");
     expect(expectedWeeklyId(new Date("2026-11-09T06:30:00Z"))).toBe("weekly:2026-W45");

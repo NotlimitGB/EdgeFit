@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   time: 0,
   namespace: "fixture",
   configured: true,
+  client: {},
+  withClient: vi.fn((operation: (sql: unknown) => Promise<unknown>) => operation(mocks.client)),
   getSupport: vi.fn(),
   unstableCache: vi.fn(
     (operation: (...args: unknown[]) => Promise<unknown>, keys: string[], options: { revalidate: number }) => {
@@ -20,9 +22,15 @@ const mocks = vi.hoisted(() => ({
         const key = JSON.stringify([keys, args]);
         const entry = mocks.entries.get(key);
         if (entry && entry.expires > mocks.time) return entry.value;
-        const value = await operation(...args);
-        mocks.entries.set(key, { value, expires: mocks.time + options.revalidate * 1000 });
-        return value;
+        const refresh = operation(...args).then((value) => {
+          mocks.entries.set(key, { value, expires: mocks.time + options.revalidate * 1000 });
+          return value;
+        });
+        if (entry) {
+          void refresh.catch(() => undefined);
+          return entry.value;
+        }
+        return refresh;
       };
     },
   ),
@@ -36,9 +44,10 @@ vi.mock("@/lib/canonical-catalog", () => ({
   loadPublicCanonicalCatalog: mocks.getAllCanonicalCatalogItems,
 }));
 vi.mock("@/lib/database/config", () => ({ базаНастроена: () => mocks.configured }));
+vi.mock("@/lib/database/catalog-read-client", () => ({ withCatalogReadClient: mocks.withClient }));
+vi.mock("@/lib/database/product-column-support", () => ({ readProductColumnSupport: mocks.getSupport }));
 vi.mock("@/lib/public-schema-cache", () => ({
   getPublicDatabaseNamespace: () => mocks.namespace,
-  getPublicSchemaSupport: mocks.getSupport,
 }));
 
 import { getPublicCanonicalCatalogItems } from "@/lib/public-catalog-cache";
@@ -113,6 +122,7 @@ describe("public catalog cache", () => {
   beforeEach(() => {
     mocks.getAllCanonicalCatalogItems.mockReset();
     mocks.entries.clear(); mocks.time = 0; mocks.namespace = "fixture"; mocks.configured = true;
+    mocks.withClient.mockClear();
     mocks.getSupport.mockReset(); mocks.getSupport.mockResolvedValue({});
   });
 
@@ -120,7 +130,7 @@ describe("public catalog cache", () => {
     expect(mocks.unstableCache).toHaveBeenCalledTimes(1);
     expect(mocks.unstableCache).toHaveBeenCalledWith(
       expect.any(Function),
-      ["edgefit-public-canonical-catalog-v8-photo-shutdown"],
+      ["edgefit-public-canonical-catalog-v9"],
       {
         revalidate: 300,
         tags: ["edgefit-public-canonical-catalog"],
@@ -149,21 +159,68 @@ describe("public catalog cache", () => {
     expect(first).toEqual(toPublicCatalogItems(boards));
     expect(second).toEqual(first);
     expect(mocks.getAllCanonicalCatalogItems).toHaveBeenCalledTimes(1);
-    expect(mocks.getSupport).toHaveBeenCalledTimes(2);
+    expect(mocks.getSupport).toHaveBeenCalledExactlyOnceWith(mocks.client);
+    expect(mocks.getAllCanonicalCatalogItems).toHaveBeenCalledWith({}, mocks.client);
   });
 
   it("expires after 300 seconds, isolates namespaces and recovers after errors", async () => {
     mocks.getAllCanonicalCatalogItems.mockRejectedValueOnce(new Error("unavailable")).mockResolvedValue(boards);
-    await expect(getPublicCanonicalCatalogItems()).rejects.toThrow("unavailable");
+    await expect(getPublicCanonicalCatalogItems()).rejects.toMatchObject({ code: "PUBLIC_DB_UNAVAILABLE" });
     await getPublicCanonicalCatalogItems();
     await getPublicCanonicalCatalogItems();
     expect(mocks.getAllCanonicalCatalogItems).toHaveBeenCalledTimes(2);
     mocks.time = 300_001;
     await getPublicCanonicalCatalogItems();
-    expect(mocks.getAllCanonicalCatalogItems).toHaveBeenCalledTimes(3);
+    await vi.waitFor(() => expect(mocks.getAllCanonicalCatalogItems).toHaveBeenCalledTimes(3));
     mocks.namespace = "other";
     await getPublicCanonicalCatalogItems();
     expect(mocks.getAllCanonicalCatalogItems).toHaveBeenCalledTimes(4);
+  });
+
+  it("shares cold starts and keeps serving cached results during one stalled refresh", async () => {
+    const initial = Promise.withResolvers<CanonicalCatalogItem[]>();
+    mocks.getAllCanonicalCatalogItems.mockReturnValueOnce(initial.promise);
+    const cold = Array.from({ length: 10 }, () => getPublicCanonicalCatalogItems());
+    await vi.waitFor(() => expect(mocks.getSupport).toHaveBeenCalledTimes(1));
+    initial.resolve(boards);
+    expect(await Promise.all(cold)).toEqual(Array(10).fill(toPublicCatalogItems(boards)));
+
+    mocks.time = 3_600_001;
+    const staleSchema = Promise.withResolvers<never>();
+    mocks.getSupport.mockReturnValueOnce(staleSchema.promise);
+    const stale = Array.from({ length: 38 }, () => getPublicCanonicalCatalogItems());
+    expect(await Promise.all(stale)).toEqual(Array(38).fill(toPublicCatalogItems(boards)));
+    expect(mocks.withClient).toHaveBeenCalledTimes(2);
+    expect(mocks.getAllCanonicalCatalogItems).toHaveBeenCalledTimes(1);
+    staleSchema.reject(new Error("fixture schema read failed"));
+
+    const updated = [{ ...boards[0], slug: "updated-model" }];
+    mocks.getAllCanonicalCatalogItems.mockResolvedValue(updated);
+    await vi.waitFor(async () => {
+      expect(await getPublicCanonicalCatalogItems()).toEqual(toPublicCatalogItems(updated));
+    });
+    expect(mocks.withClient).toHaveBeenCalledTimes(3);
+  });
+
+  it("shares concurrent cold work across separately loaded production modules", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      vi.resetModules();
+      const htmlModule = await import("@/lib/public-catalog-cache");
+      vi.resetModules();
+      const xmlModule = await import("@/lib/public-catalog-cache");
+      mocks.getAllCanonicalCatalogItems.mockResolvedValue(boards);
+
+      const catalogs = await Promise.all([
+        htmlModule.getPublicCanonicalCatalogItems(),
+        xmlModule.getPublicCanonicalCatalogItems("sitemap"),
+      ]);
+      expect(catalogs).toEqual([toPublicCatalogItems(boards), toPublicCatalogItems(boards)]);
+      expect(mocks.withClient).toHaveBeenCalledOnce();
+    } finally {
+      Reflect.deleteProperty(globalThis, Symbol.for("edgefit-public-canonical-catalog-v9"));
+      vi.unstubAllEnvs();
+    }
   });
 
   it("fails visibly instead of returning a successful empty catalog when the database is disabled", async () => {

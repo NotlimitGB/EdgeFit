@@ -88,7 +88,9 @@ describe("shadow deployment build contract", () => {
   });
 
   it("keeps cache TTLs, algorithm and protected host migration", () => {
-    expect(source("src/app/sitemap.ts")).toContain('export const dynamic = "force-dynamic"');
+    // Keep XML at request time without bypassing the shared Data Cache.
+    expect(source("src/lib/public-sitemap.ts")).toContain("await connection()");
+    expect(source("src/app/sitemap.xml/route.ts")).not.toContain('export const dynamic = "force-dynamic"');
     expect(source("src/lib/public-catalog-cache.ts")).toContain("PUBLIC_CATALOG_CACHE_REVALIDATE_SECONDS = 300");
     expect(source("src/lib/public-board-cache.ts")).toContain("revalidate: 3600");
     expect(source("src/lib/public-schema-cache.ts")).toContain("revalidate: 3600");

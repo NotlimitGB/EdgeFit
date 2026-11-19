@@ -422,6 +422,20 @@ describe("analytics digest projection", () => {
     expect(digest.sampling.traffic.yesterday).toBeNull();
     expect(digest.sampling.acquisition.last7Days).toBeNull();
   });
+  it("keeps weekly engagement and marks an unobserved first-party day as incomplete", () => {
+    const report = makeReport();
+    report.dataQuality.push({
+      code: "first_party_week_coverage_incomplete", severity: "warning", message: "Incomplete.",
+    });
+    const digest = buildWeeklyAnalyticsDigest(report);
+    expect(digest.status).toBe("partial");
+    expect(digest.weeklySummary).toBe(true);
+    expect(digest.traffic.last7Days).toMatchObject({
+      bounceRate: report.traffic.last7Days?.bounceRate,
+      pageDepth: report.traffic.last7Days?.pageDepth,
+      avgVisitDurationSeconds: report.traffic.last7Days?.avgVisitDurationSeconds,
+    });
+  });
 
   it("projects only users and visits from traffic windows", () => {
     const digest = buildDailyAnalyticsDigest(makeReport());

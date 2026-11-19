@@ -1,5 +1,5 @@
 import "server-only";
-import type { Sql } from "postgres";
+import type { ISql } from "postgres";
 import { cache } from "react";
 import {
   buildCanonicalCatalogItems,
@@ -45,7 +45,7 @@ interface CanonicalBoardAliasRow {
   familySlug: string | null;
 }
 
-async function assertCanonicalCatalogSupport(sql: Sql, confirmedSupport?: ProductColumnSupport) {
+async function assertCanonicalCatalogSupport(sql: ISql, confirmedSupport?: ProductColumnSupport) {
   const support = confirmedSupport ?? await getProductColumnSupport(sql);
   const required = [
     support.modelFamilies,
@@ -65,7 +65,7 @@ async function assertCanonicalCatalogSupport(sql: Sql, confirmedSupport?: Produc
   return support;
 }
 
-async function getOfferSelectFragments(sql: Sql, confirmedSupport?: ProductColumnSupport) {
+async function getOfferSelectFragments(sql: ISql, confirmedSupport?: ProductColumnSupport) {
   const support = await assertCanonicalCatalogSupport(sql, confirmedSupport);
 
   return {
@@ -96,7 +96,7 @@ async function getOfferSelectFragments(sql: Sql, confirmedSupport?: ProductColum
   };
 }
 
-async function loadFamilyRows(sql: Sql, slug?: string, confirmedSupport?: ProductColumnSupport) {
+async function loadFamilyRows(sql: ISql, slug?: string, confirmedSupport?: ProductColumnSupport) {
   await assertCanonicalCatalogSupport(sql, confirmedSupport);
 
   if (slug != null) {
@@ -152,7 +152,7 @@ async function loadFamilyRows(sql: Sql, slug?: string, confirmedSupport?: Produc
 }
 
 async function loadOfferRows(
-  sql: Sql,
+  sql: ISql,
   options:
     | { kind: "all" }
     | { kind: "family"; familyId: string }
@@ -239,8 +239,7 @@ async function loadOfferRows(
   `;
 }
 
-const loadAllCanonicalCatalogItemsFromDatabase = cache(async (confirmedSupport?: ProductColumnSupport) => {
-  const sql = получитьКлиентБазы();
+const loadAllCanonicalCatalogItemsFromDatabase = cache(async (confirmedSupport?: ProductColumnSupport, sql: ISql = получитьКлиентБазы()) => {
   const diagnostics = createCanonicalCatalogDiagnostics("all");
 
   return diagnostics.runStage(
@@ -424,8 +423,8 @@ export const getAllCanonicalCatalogItems = cache(async () => {
 });
 
 /** Internal public-cache entry points; do not change canonical projection. */
-export async function loadPublicCanonicalCatalog(support: ProductColumnSupport) {
-  return loadAllCanonicalCatalogItemsFromDatabase(support);
+export async function loadPublicCanonicalCatalog(support: ProductColumnSupport, sql?: ISql) {
+  return loadAllCanonicalCatalogItemsFromDatabase(support, sql);
 }
 
 export async function loadPublicCanonicalBoard(slug: string, support: ProductColumnSupport) {

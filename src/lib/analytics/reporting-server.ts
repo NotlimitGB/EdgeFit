@@ -40,6 +40,8 @@ import {
 
 interface HistoryRow {
   firstEventAt: string | null;
+  weeklyEventDays: number;
+  monthlyEventDays: number;
   legacyPayloadRows: number;
   invalidPayloadRows: number;
 }
@@ -114,6 +116,8 @@ interface QuizStepAvailabilityRow {
 interface FirstPartyResult {
   sourceStatus: AnalyticsSourceStatus;
   historyDays: number | null;
+  weeklyEventDays: number;
+  monthlyEventDays: number;
   legacyPayloadRows: number;
   invalidPayloadRows: number;
   events: Record<ReportWindowKey, EventMetrics>;
@@ -153,6 +157,8 @@ function emptyFirstParty(status: AnalyticsSourceStatus): FirstPartyResult {
   return {
     sourceStatus: status,
     historyDays: null,
+    weeklyEventDays: 0,
+    monthlyEventDays: 0,
     legacyPayloadRows: 0,
     invalidPayloadRows: 0,
     events: Object.fromEntries(
@@ -215,6 +221,14 @@ async function loadFirstPartyReport(
       const historyRows = await tx<HistoryRow[]>`
         select
           min(created_at)::text as "firstEventAt",
+          count(distinct (created_at at time zone 'Europe/Moscow')::date) filter (
+            where created_at >= (${windows.last7Days.startDate}::date::timestamp at time zone 'Europe/Moscow')
+              and created_at < ((${windows.last7Days.endDate}::date + 1)::timestamp at time zone 'Europe/Moscow')
+          )::int as "weeklyEventDays",
+          count(distinct (created_at at time zone 'Europe/Moscow')::date) filter (
+            where created_at >= (${windows.last30Days.startDate}::date::timestamp at time zone 'Europe/Moscow')
+              and created_at < ((${windows.last30Days.endDate}::date + 1)::timestamp at time zone 'Europe/Moscow')
+          )::int as "monthlyEventDays",
           count(*) filter (where jsonb_typeof(payload) = 'string')::int as "legacyPayloadRows",
           count(*) filter (
             where jsonb_typeof(payload) not in ('object', 'string')
@@ -802,6 +816,8 @@ async function loadFirstPartyReport(
       const result = emptyFirstParty({ status: "ok" });
       const history = historyRows[0];
       result.historyDays = getHistoryDays(history?.firstEventAt ?? null, asOfDate);
+      result.weeklyEventDays = history?.weeklyEventDays ?? 0;
+      result.monthlyEventDays = history?.monthlyEventDays ?? 0;
       result.legacyPayloadRows = history?.legacyPayloadRows ?? 0;
       result.invalidPayloadRows = history?.invalidPayloadRows ?? 0;
 
@@ -1000,6 +1016,13 @@ function buildDataQuality({
         : "first_party_unavailable",
       "First-party analytics is not available for this report.",
     );
+  } else {
+    if (firstParty.weeklyEventDays < 7) {
+      add("first_party_week_coverage_incomplete", "Some days have no first-party events in the seven-day window. Counts show recorded events and may be incomplete.");
+    }
+    if (firstParty.monthlyEventDays < 30) {
+      add("first_party_month_coverage_incomplete", "Some days have no first-party events in the 30-day window. Counts show recorded events and may be incomplete.");
+    }
   }
   if (firstParty.historyDays !== null && firstParty.historyDays < 60) {
     add("insufficient_history", "First-party analytics history is shorter than 60 days.");
